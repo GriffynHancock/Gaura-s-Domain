@@ -607,9 +607,8 @@ function buildNumberLine(container, opts){
     return { a, b, rows, counts, maxLap:Math.min(LAP_MAX-1,trueMax), trueMax, invertible:gcd(a,26)===1 };
   }
 
-  let disp=[], cur=null, from=null, animStart=0, raf=0;
-  const ease=p=> p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
-  const DUR=540;
+  let disp=[], cur=null, raf=0;
+  const SMOOTH=0.28;   // per-frame ease toward the latest target (follows a held knob, no restart/stutter)
 
   function setCaption(){
     const a=cur.a,b=cur.b,guardOn=guardCb.checked,inv=cur.invertible;
@@ -647,20 +646,26 @@ function buildNumberLine(container, opts){
     });
   }
 
-  function frame(now){
-    let p=(now-animStart)/DUR; if(p>1)p=1; const e=ease(p);
-    disp=cur.rows.map((r,i)=>({ lx:lerp(from[i].lx,r.lapX,e), ly:lerp(from[i].ly,r.lapY,e), ox:lerp(from[i].ox,r.outX,e) }));
+  // Continuously ease the dots toward the LATEST target each frame. update() only swaps the
+  // target, so holding/turning the knob (rapid updates) is followed smoothly — nothing restarts.
+  function loop(){
+    let moving=false;
+    disp=cur.rows.map((r,i)=>{
+      const d=disp[i]||{lx:r.lapX,ly:r.lapY,ox:r.outX};
+      const lx=d.lx+(r.lapX-d.lx)*SMOOTH, ly=d.ly+(r.lapY-d.ly)*SMOOTH, ox=d.ox+(r.outX-d.ox)*SMOOTH;
+      if(Math.abs(r.lapX-lx)+Math.abs(r.lapY-ly)+Math.abs(r.outX-ox)>0.4) moving=true;
+      return {lx,ly,ox};
+    });
     paint();
-    if(p<1) raf=requestAnimationFrame(frame); else raf=0;
+    if(moving){ raf=requestAnimationFrame(loop); }
+    else { disp=cur.rows.map(r=>({lx:r.lapX,ly:r.lapY,ox:r.outX})); paint(); raf=0; }
   }
 
   function update(a,b){
     a=((Math.round(a)%26)+26)%26; b=((Math.round(b)%26)+26)%26;
     cur=targets(a,b); setCaption();
-    from = (disp.length===26) ? disp.map(d=>({lx:d.lx,ly:d.ly,ox:d.ox}))
-                              : cur.rows.map(r=>({lx:X(r.i),ly:Y_ORIG,ox:X(r.i)}));
-    animStart=performance.now();
-    if(!raf) raf=requestAnimationFrame(frame);
+    if(disp.length!==26) disp=cur.rows.map(r=>({lx:X(r.i),ly:Y_ORIG,ox:X(r.i)}));   // first mount: spread in from the input row
+    if(!raf) raf=requestAnimationFrame(loop);
   }
 
   guardCb.addEventListener('change', ()=>{ if(cur){ setCaption(); paint(); } if(opts.onGuard) opts.onGuard(guardCb.checked); });
