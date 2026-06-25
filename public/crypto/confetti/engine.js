@@ -1,0 +1,82 @@
+/* ===== shared victory-effects (confetti) engine =====
+   Used by every crypto module. Include order on a page:
+     <script src="../confetti/manifest.js"></script>     // sets window.CONFETTI
+     <script>window.FX_MODULE='caesar';</script>          // module id for the per-user seed
+     <script src="../confetti/engine.js"></script>
+   Then call window.fxVictory() when a puzzle is solved.
+
+   Each user gets ONE signature effect per module, seeded from a cookie id — a solve always
+   rains the same thing for that person, but different people (and other modules) differ.
+   Sprites are resolved relative to THIS script, so it works from any page depth. */
+(function(){
+  const BASE = (document.currentScript && document.currentScript.src.replace(/[^/]*$/, '')) || '';
+  const SPRITES = window.CONFETTI || [];
+  const EFFECTS = [{type:'classic', name:'classic'}]
+    .concat(SPRITES.map(f=>({type:'sprite', src:BASE+f, name:f.replace(/\.png$/,'')})));
+  const COLORS=['#b23a26','#a9772a','#3f7d52','#e0593d','#c79338','#62ab77','#f0bb4d','#efe7d3'];
+
+  const cv=document.createElement('canvas');
+  cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9999';
+  document.body.appendChild(cv);
+  const ctx=cv.getContext('2d');
+  const fit=()=>{ cv.width=innerWidth; cv.height=innerHeight; };
+  fit(); addEventListener('resize',fit);
+
+  const cache={};
+  const img=src=>{ if(!cache[src]){ const i=new Image(); i.src=src; cache[src]=i; } return cache[src]; };
+  SPRITES.forEach(f=>img(BASE+f));   // warm the cache
+
+  let parts=[], emitters=[], raf=null, frame=0;
+  function mkPart(sprite, big){
+    return { x:Math.random()*cv.width, y:-40-Math.random()*cv.height*0.2,
+      vx:(Math.random()-0.5)*(big?1.2:4),
+      vy:(big?0.3:0.6)+Math.random()*(big?0.3:1.4),     // ~half the old fall speed
+      grav: big?0.006:0.03,
+      rot:Math.random()*6.28, vr:(Math.random()-0.5)*(big?0.04:0.3),
+      sz: big ? Math.min(cv.width*0.42, cv.height*0.42, 240)
+              : (sprite ? 24+Math.random()*26 : 6+Math.random()*8),
+      color:COLORS[(Math.random()*COLORS.length)|0], sprite, big, life:0,
+      ttl: big ? 4000 : 420+Math.random()*160 };
+  }
+  function spawn(effect){
+    const sprite = effect.type==='sprite' ? img(effect.src) : null;
+    emitters.push({ sprite, left: sprite?60:180, per: sprite?1:3 });   // stream over ~60 frames
+    emitters.push({ sprite, big:true, left:1, per:1, delay:120 });       // slow giant finale
+    if(!raf){ frame=0; raf=requestAnimationFrame(tick); }
+  }
+  function tick(){
+    frame++;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    for(const em of emitters){
+      if(em.delay && frame<em.delay) continue;
+      let n=Math.min(em.per, em.left);
+      while(n-->0){ parts.push(mkPart(em.sprite, em.big)); em.left--; }
+    }
+    emitters=emitters.filter(em=>em.left>0);
+    parts=parts.filter(p=>p.life<p.ttl && p.y<cv.height+140);
+    for(const p of parts){
+      p.life++; p.vy+=p.grav; p.x+=p.vx+Math.sin((p.life+p.rot)*0.06)*(p.big?0.4:0.7); p.y+=p.vy; p.rot+=p.vr;
+      const a=p.life>p.ttl-60?(p.ttl-p.life)/60:1;
+      ctx.save(); ctx.globalAlpha=Math.max(0,a); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      if(p.sprite && p.sprite.complete && p.sprite.naturalWidth) ctx.drawImage(p.sprite,-p.sz/2,-p.sz/2,p.sz,p.sz);
+      else { ctx.fillStyle=p.color; ctx.fillRect(-p.sz/2,-p.sz*0.35,p.sz,p.sz*0.7); }
+      ctx.restore();
+    }
+    raf = (parts.length||emitters.length) ? requestAnimationFrame(tick) : (ctx.clearRect(0,0,cv.width,cv.height), null);
+  }
+
+  function uid(){
+    const m=document.cookie.match(/(?:^|; )ctf-uid=([^;]+)/);
+    if(m) return m[1];
+    const id=Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+    document.cookie='ctf-uid='+id+';path=/;max-age=31536000;samesite=lax';
+    return id;
+  }
+  const fnv=s=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; };
+  const MODULE = window.FX_MODULE || 'module';
+  const myIndex = EFFECTS.length ? fnv(uid()+':'+MODULE)%EFFECTS.length : 0;
+
+  window.fxVictory = ()=> spawn(EFFECTS[myIndex]);   // this user's signature rain for this module
+  window.fxEffects = EFFECTS;
+  window.fxPlay = i => spawn(EFFECTS[((i%EFFECTS.length)+EFFECTS.length)%EFFECTS.length]);
+})();

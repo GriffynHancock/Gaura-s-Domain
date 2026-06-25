@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC  = os.path.join(ROOT, "confetti")
-DST  = os.path.join(ROOT, "public", "crypto", "encoding", "confetti")
+DST  = os.path.join(ROOT, "public", "crypto", "confetti")
 SIZE = 72
 
 def slug(name):

@@ -420,6 +420,7 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
   function measure(){ strip.style.left = (-26*cellW)+'px'; }
 
   let shift = 0;
+  let solvedOnce = false;
   function render(animate){
     shift = ((shift % 26) + 26) % 26;
     read.firstChild.textContent = rot(cipher, shift);
@@ -439,6 +440,7 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
     read.classList.toggle('lock', locked);
     svg.classList.toggle('lock', locked);
     det.classList.toggle('solved', locked);
+    if(locked && !solvedOnce && window.fxVictory){ solvedOnce = true; window.fxVictory(); }
   }
 
   input.addEventListener('input', ()=>{const v=parseInt(input.value,10); if(!isNaN(v)){shift=v; render(true);}});
@@ -471,5 +473,8 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
   window.addEventListener('resize', ()=>{ if(ruler.classList.contains('on')){ measure(); render(false); } });
 });
 </script>
+<script src="../confetti/manifest.js"></script>
+<script>window.FX_MODULE='caesar';</script>
+<script src="../confetti/engine.js"></script>
 </body>
 </html>
