@@ -55,11 +55,11 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   computed style of an animating element. (This cost two phantom-bug hunts.)
 - **Deploy quirk:** first `wrangler deploy` of a new worker can throw `code 10007` on the workers.dev subdomain
   step. Already mitigated by `"workers_dev": false` in `wrangler.jsonc` (we use a custom domain, not workers.dev).
-- **Module 2 (Encoding) lives at `public/encoding/` → served at `/encoding/`** (not under `/crypto/`).
-  Module 1 (Caesar) is still `public/crypto/ceasar/` → `/crypto/ceasar/`.
-- **`public/encoding/assets.js` is GENERATED** by `tools/build_base64_assets.py` — edit the script, not the
+- **Module 2 (Encoding) lives at `public/crypto/encoding/` → served at `/crypto/encoding/`**.
+  Module 1 (Caesar) is `public/crypto/ceasar/` → `/crypto/ceasar/`.
+- **`public/crypto/encoding/assets.js` is GENERATED** by `tools/build_base64_assets.py` — edit the script, not the
   output. Run builders with `.venv/bin/python`. Confetti sprites: `tools/build_confetti.py` reads the repo-root
-  `confetti/` drop folder → `public/encoding/confetti/*.png` + `manifest.js`.
+  `confetti/` drop folder → `public/crypto/encoding/confetti/*.png` + `manifest.js`.
 - **Repo IS under git now** (initialised 2026-06-25). Commit before large edits.
 
 ## Status

@@ -17,7 +17,7 @@ import base64, io, json, os, re
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT  = os.path.join(ROOT, "public", "encoding", "assets.js")
+OUT  = os.path.join(ROOT, "public", "crypto", "encoding", "assets.js")
 OUTDIR = os.path.join(ROOT, "tools", "out")  # builder previews (gitignored)
 
 # ----------------------------------------------------------------------------
