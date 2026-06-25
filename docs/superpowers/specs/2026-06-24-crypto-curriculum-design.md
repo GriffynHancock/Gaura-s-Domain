@@ -46,10 +46,12 @@ than math. Every module reinforces this loop.
 
 ## Module briefs
 
-### 1 · ROT / Caesar — BUILT
-Live at `/crypto/ceasar`. Dial puzzles + alphabet slide-rule + dark mode + solved-ticks.
-Flags: `flag{G}`, `flag{Bee}`, `flag{Caesar_Salad}`, `flag{Safe_Cracker}`. Teaches: key, the mod-26 ring.
-**Polish (done):** slide-rule strip eases/overshoots when it moves (instant during drag); cell width constant.
+### 1 · ROT / Caesar — BUILT & EXTENDED
+Live at `/crypto/ceasar`. Now **6 puzzles**: 4 Caesar (single dial) + **Two Tones** (alternating Vigenère, 2 dials)
++ **Multiply & Slide** (Affine `a·x+b`, with a number-line stretch→wrap visual, cryptic riddle, Guardrail toggle).
+**Per-user randomized keys** (cookie-seeded; flag re-encoded in-browser → everyone dials different numbers).
+Bonus-flag → reward-URL unlocks. Shared victory-confetti (module-completion reward, replay + reset). See
+`STATUS.md` and `docs/superpowers/specs/2026-06-25-caesar-extensions-design.md` for the full extended build.
 
 ### 2 · Encoding / Base64 — BUILT & LIVE (`/crypto/base64`)
 **Goal:** the "that's encoded" instinct; encoding ≠ encryption; bytes are just bytes you can *view* different ways;
