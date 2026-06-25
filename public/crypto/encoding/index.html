@@ -251,7 +251,7 @@ const PUZZLES = [
 ];
 
 window.FX_TOTAL = PUZZLES.length;   // confetti fires only once every puzzle is solved
-let storedSolved = new Set(); try{ storedSolved = new Set(JSON.parse(localStorage.getItem('ctf-solved:encoding') || '[]')); }catch(e){}
+let storedSolved = new Set(); try{ storedSolved = new Set(JSON.parse(localStorage.getItem('ctf-solved:v2:encoding') || '[]')); }catch(e){}
 const tpl = document.getElementById('mod');
 const footer = document.querySelector('footer');
 PUZZLES.forEach((p,i)=>{
@@ -353,7 +353,7 @@ PUZZLES.forEach((p,i)=>{
   btn.addEventListener('click', ()=>{
     if(!armed){ armed=true; btn.classList.add('armed'); btn.textContent='CONFIRM — ERASE PROGRESS?';
       t=setTimeout(()=>{ armed=false; btn.classList.remove('armed'); btn.textContent='RESET MODULE'; }, 3500); }
-    else { clearTimeout(t); if(window.fxReset) window.fxReset(); try{ localStorage.removeItem('ctf-solved:encoding'); }catch(e){} location.reload(); }
+    else { clearTimeout(t); if(window.fxReset) window.fxReset(); try{ localStorage.removeItem('ctf-solved:v2:encoding'); }catch(e){} location.reload(); }
   });
 })();
 </script>

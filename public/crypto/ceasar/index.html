@@ -85,20 +85,6 @@
     background:linear-gradient(180deg,#2a2618,var(--panel) 8%,var(--panel) 92%,#171510);
     box-shadow:0 1px 0 #ffffff10 inset, 0 14px 30px -20px #000, 0 2px 0 #000;
   }
-  .module::before,.module::after,.module .scr1,.module .scr2{
-    content:""; position:absolute; width:11px; height:11px; border-radius:50%;
-    background:radial-gradient(circle at 38% 35%, #fbf6ea, #b3a585 70%, #8c8064);
-    box-shadow:0 1px 1px #0004; z-index:3;
-  }
-  [data-theme="dark"] .module::before,[data-theme="dark"] .module::after,
-  [data-theme="dark"] .module .scr1,[data-theme="dark"] .module .scr2{
-    background:radial-gradient(circle at 38% 35%, #6f6549, #322d1d 70%, #1d1a12);
-  }
-  .module::before{top:11px; left:11px}
-  .module::after{top:11px; right:11px}
-  .module .scr1{bottom:11px; left:11px}
-  .module .scr2{bottom:11px; right:11px}
-
   summary{
     cursor:pointer; list-style:none; user-select:none;
     display:flex; align-items:center; gap:13px; padding:18px 30px 14px;
@@ -463,8 +449,6 @@
       <!-- number-line stretch→wrap visual mounts here (built by the algebra-viz agent) -->
       <div class="numline" data-numline></div>
       <label class="toggle-row"><span class="switch"><input type="checkbox" class="gtoggle" checked aria-label="guardrail"><span class="track"></span><span class="knb"></span></span><span class="tlabel">Guardrail — flag the stretches that collapse (turn off for hard mode)</span></label>
-      <div class="amap"></div>
-      <div class="amap-note">A multiplier that shares a factor with 26 collapses letters onto each other — <span class="bad">no way back</span>. Only the coprime multipliers (1, 3, 5, 7, 9, 11, 15, 17, 19, 21, 23, 25) map cleanly.</div>
       <div class="readout">———<span class="lamp"></span></div>
       <div class="stamp">Mapping inverted · flag captured</div>
       <div class="bonus"></div>
@@ -739,7 +723,7 @@ const A_CLUES={ 3:'the smallest crowd', 5:'fingers on one hand', 7:'days in a we
   11:'louder than ten, on a Spinal Tap amp', 15:'minutes in a quarter-hour', 17:'the only prime between 16 and 18',
   19:"a teenager's last year", 21:'blackjack', 23:"Jordan's jersey", 25:'a quarter of a hundred' };
 
-let storedSolved = new Set(); try{ storedSolved = new Set(JSON.parse(localStorage.getItem('ctf-solved:caesar') || '[]')); }catch(e){}
+let storedSolved = new Set(); try{ storedSolved = new Set(JSON.parse(localStorage.getItem('ctf-solved:v2:caesar') || '[]')); }catch(e){}
 document.querySelectorAll('[data-puzzle]').forEach(box => {
   const id     = box.dataset.id;
   const type   = box.dataset.type || 'caesar';
@@ -896,7 +880,7 @@ const REWARDS = {
   btn.addEventListener('click', ()=>{
     if(!armed){ armed=true; btn.classList.add('armed'); btn.textContent='CONFIRM — ERASE PROGRESS?';
       t=setTimeout(()=>{ armed=false; btn.classList.remove('armed'); btn.textContent='RESET MODULE'; }, 3500); }
-    else { clearTimeout(t); if(window.fxReset) window.fxReset(); try{ localStorage.removeItem('ctf-solved:caesar'); }catch(e){} location.reload(); }
+    else { clearTimeout(t); if(window.fxReset) window.fxReset(); try{ localStorage.removeItem('ctf-solved:v2:caesar'); }catch(e){} location.reload(); }
   });
 })();
 </script>

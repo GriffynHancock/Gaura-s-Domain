@@ -89,15 +89,33 @@
   // Progress persists in localStorage (per module), so completion survives reloads and the
   // rain fires on the final solve even across sessions. Page calls window.fxSolved(id) per
   // capture, reads window.fxSolvedSet() to restore solved UI, and window.fxReset() to clear.
-  const STORE = 'ctf-solved:' + MODULE;
+  // NOTE the ':v2' — the solve-id scheme changed (cipher -> stable id); v2 ignores stale data.
+  const STORE = 'ctf-solved:v2:' + MODULE;
   const load = ()=>{ try{ return new Set(JSON.parse(localStorage.getItem(STORE) || '[]')); }catch(e){ return new Set(); } };
   const solved = load();
   let celebrated = !!(window.FX_TOTAL && solved.size >= window.FX_TOTAL);   // already done -> don't re-rain on load
+
+  // "replay" button beside the theme toggle — appears once the module is complete so a
+  // finisher can re-show their meme to friends (encourages them to finish too).
+  let replayBtn=null;
+  function ensureReplay(){
+    if(replayBtn) return replayBtn;
+    const theme=document.getElementById('theme'); if(!theme) return null;
+    replayBtn=document.createElement('button'); replayBtn.id='fx-replay';
+    replayBtn.className=theme.className||'theme-btn'; replayBtn.textContent='★ REPLAY';
+    replayBtn.style.marginRight='8px'; replayBtn.hidden=true;
+    replayBtn.addEventListener('click',()=>spawn(EFFECTS[myIndex]));
+    theme.parentNode.insertBefore(replayBtn, theme);
+    return replayBtn;
+  }
+  function showReplay(){ const b=ensureReplay(); if(b) b.hidden=false; }
+  if(celebrated) showReplay();   // already completed in a past session
+
   window.fxSolved = (id)=>{
     if(!solved.has(id)){ solved.add(id); try{ localStorage.setItem(STORE, JSON.stringify([...solved])); }catch(e){} }
     const total = window.FX_TOTAL || 0;
-    if(total && solved.size >= total && !celebrated){ celebrated = true; spawn(EFFECTS[myIndex]); }
+    if(total && solved.size >= total && !celebrated){ celebrated = true; spawn(EFFECTS[myIndex]); showReplay(); }
   };
   window.fxSolvedSet = ()=> [...solved];
-  window.fxReset = ()=>{ solved.clear(); celebrated = false; try{ localStorage.removeItem(STORE); }catch(e){} };
+  window.fxReset = ()=>{ solved.clear(); celebrated = false; if(replayBtn) replayBtn.hidden=true; try{ localStorage.removeItem(STORE); }catch(e){} };
 })();
