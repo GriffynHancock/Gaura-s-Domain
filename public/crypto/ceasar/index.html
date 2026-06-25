@@ -184,16 +184,24 @@
 
   /* slide rule */
   .ruler{margin-top:16px; max-height:0; opacity:0; overflow:hidden; transition:max-height .35s ease, opacity .3s ease}
-  .ruler.on{max-height:260px; opacity:1}
-  .ruler-scroll{overflow-x:auto; padding:4px 2px 8px}
-  .ruler-inner{display:inline-block}
-  .rrow{position:relative; height:42px; white-space:nowrap}
-  .rrow.top{background:linear-gradient(180deg,#ded3b6,#e9e0c7); border:1px solid var(--edge); border-radius:4px 4px 0 0; border-bottom:none; box-shadow:0 1px 0 #fff8 inset}
+  .ruler.on{max-height:300px; opacity:1}
+  .ruler-scroll{padding:4px 0 8px}                       /* no horizontal scroll — fully fluid now */
+  .ruler-inner{display:block; width:100%}
+  .rrow{position:relative; height:44px}
+  /* top = the fixed reference alphabet; fills the container exactly (1 col per letter) */
+  .rrow.top{display:grid; grid-template-columns:repeat(26,1fr); width:100%;
+    background:linear-gradient(180deg,#ded3b6,#e9e0c7); border:1px solid var(--edge); border-radius:4px 4px 0 0; border-bottom:none; box-shadow:0 1px 0 #fff8 inset}
   [data-theme="dark"] .rrow.top{background:linear-gradient(180deg,#2a2618,#201d13)}
-  .rrow.bot{background:linear-gradient(180deg,#1f1d16,#2a271c); border:1px solid #000; border-radius:0 0 4px 4px; overflow:hidden}
-  .strip{position:absolute; top:0; left:0; height:100%; transition:transform .44s cubic-bezier(.34,1.36,.64,1)}
-  .cell{display:inline-flex; align-items:center; justify-content:center; width:26px; height:42px; font-family:var(--mono); font-weight:700; font-size:.95rem}
+  /* bot = the WINDOW: exactly one-alphabet wide, clips the sliding tape */
+  .rrow.bot{width:100%; overflow:hidden;
+    background:linear-gradient(180deg,#1f1d16,#2a271c); border:1px solid #000; border-radius:0 0 4px 4px}
+  /* the tape: 3 alphabets (78 cells) = 300% wide; slides as a % so it tracks on any screen */
+  .strip{width:300%; display:grid; grid-template-columns:repeat(78,1fr);
+    transition:transform .44s cubic-bezier(.34,1.36,.64,1); will-change:transform}
+  .cell{display:flex; align-items:center; justify-content:center; min-width:0; height:42px;
+    font-family:var(--mono); font-weight:700; font-size:clamp(.6rem,2.7vw,.95rem)}
   .rrow.top .cell{color:#3a3322; border-right:1px solid #c6ba9a}
+  .rrow.top .cell:last-child{border-right:none}
   [data-theme="dark"] .rrow.top .cell{color:#cdbf9f; border-right-color:#403a28}
   .rrow.top .cell.used{color:var(--signal); background:#0000000a}
   .rrow.bot .cell{color:var(--read-dim); border-right:1px solid #000}
@@ -550,7 +558,7 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
     for(let j=0;j<78;j++){ const c=document.createElement('span'); c.className='cell'; c.textContent=AZ(j);
       strip.appendChild(c); stripCells.push(c); }
   }
-  function measure(){ if(strip) strip.style.left = (-26*cellW)+'px'; }
+  function measure(){}   // position is percentage-based now — no pixel measuring needed
 
   // ---- optional affine A→Z collision map ----
   const amap = box.querySelector('.amap'); let mapCells=[];
@@ -578,7 +586,9 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
     if(ruler){
       const sh = shifts[0];
       strip.style.transition = (animate && ruler.classList.contains('on')) ? '' : 'none';
-      strip.style.transform = `translateX(${-sh*cellW}px)`;
+      // tape is 78 cells (3 alphabets) = 300% wide; slide by whole cells as a % of the tape,
+      // so the window always frames exactly one alphabet on any screen size. base offset 26 = middle copy.
+      strip.style.transform = `translateX(${-(26+sh)/78*100}%)`;
       stripCells.forEach((c,j)=>{ const col=j-26-sh; c.classList.toggle('lit', col>=0 && col<26 && used.has(AZ(col).toLowerCase())); });
     }
     if(amap){
