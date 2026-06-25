@@ -242,6 +242,40 @@
     padding:11px 14px; margin:16px 0 4px}
   .riddle b{color:var(--signal)}
 
+  /* affine number-line: stretch ×a → fold every 26 → collapse to result line */
+  .nl-root{font-family:var(--mono);background:var(--read-bg);border:1px solid var(--edge);border-radius:6px;
+    padding:13px 12px 11px;box-shadow:0 0 0 1px #0003 inset,0 2px 10px #0003 inset;min-height:240px;overflow:hidden;margin-top:16px}
+  .nl-cap{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+  .nl-formula{font-size:clamp(.72rem,2.6vw,.9rem);font-weight:700;color:var(--read-on);letter-spacing:.03em;
+    text-shadow:0 0 12px #f0bb4d55}
+  .nl-formula .nl-bad{color:var(--signal);text-shadow:none}
+  .nl-verdict{font-size:.58rem;letter-spacing:.15em;text-transform:uppercase;padding:2px 8px;border-radius:20px;
+    border:1px solid var(--lamp);color:var(--lamp);white-space:nowrap}
+  .nl-verdict.nl-collide{border-color:var(--signal);color:var(--signal)}
+  .nl-verdict.nl-off{border-color:var(--read-dim);color:var(--read-dim)}
+  .nl-svg{display:block;width:100%;height:auto}
+  .nl-axis{stroke:var(--read-dim);stroke-width:1}
+  .nl-axis.nl-result{stroke:var(--dim)}
+  .nl-tick{stroke:var(--read-dim);stroke-width:.8}
+  .nl-tlabel{fill:var(--read-dim);font-family:var(--mono);font-size:6px;text-anchor:middle}
+  .nl-band{fill:#f0bb4d0e;stroke:#f0bb4d33;stroke-width:1}
+  .nl-lapband{fill:none;stroke:var(--read-dim);stroke-width:.6;stroke-dasharray:2 2;opacity:.55}
+  .nl-rowlbl{fill:var(--dim);font-family:var(--mono);font-size:6px;letter-spacing:.1em;text-transform:uppercase}
+  .nl-laplbl{fill:var(--read-dim);font-family:var(--mono);font-size:5.5px;text-anchor:end}
+  .nl-dot{fill:var(--read-on)}
+  .nl-dot.nl-dim{fill:var(--read-dim)}
+  .nl-thread{stroke:var(--read-on);stroke-width:.8;fill:none;opacity:.35}
+  .nl-thread.nl-dim{stroke:var(--read-dim);opacity:.22}
+  .nl-rdot{fill:var(--read-on)}
+  .nl-rdot.nl-clash{fill:var(--signal)}
+  .nl-stack{fill:none;stroke:var(--signal);stroke-width:1.3}
+  .nl-rlabel{font-family:var(--mono);font-size:6px;text-anchor:middle;fill:var(--signal);font-weight:700}
+  .nl-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:.6rem;color:var(--dim);letter-spacing:.03em}
+  .nl-legend span{display:inline-flex;align-items:center;gap:5px}
+  .nl-sw{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .nl-sw.nl-good{background:var(--read-on)}
+  .nl-sw.nl-bad{background:var(--signal)}
+
   .unlock{border:1px solid var(--edge); border-radius:10px; padding:18px 20px; margin-top:34px; background:var(--read-bg)}
   .unlock p{font-family:var(--mono); font-size:.74rem; line-height:1.5; color:var(--dim); margin:6px 0 12px}
   .ubar{display:flex; gap:9px; flex-wrap:wrap}
@@ -519,6 +553,165 @@ function buildKnob(svg){
   return {pointer};
 }
 
+// ---- affine number-line: STRETCH (×a spreads the line) → WRAP (mod 26 folds it into
+// stacked "laps" of width 26) → COLLAPSE (laps fall onto one 0–25 result line).
+// Coprime a → every column holds one dot (clean fan). Shared factor → dots stack in the
+// same column (oxblood collision rings) → no inverse. ----
+function buildNumberLine(container){
+  const NS="http://www.w3.org/2000/svg";
+  const el=(n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e;};
+  const gcd=(x,y)=>{x=Math.abs(x);y=Math.abs(y);while(y){[x,y]=[y,x%y];}return x;};
+
+  const W=260, PADX=12, DOTR=2.3;
+  const SPAN=W-PADX*2;
+  const U=SPAN/25;
+  const X=i => PADX + i*U;
+  const Y_ORIG=22;
+  const LAP_TOP=50, LAP_H=11, LAP_MAX=6;
+  const Y_RESULT=LAP_TOP+LAP_H*LAP_MAX+20;
+  const H=Y_RESULT+24;
+
+  container.innerHTML="";
+  const root=document.createElement("div"); root.className="nl-root";
+  const cap=document.createElement("div"); cap.className="nl-cap";
+  const formula=document.createElement("div"); formula.className="nl-formula";
+  const verdict=document.createElement("div"); verdict.className="nl-verdict";
+  cap.appendChild(formula); cap.appendChild(verdict); root.appendChild(cap);
+
+  const svg=el("svg",{class:"nl-svg",viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:"xMidYMid meet"});
+  root.appendChild(svg);
+
+  const legend=document.createElement("div"); legend.className="nl-legend";
+  legend.innerHTML='<span><i class="nl-sw nl-good"></i>lands alone — reversible</span>'+
+                   '<span><i class="nl-sw nl-bad"></i>collision — inputs pile up</span>';
+  root.appendChild(legend);
+  container.appendChild(root);
+
+  svg.appendChild(el("text",{class:"nl-rowlbl",x:PADX,y:Y_ORIG-9})).textContent="input x · 0–25";
+  svg.appendChild(el("line",{class:"nl-axis",x1:PADX,y1:Y_ORIG,x2:W-PADX,y2:Y_ORIG}));
+  for(let i=0;i<=25;i+=5){
+    svg.appendChild(el("line",{class:"nl-tick",x1:X(i),y1:Y_ORIG-2.5,x2:X(i),y2:Y_ORIG+2.5}));
+    svg.appendChild(el("text",{class:"nl-tlabel",x:X(i),y:Y_ORIG+9})).textContent=i;
+  }
+  svg.appendChild(el("text",{class:"nl-rowlbl",x:PADX,y:Y_RESULT-9})).textContent="output (a·x+b) mod 26";
+  svg.appendChild(el("rect",{class:"nl-band",x:PADX-2,y:Y_RESULT-6,width:SPAN+4,height:12,rx:2}));
+  svg.appendChild(el("line",{class:"nl-axis nl-result",x1:PADX,y1:Y_RESULT,x2:W-PADX,y2:Y_RESULT}));
+  for(let i=0;i<=25;i+=5){
+    svg.appendChild(el("line",{class:"nl-tick",x1:X(i),y1:Y_RESULT-2.5,x2:X(i),y2:Y_RESULT+2.5}));
+    svg.appendChild(el("text",{class:"nl-tlabel",x:X(i),y:Y_RESULT+11})).textContent=i;
+  }
+  svg.appendChild(el("text",{class:"nl-rowlbl",x:PADX,y:LAP_TOP-7})).textContent="× a stretch, then fold every 26 →";
+
+  const gLapBands=el("g",{}); svg.appendChild(gLapBands);
+  const gThreads=el("g",{}); svg.appendChild(gThreads);
+  const gOrig=el("g",{}); svg.appendChild(gOrig);
+  const gFly=el("g",{}); svg.appendChild(gFly);
+  const gResult=el("g",{}); svg.appendChild(gResult);
+
+  for(let i=0;i<26;i++) gOrig.appendChild(el("circle",{class:"nl-dot",cx:X(i),cy:Y_ORIG,r:DOTR}));
+
+  let raf=0, startT=0, current=null, lastA=null, lastGuard=null;
+
+  function model(a,b){
+    const counts={};
+    for(let i=0;i<26;i++){const out=((a*i+b)%26+26)%26;counts[out]=(counts[out]||0)+1;}
+    const rows=[];
+    for(let i=0;i<26;i++){
+      const raw=a*i+b;
+      const lap=Math.floor(raw/26);
+      const out=((raw%26)+26)%26;
+      rows.push({i,raw,lap,out,clash:counts[out]>1});
+    }
+    const maxLap=Math.min(LAP_MAX-1, Math.max(...rows.map(r=>r.lap)));
+    return {a,b,rows,counts,maxLap};
+  }
+
+  const lapY=lap => LAP_TOP + Math.min(lap,LAP_MAX-1)*LAP_H + LAP_H/2;
+
+  function draw(guardOn,t){
+    const m=current; const rows=m.rows;
+    const tw=t;
+    const tc=Math.max(0,(t-0.35)/0.65);
+
+    gLapBands.textContent=""; gThreads.textContent=""; gFly.textContent=""; gResult.textContent="";
+
+    const trueMax=Math.max(...rows.map(r=>r.lap));
+    for(let L=0;L<=m.maxLap;L++){
+      const y=lapY(L);
+      const bd=el("rect",{class:"nl-lapband",x:PADX-2,y:y-LAP_H/2+1,width:SPAN+4,height:LAP_H-2,rx:2});
+      bd.style.opacity=String(0.5*tw); gLapBands.appendChild(bd);
+      const last=(L===LAP_MAX-1 && trueMax>LAP_MAX-1);
+      const ll=el("text",{class:"nl-laplbl",x:PADX-3.5,y:y+2});
+      ll.textContent=last ? ("…+"+(trueMax*26)) : ("+"+(L*26));
+      ll.style.opacity=String(0.75*tw); gLapBands.appendChild(ll);
+    }
+
+    const byOut={};
+    rows.forEach(r=>{(byOut[r.out]=byOut[r.out]||[]).push(r);});
+
+    rows.forEach(r=>{
+      const ox=X(r.i), oy=Y_ORIG;
+      const lx=X(r.out), ly=lapY(r.lap);
+      const dim=guardOn && r.clash;
+      const px=ox+(lx-ox)*tw, py=oy+(ly-oy)*tw;
+      gThreads.appendChild(el("line",{class:"nl-thread"+(dim?" nl-dim":""),x1:ox,y1:oy,x2:px,y2:py}));
+      if(tc>0){
+        const ct=el("line",{class:"nl-thread"+(dim?" nl-dim":""),x1:lx,y1:ly,x2:X(r.out),y2:Y_RESULT});
+        ct.style.opacity=String((dim?0.22:0.35)*tc); gThreads.appendChild(ct);
+      }
+      gFly.appendChild(el("circle",{class:"nl-dot"+(dim?" nl-dim":""),cx:px,cy:py,r:DOTR}));
+    });
+
+    Object.keys(byOut).forEach(k=>{
+      const out=+k, grp=byOut[k], clash=grp.length>1, rx=X(out);
+      const rd=el("circle",{class:"nl-rdot"+(guardOn&&clash?" nl-clash":""),cx:rx,cy:Y_RESULT,r:DOTR+0.5});
+      rd.style.opacity=String(0.15+0.85*tc); gResult.appendChild(rd);
+      if(guardOn && clash && tc>0.15){
+        const op=(tc-0.15)/0.85;
+        const ring=el("circle",{class:"nl-stack",cx:rx,cy:Y_RESULT,r:DOTR+2.6}); ring.style.opacity=String(op);
+        gResult.appendChild(ring);
+        const c=el("text",{class:"nl-rlabel",x:rx,y:Y_RESULT-5}); c.textContent="×"+grp.length;
+        c.style.opacity=String(op); gResult.appendChild(c);
+      }
+    });
+  }
+
+  function setCaption(a,b,guardOn,invertible){
+    const aS=`<span class="${(!invertible&&guardOn)?'nl-bad':''}">${a}</span>`;
+    formula.innerHTML=`y = ${aS}·x + ${b}  (mod 26)`;
+    verdict.className="nl-verdict";
+    if(!guardOn){verdict.classList.add("nl-off");verdict.textContent="guard off";return;}
+    if(invertible) verdict.textContent="clean · reversible";
+    else {verdict.classList.add("nl-collide");verdict.textContent="collisions · no inverse";}
+  }
+
+  function update(a,b,guardOn){
+    a=((Math.round(a)%26)+26)%26; b=((Math.round(b)%26)+26)%26;
+    guardOn=(guardOn===undefined)?true:!!guardOn;
+    const invertible=gcd(a,26)===1;
+    current=model(a,b);
+    setCaption(a,b,guardOn,invertible);
+
+    if(raf){cancelAnimationFrame(raf);raf=0;}
+    const replay=(a!==lastA)||(guardOn!==lastGuard);
+    lastA=a; lastGuard=guardOn;
+    if(!replay){ draw(guardOn,1); return; }
+
+    const DUR=720;
+    draw(guardOn,0);
+    startT=performance.now();
+    const tick=now=>{
+      let p=(now-startT)/DUR; if(p>1)p=1;
+      const e=p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
+      draw(guardOn,e);
+      if(p<1) raf=requestAnimationFrame(tick); else raf=0;
+    };
+    raf=requestAnimationFrame(tick);
+  }
+
+  return { update };
+}
+
 // ---- per-user secrets: every dial's answer is derived from the ctf-uid cookie, so each
 //      student gets different keys + ciphertext. Nothing leaves the browser; it's a seed. ----
 function ctfUid(){
@@ -590,6 +783,8 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
     riddleEl.innerHTML = 'Brute force is brutal here. The <b>stretch (×)</b> hides in a riddle — it is <b>'
       + (A_CLUES[keys[0]] || ('the number '+keys[0])) + '</b>. Land that, then nudge the <b>slide (+)</b> until the static reads a flag.';
   }
+  const numlineEl = box.querySelector('.numline');
+  const numline = (type==='affine' && numlineEl) ? buildNumberLine(numlineEl) : null;
 
   function decode(){
     if(type==='affine') return affineDecode(cipher, shifts[0], shifts[1]);
@@ -603,6 +798,7 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
     read.firstChild.textContent = (dec == null)
       ? (guardOn ? '— multiplier shares a factor with 26: not reversible —' : '— — — — — — —')
       : dec;
+    if(numline) numline.update(shifts[0], shifts[1], guardOn);
     knobs.forEach((kn,k)=>{
       inputs[k].value = shifts[k];
       const ang = (shifts[k]/26)*2*Math.PI - Math.PI/2;
