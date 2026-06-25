@@ -213,6 +213,36 @@
   .stamp{font-family:var(--mono); font-size:.68rem; letter-spacing:.22em; text-transform:uppercase; color:var(--lamp); margin-top:12px; min-height:1em; opacity:0; transition:.3s}
   .readout.lock ~ .stamp{opacity:1}
 
+  /* affine letter-map: shows letters colliding when the multiplier shares a factor with 26 */
+  .amap{display:flex; flex-wrap:wrap; gap:3px; margin-top:16px}
+  .amap .mcell{font-family:var(--mono); font-size:.58rem; line-height:1.05; text-align:center; color:var(--dim);
+    border:1px solid var(--edge); border-radius:3px; padding:3px 0; width:25px; background:var(--read-bg)}
+  .amap .mcell b{display:block; font-size:.74rem; color:var(--signal); font-weight:700}
+  .amap .mcell.clash{border-color:var(--accent,#b23a26); background:#b23a2622}
+  .amap .mcell.clash b{color:var(--accent,#b23a26)}
+  .amap.broken{outline:1px dashed var(--accent,#b23a26); outline-offset:4px}
+  .amap-note{font-family:var(--mono); font-size:.66rem; line-height:1.5; color:var(--dim); margin-top:10px}
+  .amap-note .bad{color:var(--accent,#b23a26); font-weight:700}
+
+  .bonus{font-family:var(--mono); font-size:.72rem; letter-spacing:.04em; color:var(--lamp);
+    background:var(--read-bg); border:1px dashed var(--lamp); border-radius:5px; padding:10px 13px; margin-top:14px;
+    opacity:0; transform:translateY(4px); transition:.3s; display:none; word-break:break-all}
+  .bonus.show{opacity:1; transform:none; display:block}
+
+  .unlock{border:1px solid var(--edge); border-radius:10px; padding:18px 20px; margin-top:34px; background:var(--read-bg)}
+  .unlock p{font-family:var(--mono); font-size:.74rem; line-height:1.5; color:var(--dim); margin:6px 0 12px}
+  .ubar{display:flex; gap:9px; flex-wrap:wrap}
+  .ubar input{flex:1; min-width:150px; font-family:var(--mono); font-size:1rem; color:var(--read-on);
+    background:#000; border:1px solid var(--edge); border-radius:6px; padding:11px 13px}
+  .ubar input:focus{outline:none; box-shadow:0 0 0 1px var(--signal)}
+  .ubar button{font-family:var(--mono); font-weight:700; cursor:pointer; color:#fff; background:var(--accent,#b23a26);
+    border:none; border-radius:6px; padding:0 18px}
+  .uverdict{font-family:var(--mono); font-size:.72rem; margin-top:9px; min-height:1em; color:var(--dim)}
+  .uverdict.ok{color:var(--lamp)} .uverdict.no{color:var(--accent,#b23a26)}
+  .uwall{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px}
+  .reward{font-family:var(--mono); font-size:.72rem; text-decoration:none; color:#fff; background:var(--ok,#3f7d52);
+    border-radius:6px; padding:8px 12px} .reward:hover{filter:brightness(1.08)}
+
   footer{text-align:center; font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; color:var(--dim); margin-top:46px; text-transform:uppercase}
 
   @media(max-width:520px){
@@ -343,6 +373,78 @@
     </div>
   </details>
 
+  <!-- MODULE V — Alternating Vigenère (2 knobs) -->
+  <details class="module">
+    <span class="scr1"></span><span class="scr2"></span>
+    <summary><span class="idx">V</span><span class="ttl">Two Tones</span><span class="done">✓ captured</span><span class="sub">VIGENÈRE · 2 keys</span></summary>
+    <div class="panel-body" data-puzzle data-type="vig2" data-cipher="bawv{plk_ikcah}" data-keys="4,11">
+      <div class="lab">Scrambled signal — one shift isn't enough here</div>
+      <div class="plate">bawv{plk_ikcah}</div>
+      <div class="lab">Tuning — dial A decodes the 1st, 3rd, 5th… letter; dial B the 2nd, 4th, 6th…</div>
+      <div class="deck">
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">A · ODD</span></div>
+        <div class="entry"><span class="lab">Shift A</span><input type="number" min="0" max="25" value="0" aria-label="shift A"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">B · EVEN</span></div>
+        <div class="entry"><span class="lab">Shift B</span><input type="number" min="0" max="25" value="0" aria-label="shift B"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
+      </div>
+      <div class="readout">———<span class="lamp"></span></div>
+      <div class="stamp">Both tones aligned · flag captured</div>
+    </div>
+  </details>
+
+  <!-- MODULE VI — Affine (2 knobs: multiply + shift) -->
+  <details class="module">
+    <span class="scr1"></span><span class="scr2"></span>
+    <summary><span class="idx">VI</span><span class="ttl">Multiply &amp; Slide</span><span class="done">✓ captured</span><span class="sub">AFFINE · a·x+b</span></summary>
+    <div class="panel-body" data-puzzle data-type="affine" data-cipher="hlim{ihhwvc_saxc}" data-keys="5,8" data-bonus="flag{affine_ace}">
+      <div class="lab">Scrambled signal — each letter is multiplied, then shifted</div>
+      <div class="plate">hlim{ihhwvc_saxc}</div>
+      <div class="lab">Tuning — × multiplies, + slides</div>
+      <div class="deck">
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">× MULT</span></div>
+        <div class="entry"><span class="lab">Multiply (a)</span><input type="number" min="0" max="25" value="1" aria-label="multiplier"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">+ SHIFT</span></div>
+        <div class="entry"><span class="lab">Shift (b)</span><input type="number" min="0" max="25" value="0" aria-label="shift"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
+      </div>
+      <div class="lab">A→Z mapping (watch for collisions)</div>
+      <div class="amap"></div>
+      <div class="amap-note">A multiplier that shares a factor with 26 collapses letters onto each other — <span class="bad">no way back</span>. Only the coprime multipliers (1, 3, 5, 7, 9, 11, 15, 17, 19, 21, 23, 25) map cleanly.</div>
+      <div class="readout">———<span class="lamp"></span></div>
+      <div class="stamp">Mapping inverted · flag captured</div>
+      <div class="bonus"></div>
+    </div>
+  </details>
+
+  <!-- MODULE VII — Vigenère, key length 3 (3 knobs) -->
+  <details class="module">
+    <span class="scr1"></span><span class="scr2"></span>
+    <summary><span class="idx">VII</span><span class="ttl">Three Wheel</span><span class="done">✓ captured</span><span class="sub">VIGENÈRE · 3 keys</span></summary>
+    <div class="panel-body" data-puzzle data-type="vig3" data-cipher="yjgz{rnkck_pfkxj_qxw}" data-keys="7,2,20" data-bonus="flag{vigenere_legend}">
+      <div class="lab">Scrambled signal — a 3-letter key, repeating</div>
+      <div class="plate">yjgz{rnkck_pfkxj_qxw}</div>
+      <div class="lab">Tuning — three dials cycle across the letters: A B C A B C …</div>
+      <div class="deck">
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">A · 1ST</span></div>
+        <div class="entry"><span class="lab">Shift A</span><input type="number" min="0" max="25" value="0" aria-label="shift A"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">B · 2ND</span></div>
+        <div class="entry"><span class="lab">Shift B</span><input type="number" min="0" max="25" value="0" aria-label="shift B"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">C · 3RD</span></div>
+        <div class="entry"><span class="lab">Shift C</span><input type="number" min="0" max="25" value="0" aria-label="shift C"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
+      </div>
+      <div class="readout">———<span class="lamp"></span></div>
+      <div class="stamp">All three wheels aligned · flag captured</div>
+      <div class="bonus"></div>
+    </div>
+  </details>
+
+  <section class="unlock">
+    <div class="lab">Bonus unlock</div>
+    <p>Some captures reveal a BONUS CODE. Key it in to unlock the reward — it stays unlocked on this device.</p>
+    <div class="ubar"><input id="ucode" placeholder="flag{...}" aria-label="bonus code"><button id="ubtn">UNLOCK</button></div>
+    <div id="uverdict" class="uverdict"></div>
+    <div id="uwall" class="uwall"></div>
+  </section>
+
   <footer>ctf.sandhi.com.au · crypto · caesar</footer>
 </div>
 
@@ -356,6 +458,28 @@ function rot(text, shift){
     return String.fromCharCode((ch.charCodeAt(0) - base + shift) % 26 + base);
   });
 }
+
+// Vigenère-style: shift each successive LETTER by shifts[i % shifts.length] (caesar = length 1).
+function rotByPos(text, shifts){
+  let i = 0;
+  return text.replace(/[a-z]/gi, ch => {
+    const base = ch <= 'Z' ? 65 : 97;
+    const s = ((shifts[i++ % shifts.length] % 26) + 26) % 26;
+    return String.fromCharCode((ch.charCodeAt(0) - base + s) % 26 + base);
+  });
+}
+// modular inverse of a mod 26, or null when a shares a factor with 26 (not invertible)
+function invMod(a, m){ a = ((a % m) + m) % m; for(let x=1; x<m; x++) if((a*x) % m === 1) return x; return null; }
+// affine decode: x = a⁻¹·(y − b) mod 26; null when a isn't coprime with 26
+function affineDecode(text, a, b){
+  const ai = invMod(a, 26); if(ai == null) return null;
+  return text.replace(/[a-z]/gi, ch => {
+    const base = ch <= 'Z' ? 65 : 97, y = ch.charCodeAt(0) - base;
+    const x = ((ai * (((y - b) % 26) + 26)) % 26 + 26) % 26;
+    return String.fromCharCode(x + base);
+  });
+}
+const affineFwd = (i, a, b) => ((a*i + b) % 26 + 26) % 26;   // forward map, for the collision strip
 
 // ---- theme toggle (persisted) ----
 (function(){
@@ -395,83 +519,124 @@ function buildKnob(svg){
 
 document.querySelectorAll('[data-puzzle]').forEach(box => {
   const cipher = box.dataset.cipher;
-  const key    = parseInt(box.dataset.key,10);
+  const type   = box.dataset.type || 'caesar';
+  const keys   = (box.dataset.keys || box.dataset.key).split(',').map(n => parseInt(n,10));
   const det    = box.closest('details');
-  const svg    = box.querySelector('.knob');
-  const input  = box.querySelector('input[type=number]');
   const read   = box.querySelector('.readout');
-  const knob   = buildKnob(svg);
-
-  const used = new Set(cipher.toLowerCase().match(/[a-z]/g));
-
-  const topRow = box.querySelector('.rrow.top');
-  const strip  = box.querySelector('.rrow.bot .strip');
-  for(let i=0;i<26;i++){
-    const c=document.createElement('span'); c.className='cell'; c.textContent=AZ(i);
-    if(used.has(AZ(i).toLowerCase())) c.classList.add('used');
-    topRow.appendChild(c);
-  }
-  const stripCells=[];
-  for(let j=0;j<78;j++){
-    const c=document.createElement('span'); c.className='cell'; c.textContent=AZ(j);
-    strip.appendChild(c); stripCells.push(c);
-  }
-  const cellW = 26; // fixed in CSS (.cell width) — no layout-dependent measuring
-  function measure(){ strip.style.left = (-26*cellW)+'px'; }
-
-  let shift = 0;
+  const gauges = [...box.querySelectorAll('.knob')];       // one or more dials
+  const inputs = [...box.querySelectorAll('input[type=number]')];
+  const knobs  = gauges.map(buildKnob);
+  let shifts   = inputs.map((inp) => parseInt(inp.value,10) || 0);
   let solvedOnce = false;
-  function render(animate){
-    shift = ((shift % 26) + 26) % 26;
-    read.firstChild.textContent = rot(cipher, shift);
-    input.value = shift;
-    const ang=(shift/26)*2*Math.PI - Math.PI/2;
-    knob.pointer.setAttribute('x2', 100+70*Math.cos(ang));
-    knob.pointer.setAttribute('y2', 100+70*Math.sin(ang));
-    // CSS transition gives the slide+overshoot; disable it for instant moves (drag, open, init).
-    // The inline transform is always the correct resting position regardless of the animation.
-    strip.style.transition = (animate && ruler.classList.contains('on')) ? '' : 'none';
-    strip.style.transform = `translateX(${-shift*cellW}px)`;
-    stripCells.forEach((c,j)=>{
-      const col = j - 26 - shift;
-      c.classList.toggle('lit', col>=0 && col<26 && used.has(AZ(col).toLowerCase()));
-    });
-    const locked = shift === key;
-    read.classList.toggle('lock', locked);
-    svg.classList.toggle('lock', locked);
-    det.classList.toggle('solved', locked);
-    if(locked && !solvedOnce && window.fxVictory){ solvedOnce = true; window.fxVictory(); }
-  }
 
-  input.addEventListener('input', ()=>{const v=parseInt(input.value,10); if(!isNaN(v)){shift=v; render(true);}});
-  box.querySelectorAll('.steps button').forEach(b=>
-    b.addEventListener('click', ()=>{shift+=parseInt(b.dataset.step,10); render(true);}));
-
-  let dragging=false;
-  function angle(ev){
-    const r=svg.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
-    const p=ev.touches?ev.touches[0]:ev;
-    let a=Math.atan2(p.clientY-cy, p.clientX-cx)+Math.PI/2;
-    a=(a+2*Math.PI)%(2*Math.PI);
-    shift=Math.round(a/(2*Math.PI)*26)%26; render(false);
-  }
-  const start=e=>{dragging=true; angle(e); e.preventDefault();};
-  svg.addEventListener('mousedown',start);
-  svg.addEventListener('touchstart',start,{passive:false});
-  window.addEventListener('mousemove',e=>{if(dragging)angle(e);});
-  window.addEventListener('touchmove',e=>{if(dragging)angle(e);},{passive:false});
-  window.addEventListener('mouseup',()=>dragging=false);
-  window.addEventListener('touchend',()=>dragging=false);
-
+  // ---- optional slide rule (Caesar puzzles only) ----
   const ruler = box.querySelector('.ruler');
-  box.querySelector('.rtoggle').addEventListener('change', e=>{
-    ruler.classList.toggle('on', e.target.checked);
-    if(e.target.checked){ measure(); render(false); }
+  let strip=null, stripCells=[], used=null; const cellW = 26;
+  if(ruler){
+    used = new Set(cipher.toLowerCase().match(/[a-z]/g));
+    const topRow = box.querySelector('.rrow.top');
+    strip = box.querySelector('.rrow.bot .strip');
+    for(let i=0;i<26;i++){ const c=document.createElement('span'); c.className='cell'; c.textContent=AZ(i);
+      if(used.has(AZ(i).toLowerCase())) c.classList.add('used'); topRow.appendChild(c); }
+    for(let j=0;j<78;j++){ const c=document.createElement('span'); c.className='cell'; c.textContent=AZ(j);
+      strip.appendChild(c); stripCells.push(c); }
+  }
+  function measure(){ if(strip) strip.style.left = (-26*cellW)+'px'; }
+
+  // ---- optional affine A→Z collision map ----
+  const amap = box.querySelector('.amap'); let mapCells=[];
+  if(amap){
+    for(let i=0;i<26;i++){ const c=document.createElement('span'); c.className='mcell';
+      c.appendChild(document.createTextNode(AZ(i))); const t=document.createElement('b'); c.appendChild(t);
+      amap.appendChild(c); mapCells.push({c,t}); }
+  }
+
+  function decode(){
+    if(type==='affine') return affineDecode(cipher, shifts[0], shifts[1]);
+    return rotByPos(cipher, shifts);                         // caesar / vig2 / vig3
+  }
+
+  function render(animate){
+    shifts = shifts.map(s => ((s % 26) + 26) % 26);
+    const dec = decode();
+    read.firstChild.textContent = (dec == null) ? '— multiplier shares a factor with 26: not reversible —' : dec;
+    knobs.forEach((kn,k)=>{
+      inputs[k].value = shifts[k];
+      const ang = (shifts[k]/26)*2*Math.PI - Math.PI/2;
+      kn.pointer.setAttribute('x2', 100+70*Math.cos(ang));
+      kn.pointer.setAttribute('y2', 100+70*Math.sin(ang));
+    });
+    if(ruler){
+      const sh = shifts[0];
+      strip.style.transition = (animate && ruler.classList.contains('on')) ? '' : 'none';
+      strip.style.transform = `translateX(${-sh*cellW}px)`;
+      stripCells.forEach((c,j)=>{ const col=j-26-sh; c.classList.toggle('lit', col>=0 && col<26 && used.has(AZ(col).toLowerCase())); });
+    }
+    if(amap){
+      const a=shifts[0], b=shifts[1];
+      const targets = mapCells.map((_,i)=>affineFwd(i,a,b));
+      const counts={}; targets.forEach(t=>counts[t]=(counts[t]||0)+1);
+      mapCells.forEach((mc,i)=>{ mc.t.textContent = AZ(targets[i]); mc.c.classList.toggle('clash', counts[targets[i]]>1); });
+      amap.classList.toggle('broken', invMod(a,26)==null);
+    }
+    const locked = (dec != null) && shifts.every((s,k)=> s === keys[k]);
+    read.classList.toggle('lock', locked);
+    gauges.forEach(g => g.classList.toggle('lock', locked));
+    det.classList.toggle('solved', locked);
+    if(locked && !solvedOnce && window.fxVictory){
+      solvedOnce = true; window.fxVictory();
+      if(box.dataset.bonus){ const bel=box.querySelector('.bonus'); if(bel){ bel.textContent='★ BONUS CODE  ·  '+box.dataset.bonus+'  ·  key it into Bonus Unlock ↓'; bel.classList.add('show'); } }
+    }
+  }
+
+  // wire each dial's number input + steps to its own shift
+  inputs.forEach((inp,k)=> inp.addEventListener('input', ()=>{ const v=parseInt(inp.value,10); if(!isNaN(v)){ shifts[k]=v; render(true); } }));
+  box.querySelectorAll('.entry').forEach((entry,k)=> entry.querySelectorAll('.steps button').forEach(b=>
+    b.addEventListener('click', ()=>{ shifts[k]+=parseInt(b.dataset.step,10); render(true); })));
+
+  // drag each dial independently
+  gauges.forEach((svg,k)=>{
+    let dragging=false;
+    function angle(ev){ const r=svg.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+      const p=ev.touches?ev.touches[0]:ev; let a=Math.atan2(p.clientY-cy,p.clientX-cx)+Math.PI/2;
+      a=(a+2*Math.PI)%(2*Math.PI); shifts[k]=Math.round(a/(2*Math.PI)*26)%26; render(false); }
+    const start=e=>{dragging=true; angle(e); e.preventDefault();};
+    svg.addEventListener('mousedown',start); svg.addEventListener('touchstart',start,{passive:false});
+    window.addEventListener('mousemove',e=>{if(dragging)angle(e);}); window.addEventListener('touchmove',e=>{if(dragging)angle(e);},{passive:false});
+    window.addEventListener('mouseup',()=>dragging=false); window.addEventListener('touchend',()=>dragging=false);
   });
 
+  if(ruler){ box.querySelector('.rtoggle').addEventListener('change', e=>{
+    ruler.classList.toggle('on', e.target.checked); if(e.target.checked){ measure(); render(false); } }); }
+
   measure(); render(false);
-  window.addEventListener('resize', ()=>{ if(ruler.classList.contains('on')){ measure(); render(false); } });
+  window.addEventListener('resize', ()=>{ if(ruler && ruler.classList.contains('on')){ measure(); render(false); } });
 });
+
+// ---- bonus-flag → reward unlock (placeholder URLs; swap real ones later) ----
+const REWARDS = {
+  "flag{affine_ace}":       { label:"Affine Ace",       url:"https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+  "flag{vigenere_legend}":  { label:"Vigenère Legend",  url:"https://www.youtube.com/watch?v=dQw4w9WgXcQ" }
+};
+(function(){
+  const KEY='caesar-unlocks';
+  const get=()=>{ try{ return JSON.parse(localStorage.getItem(KEY)||'[]'); }catch(e){ return []; } };
+  const save=a=>localStorage.setItem(KEY, JSON.stringify(a));
+  const wall=document.getElementById('uwall'), ver=document.getElementById('uverdict'), inp=document.getElementById('ucode');
+  function renderWall(){ wall.innerHTML=''; get().forEach(code=>{ const r=REWARDS[code]; if(!r) return;
+    const a=document.createElement('a'); a.href=r.url; a.target='_blank'; a.rel='noopener'; a.className='reward';
+    a.textContent='★ '+r.label+' — open reward'; wall.appendChild(a); }); }
+  function unlock(){
+    const v=inp.value.trim().toLowerCase();
+    const match=Object.keys(REWARDS).find(k=>k.toLowerCase()===v);
+    if(match){ const u=get(); if(!u.includes(match)){ u.push(match); save(u); } ver.className='uverdict ok';
+      ver.textContent='unlocked: '+REWARDS[match].label+' — see below'; renderWall(); }
+    else if(v){ ver.className='uverdict no'; ver.textContent='not a bonus code — solve a starred capture'; }
+  }
+  document.getElementById('ubtn').addEventListener('click', unlock);
+  inp.addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
+  renderWall();
+})();
 </script>
 <script src="../confetti/manifest.js"></script>
 <script>window.FX_MODULE='caesar';</script>
