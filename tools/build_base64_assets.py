@@ -17,7 +17,7 @@ import base64, io, json, os, re
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT  = os.path.join(ROOT, "public", "crypto", "base64", "assets.js")
+OUT  = os.path.join(ROOT, "public", "encoding", "assets.js")
 OUTDIR = os.path.join(ROOT, "tools", "out")  # builder previews (gitignored)
 
 # ----------------------------------------------------------------------------
@@ -263,16 +263,20 @@ def main():
     two_faces, tf_flag = build_two_faces("flag{two_faces}")
     flags["two_faces"] = tf_flag
 
-    # 9 — final: one base64 layer, but the plaintext is a dump salted with UNLABELLED
-    # decoys. florg{...} looks flag-ish but isn't the flag{...} format; the hex/url
-    # look-alikes lead nowhere. Nothing tells you which is real — that's the puzzle.
+    # 9 — final: base64 reveals a dump full of UNLABELLED decoys, but the real flag in
+    # the payload is still Atbash-scrambled, so the pipeline is base64 -> atbash. The
+    # decoys (florg/glaf/glorf) look flag-ish but are clearly not 'flag' — and they sit
+    # in the plain layer, so they read fine after base64 and only the payload needs the
+    # mirror. Nothing labels them; that's the puzzle.
     i_flag = "flag{read_every_line_first}"
+    i_payload = "uozt{ivzw_vevib_ormv_urihg}"          # == atbash(i_flag)
+    assert m_atbash(i_payload.encode()).decode() == i_flag
     i_plain = ("-- capture 0x5f --\n"
-               "auth_token: florg{that-isnt-a-flag}\n"
-               "trace=666c61677b6e6f7d\n"
-               "ref=%66%6c%61%67\n"
+               "auth_token: florg{nice-try}\n"
+               "trace=" + b"glaf{not-it}".hex() + "\n"
+               "ref=" + "".join("%%%02x" % b for b in b"glorf{nope}") + "\n"
                "payload:\n"
-               + i_flag + "\n"
+               + i_payload + "\n"
                "-- end of capture --\n")
     i_b64 = base64.b64encode(i_plain.encode()).decode()
     flags["i"] = i_flag
@@ -284,7 +288,7 @@ def main():
         ("4 url",           f_url, ["url"],                    f_flag),
         ("6 base64>hex",    d_b64, ["base64", "hex"],          d_flag),
         ("7 base64>rot47>hex", g_b64, ["base64", "rot47", "hex"], g_flag),
-        ("9 base64",        i_b64, ["base64"],                 None),   # flag is substring
+        ("9 base64>atbash", i_b64, ["base64", "atbash"],        None),   # flag is substring
     ]
     for name, blob, pipe, expect in checks:
         out = run_pipeline(blob, pipe).decode("latin1", "replace")

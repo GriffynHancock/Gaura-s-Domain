@@ -61,7 +61,8 @@
 
   .lab{font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--dim); margin:20px 0 8px}
   .blob{font-family:var(--mono); font-size:.86rem; line-height:1.5; color:#3a3322; background:var(--panel2);
-    border:1px solid var(--edge); border-radius:5px; padding:12px 14px; word-break:break-all; max-height:84px; overflow:auto}
+    border:1px solid var(--edge); border-radius:5px; padding:12px 14px; word-break:break-all;
+    height:84px; min-height:46px; overflow:auto; resize:vertical}
   [data-theme="dark"] .blob{color:#cdbf9f}
 
   .tiles{display:flex; gap:8px; flex-wrap:wrap}
@@ -229,7 +230,7 @@ function sting(){
 
 const TWOFACE_HINT = 'One blob, <b>two pictures</b> — both real, both precomputed. Decode as <b>hex</b> for one face; then decode as <b>base64</b> and flip the preview to <b>IMAGE</b> for the other. The string is a hex dump with junk letters wedged in: hex throws the letters away, base64 keeps them.';
 const THREE_HINT = 'Three layers: <b>base64 → rot47 → hex</b>. CyberChef\'s <b>Magic</b> usually stalls here — ROT47 isn\'t in its default search — so you peel by hand. base64 first (ends in <b>=</b>), then ROT47 turns the punctuation soup back into <b>0-9 a-f</b>, then hex.';
-const FINAL_HINT = 'One base64 layer — the trap is <b>reading</b>, not crypto. A real flag is exactly <b>flag{…}</b>; look-alikes (<b>florg{…}</b>, stray hex, <b>%XX</b>) are bait. Read every line before you submit.';
+const FINAL_HINT = 'base64 first — then <b>read</b>. The flag-shaped things you can read (<b>florg{…}</b>, <b>glaf{…}</b>) are bait; a real flag is exactly <b>flag{…}</b>. The true payload is still scrambled: it\'s a letter-<b>mirror</b> (try <b>Atbash</b>) away from plain.';
 const PUZZLES = [
   {id:'I',   title:'Decode the Signal', sub:'base64',           blob:A.a_b64,     answer:A.flags.a, view:'text'},
   {id:'II',  title:'Picture This',      sub:'base64 to image',  blob:A.b_png,     answer:A.flags.b, view:'image'},
@@ -313,7 +314,7 @@ PUZZLES.forEach((p,i)=>{
   node.querySelector('.copy').onclick=()=>{ if(navigator.clipboard) navigator.clipboard.writeText(curText()); const b=node.querySelector('.copy'); b.textContent='COPIED'; setTimeout(()=>b.textContent='COPY',900); };
 
   const input=node.querySelector('.submit input');
-  function capture(){ node.classList.add('solved'); verdict.className='verdict ok'; verdict.textContent='correct — flag captured'; }
+  function capture(){ node.classList.add('solved'); verdict.className='verdict ok'; verdict.textContent='correct — flag captured'; if(window.fxVictory) window.fxVictory(); }
   function check(){
     const v=input.value.trim();
     if(v.toLowerCase()===p.answer.toLowerCase()) capture();
@@ -332,6 +333,83 @@ PUZZLES.forEach((p,i)=>{
 
   renderPipe(); applyPipeline();
 });
+</script>
+
+<script src="confetti/manifest.js"></script>
+<script>
+/* ===== victory effects (confetti) =====
+   Each user gets ONE signature effect per module, seeded from a cookie id — so a
+   solve always rains the same thing for that person, but different people (and the
+   other modules) get different ones. Sprites come from confetti/manifest.js. */
+(function(){
+  const SPRITES = window.CONFETTI || [];
+  const EFFECTS = [{type:'classic', name:'classic'}]
+    .concat(SPRITES.map(f=>({type:'sprite', src:'confetti/'+f, name:f.replace(/\.png$/,'')})));
+  const COLORS=['#b23a26','#a9772a','#3f7d52','#e0593d','#c79338','#62ab77','#f0bb4d','#efe7d3'];
+
+  const cv=document.createElement('canvas');
+  cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9999';
+  document.body.appendChild(cv);
+  const ctx=cv.getContext('2d');
+  const fit=()=>{ cv.width=innerWidth; cv.height=innerHeight; };
+  fit(); addEventListener('resize',fit);
+
+  const cache={};
+  const img=src=>{ if(!cache[src]){ const i=new Image(); i.src=src; cache[src]=i; } return cache[src]; };
+  SPRITES.forEach(f=>img('confetti/'+f));   // warm the cache
+
+  let parts=[], raf=null;
+  function spawn(effect){
+    const sprite = effect.type==='sprite' ? img(effect.src) : null;
+    const N = sprite ? 46 : 130;
+    for(let k=0;k<N;k++){
+      parts.push({ x:Math.random()*cv.width, y:-30-Math.random()*cv.height*0.35,
+        vx:(Math.random()-0.5)*4, vy:2+Math.random()*4, rot:Math.random()*6.28,
+        vr:(Math.random()-0.5)*0.3, sz: sprite?(24+Math.random()*26):(6+Math.random()*8),
+        color:COLORS[(Math.random()*COLORS.length)|0], sprite, life:0, ttl:160+Math.random()*70 });
+    }
+    if(!raf) raf=requestAnimationFrame(tick);
+  }
+  function tick(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    parts=parts.filter(p=>p.life<p.ttl && p.y<cv.height+60);
+    for(const p of parts){
+      p.life++; p.vy+=0.06; p.x+=p.vx+Math.sin((p.life+p.rot)*0.08)*0.8; p.y+=p.vy; p.rot+=p.vr;
+      const a=p.life>p.ttl-50?(p.ttl-p.life)/50:1;
+      ctx.save(); ctx.globalAlpha=Math.max(0,a); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      if(p.sprite && p.sprite.complete && p.sprite.naturalWidth) ctx.drawImage(p.sprite,-p.sz/2,-p.sz/2,p.sz,p.sz);
+      else { ctx.fillStyle=p.color; ctx.fillRect(-p.sz/2,-p.sz*0.35,p.sz,p.sz*0.7); }
+      ctx.restore();
+    }
+    raf = parts.length ? requestAnimationFrame(tick) : (ctx.clearRect(0,0,cv.width,cv.height), null);
+  }
+
+  function uid(){
+    const m=document.cookie.match(/(?:^|; )ctf-uid=([^;]+)/);
+    if(m) return m[1];
+    const id=Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+    document.cookie='ctf-uid='+id+';path=/;max-age=31536000;samesite=lax';
+    return id;
+  }
+  const fnv=s=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; };
+  const MODULE='encoding';
+  const myIndex = EFFECTS.length ? fnv(uid()+':'+MODULE)%EFFECTS.length : 0;
+
+  window.fxVictory = ()=> spawn(EFFECTS[myIndex]);          // this user's signature rain
+  window.fxEffects = EFFECTS;
+  window.fxPlay = i => spawn(EFFECTS[((i%EFFECTS.length)+EFFECTS.length)%EFFECTS.length]);
+
+  /* ---- SECRET TEST BUTTON (temporary — remove later): each click plays the next effect ---- */
+  let ti=0;
+  const btn=document.createElement('button'); btn.id='fx-test';
+  btn.style.cssText='position:fixed;right:14px;bottom:14px;z-index:10000;font-family:var(--mono);'
+    +'font-size:.66rem;letter-spacing:.1em;cursor:pointer;color:var(--ink);background:linear-gradient(#f4eedd,#ddd2b6);'
+    +'border:1px solid var(--edge);border-radius:6px;padding:7px 11px;opacity:.85';
+  const label=()=>{ const e=EFFECTS[ti%EFFECTS.length]; btn.textContent='✦ FX '+((ti%EFFECTS.length)+1)+'/'+EFFECTS.length+' · '+e.name; };
+  label();
+  btn.onclick=()=>{ spawn(EFFECTS[ti%EFFECTS.length]); ti=(ti+1)%EFFECTS.length; label(); };
+  document.body.appendChild(btn);
+})();
 </script>
 </body>
 </html>
