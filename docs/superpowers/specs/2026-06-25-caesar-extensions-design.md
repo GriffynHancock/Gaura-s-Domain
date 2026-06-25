@@ -42,8 +42,16 @@ per-type decode function. Each puzzle declares its type and the winning knob val
   dial but snaps to the coprime set and shows the `a` value.
 - Knob labels: Vigenère "A/B/C" (or "odd/even"), Affine "× (multiply)" and "+ (shift)".
 - `render()` reads all K knob values, runs the type's decode into the readout, and locks
-  when the value vector equals the key vector. Keep the lamp / `solved` / confetti hook
-  (`window.fxVictory`) firing once on first full lock (reuse the `solvedOnce` guard).
+  when the value vector equals the key vector. On first full lock (the `solvedOnce` guard)
+  it reports the solve to the shared confetti engine via `window.fxSolved(id)`.
+
+## Victory confetti = module completion (not per-puzzle)
+The confetti is the **whole-module** reward, not a per-puzzle one: the shared engine
+(`public/crypto/confetti/engine.js`) only rains once **every** main puzzle in the module is
+solved. The page declares `window.FX_TOTAL` (puzzle count) and calls `window.fxSolved(id)` as
+each puzzle is captured; the engine fires the user's signature effect when the solved-set
+reaches the total. This drives the social loop — students tutor each other to finish a whole
+module and reveal each person's unique meme. (Caesar `FX_TOTAL=7`, Encoding `FX_TOTAL=9`.)
 - Slide-rule: keep for the shift dials it makes sense for; for Affine, the slide-rule
   alphabet alignment only reflects the shift part (or is hidden for that puzzle) — decided
   during build, kept simple.

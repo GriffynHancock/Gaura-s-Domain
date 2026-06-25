@@ -583,8 +583,8 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
     read.classList.toggle('lock', locked);
     gauges.forEach(g => g.classList.toggle('lock', locked));
     det.classList.toggle('solved', locked);
-    if(locked && !solvedOnce && window.fxVictory){
-      solvedOnce = true; window.fxVictory();
+    if(locked && !solvedOnce && window.fxSolved){
+      solvedOnce = true; window.fxSolved(cipher);
       if(box.dataset.bonus){ const bel=box.querySelector('.bonus'); if(bel){ bel.textContent='★ BONUS CODE  ·  '+box.dataset.bonus+'  ·  key it into Bonus Unlock ↓'; bel.classList.add('show'); } }
     }
   }
@@ -639,7 +639,7 @@ const REWARDS = {
 })();
 </script>
 <script src="../confetti/manifest.js"></script>
-<script>window.FX_MODULE='caesar';</script>
+<script>window.FX_MODULE='caesar'; window.FX_TOTAL=document.querySelectorAll('[data-puzzle]').length;</script>
 <script src="../confetti/engine.js"></script>
 </body>
 </html>

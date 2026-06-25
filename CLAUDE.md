@@ -60,6 +60,11 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
 - **`public/crypto/encoding/assets.js` is GENERATED** by `tools/build_base64_assets.py` — edit the script, not the
   output. Run builders with `.venv/bin/python`. Confetti sprites: `tools/build_confetti.py` reads the repo-root
   `confetti/` drop folder → `public/crypto/encoding/confetti/*.png` + `manifest.js`.
+- **Victory confetti** is shared: `public/crypto/confetti/engine.js` (+ `manifest.js`, sprites).
+  A page sets `window.FX_MODULE` (per-user signature seed) and `window.FX_TOTAL` (puzzle count),
+  then calls `window.fxSolved(id)` per capture. The rain fires once **only when all puzzles in
+  the module are solved** — module-completion reward, to make students tutor each other. Each
+  user's effect is cookie-seeded (`ctf-uid`), unique per person and per module.
 - **Repo IS under git now** (initialised 2026-06-25). Commit before large edits.
 
 ## Status

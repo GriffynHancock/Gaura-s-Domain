@@ -243,6 +243,7 @@ const PUZZLES = [
   {id:'IX',  title:'Read the Room',     sub:'mind the decoys',  blob:A.i_b64,     answer:A.flags.i, view:'text', hint:FINAL_HINT},
 ];
 
+window.FX_TOTAL = PUZZLES.length;   // confetti fires only once every puzzle is solved
 const tpl = document.getElementById('mod');
 const footer = document.querySelector('footer');
 PUZZLES.forEach((p,i)=>{
@@ -314,7 +315,7 @@ PUZZLES.forEach((p,i)=>{
   node.querySelector('.copy').onclick=()=>{ if(navigator.clipboard) navigator.clipboard.writeText(curText()); const b=node.querySelector('.copy'); b.textContent='COPIED'; setTimeout(()=>b.textContent='COPY',900); };
 
   const input=node.querySelector('.submit input');
-  function capture(){ node.classList.add('solved'); verdict.className='verdict ok'; verdict.textContent='correct — flag captured'; if(window.fxVictory) window.fxVictory(); }
+  function capture(){ node.classList.add('solved'); verdict.className='verdict ok'; verdict.textContent='correct — flag captured'; if(window.fxSolved) window.fxSolved(p.id); }
   function check(){
     const v=input.value.trim();
     if(v.toLowerCase()===p.answer.toLowerCase()) capture();

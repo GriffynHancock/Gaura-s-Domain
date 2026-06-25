@@ -1,11 +1,16 @@
 /* ===== shared victory-effects (confetti) engine =====
    Used by every crypto module. Include order on a page:
-     <script src="../confetti/manifest.js"></script>     // sets window.CONFETTI
-     <script>window.FX_MODULE='caesar';</script>          // module id for the per-user seed
+     <script src="../confetti/manifest.js"></script>      // sets window.CONFETTI
+     <script>window.FX_MODULE='caesar';                    // module id for the per-user seed
+             window.FX_TOTAL=7;</script>                   // number of main puzzles in the module
      <script src="../confetti/engine.js"></script>
-   Then call window.fxVictory() when a puzzle is solved.
+   Then call window.fxSolved(id) as EACH puzzle is captured (id = any stable per-puzzle key).
 
-   Each user gets ONE signature effect per module, seeded from a cookie id — a solve always
+   The rain is the MODULE-COMPLETION reward: it fires once, only after all FX_TOTAL puzzles
+   are solved — so students tutor each other to finish and see each person's meme.
+   (window.fxVictory() still fires the effect directly, for manual/testing use.)
+
+   Each user gets ONE signature effect per module, seeded from a cookie id — completion always
    rains the same thing for that person, but different people (and other modules) differ.
    Sprites are resolved relative to THIS script, so it works from any page depth. */
 (function(){
@@ -76,7 +81,16 @@
   const MODULE = window.FX_MODULE || 'module';
   const myIndex = EFFECTS.length ? fnv(uid()+':'+MODULE)%EFFECTS.length : 0;
 
-  window.fxVictory = ()=> spawn(EFFECTS[myIndex]);   // this user's signature rain for this module
+  window.fxVictory = ()=> spawn(EFFECTS[myIndex]);   // fire the signature rain directly (manual/testing)
   window.fxEffects = EFFECTS;
   window.fxPlay = i => spawn(EFFECTS[((i%EFFECTS.length)+EFFECTS.length)%EFFECTS.length]);
+
+  // Module-completion reward: the rain only fires once EVERY main puzzle is solved.
+  // The page sets window.FX_TOTAL and calls window.fxSolved(id) as each puzzle is captured.
+  const solved = new Set(); let celebrated = false;
+  window.fxSolved = (id)=>{
+    solved.add(id);
+    const total = window.FX_TOTAL || 0;
+    if(total && solved.size >= total && !celebrated){ celebrated = true; spawn(EFFECTS[myIndex]); }
+  };
 })();
