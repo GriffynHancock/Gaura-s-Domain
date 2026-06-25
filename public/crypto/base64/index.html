@@ -208,8 +208,8 @@ function bytesCanvas(bytes){
 }
 
 let stung=false;
-function sting(){
-  if(stung) return; stung=true;
+const stingAudio = new Audio('chaching.mp3'); stingAudio.preload='auto';
+function synthSting(){
   try{
     const C=new (window.AudioContext||window.webkitAudioContext)(); const t=C.currentTime;
     [[330,0],[247,.18],[165,.42]].forEach(([f,d])=>{
@@ -219,7 +219,12 @@ function sting(){
       o.start(t+d); o.stop(t+d+.34);
     });
   }catch(e){}
-  /* Presenter: drop imposter.mp3 beside this file and play it here for the real SFX. */
+}
+function sting(){
+  if(stung) return; stung=true;
+  // play the cha-ching SFX; fall back to the synth sting if the file can't play
+  try{ stingAudio.currentTime=0; const p=stingAudio.play(); if(p&&p.catch) p.catch(synthSting); }
+  catch(e){ synthSting(); }
 }
 
 const TWOFACE_HINT = 'One blob, <b>two pictures</b> — both real, both precomputed. Decode as <b>hex</b> for one face; then decode as <b>base64</b> and flip the preview to <b>IMAGE</b> for the other. The string is a hex dump with junk letters wedged in: hex throws the letters away, base64 keeps them.';
