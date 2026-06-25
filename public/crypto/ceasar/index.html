@@ -183,7 +183,8 @@
     background:linear-gradient(180deg,#1f1d16,#2a271c); border:1px solid #000; border-radius:0 0 4px 4px}
   /* the tape: 3 alphabets (78 cells) = 300% wide; slides as a % so it tracks on any screen */
   .strip{width:300%; display:grid; grid-template-columns:repeat(78,1fr);
-    transition:transform .44s cubic-bezier(.34,1.36,.64,1); will-change:transform}
+    transition:transform .2s cubic-bezier(.33,1,.68,1); will-change:transform}
+  .strip.nl-instant{transition:none}
   .cell{display:flex; align-items:center; justify-content:center; min-width:0; height:42px;
     font-family:var(--mono); font-weight:700; font-size:clamp(.6rem,2.7vw,.95rem)}
   .rrow.top .cell{color:#3a3322; border-right:1px solid #c6ba9a}
@@ -231,7 +232,14 @@
   /* affine number-line: stretch ×a → fold every 26 → collapse to result line */
   .nl-root{font-family:var(--mono);background:var(--read-bg);border:1px solid var(--edge);border-radius:6px;
     padding:13px 12px 11px;box-shadow:0 0 0 1px #0003 inset,0 2px 10px #0003 inset;min-height:240px;overflow:hidden;margin-top:16px}
-  .nl-cap{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+  .nl-riddle{font-family:var(--mono);font-size:.72rem;line-height:1.5;text-align:center;color:var(--ink);opacity:.94;
+    border-bottom:1px solid var(--edge);padding:0 4px 10px;margin-bottom:10px}
+  .nl-riddle b{color:var(--signal)}
+  .nl-cap{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+  .nl-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .nl-guard{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.56rem;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim);cursor:pointer;user-select:none}
+  .nl-guard input{accent-color:var(--signal);cursor:pointer;margin:0}
   .nl-formula{font-size:clamp(.72rem,2.6vw,.9rem);font-weight:700;color:var(--read-on);letter-spacing:.03em;
     text-shadow:0 0 12px #f0bb4d55}
   .nl-formula .nl-bad{color:var(--signal);text-shadow:none}
@@ -445,10 +453,8 @@
         <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">+ SHIFT</span></div>
         <div class="entry"><span class="lab">Shift (b)</span><input type="number" min="0" max="25" value="0" aria-label="shift"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
       </div>
-      <div class="riddle"></div>
-      <!-- number-line stretch→wrap visual mounts here (built by the algebra-viz agent) -->
+      <!-- number-line visual (owns its riddle + guardrail toggle) mounts here -->
       <div class="numline" data-numline></div>
-      <label class="toggle-row"><span class="switch"><input type="checkbox" class="gtoggle" checked aria-label="guardrail"><span class="track"></span><span class="knb"></span></span><span class="tlabel">Guardrail — flag the stretches that collapse (turn off for hard mode)</span></label>
       <div class="readout">———<span class="lamp"></span></div>
       <div class="stamp">Mapping inverted · flag captured</div>
       <div class="bonus"></div>
@@ -537,163 +543,128 @@ function buildKnob(svg){
   return {pointer};
 }
 
-// ---- affine number-line: STRETCH (×a spreads the line) → WRAP (mod 26 folds it into
-// stacked "laps" of width 26) → COLLAPSE (laps fall onto one 0–25 result line).
-// Coprime a → every column holds one dot (clean fan). Shared factor → dots stack in the
-// same column (oxblood collision rings) → no inverse. ----
-function buildNumberLine(container){
+// ---- affine number-line (owns its riddle + guardrail). STRETCH (×a spreads the line)
+// → FOLD every 26 into stacked "laps" → COLLAPSE onto the 0–25 output line. Coprime a →
+// one dot per column (clean fan); shared factor → dots stack (oxblood ×N rings) → no inverse.
+// Position-tweened: dots glide from current spots to the new target on every change, so
+// turning the knob (rapid updates) animates smoothly instead of snapping. ----
+function buildNumberLine(container, opts){
+  opts = opts || {};
   const NS="http://www.w3.org/2000/svg";
   const el=(n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e;};
   const gcd=(x,y)=>{x=Math.abs(x);y=Math.abs(y);while(y){[x,y]=[y,x%y];}return x;};
+  const lerp=(a,b,t)=>a+(b-a)*t;
 
-  const W=260, PADX=12, DOTR=2.3;
-  const SPAN=W-PADX*2;
-  const U=SPAN/25;
+  const W=260, PADX=12, DOTR=2.3, SPAN=W-PADX*2, U=SPAN/25;
   const X=i => PADX + i*U;
-  const Y_ORIG=22;
-  const LAP_TOP=50, LAP_H=11, LAP_MAX=6;
-  const Y_RESULT=LAP_TOP+LAP_H*LAP_MAX+20;
-  const H=Y_RESULT+24;
+  const Y_ORIG=14, LAP_TOP=34, LAP_H=11, LAP_MAX=6;
+  const Y_RESULT=LAP_TOP+LAP_H*LAP_MAX+20, H=Y_RESULT+22;
 
   container.innerHTML="";
   const root=document.createElement("div"); root.className="nl-root";
+  if(opts.riddle){ const rd=document.createElement("div"); rd.className="nl-riddle"; rd.innerHTML=opts.riddle; root.appendChild(rd); }
+
   const cap=document.createElement("div"); cap.className="nl-cap";
   const formula=document.createElement("div"); formula.className="nl-formula";
+  const right=document.createElement("div"); right.className="nl-right";
   const verdict=document.createElement("div"); verdict.className="nl-verdict";
-  cap.appendChild(formula); cap.appendChild(verdict); root.appendChild(cap);
+  const guardLbl=document.createElement("label"); guardLbl.className="nl-guard";
+  const guardCb=document.createElement("input"); guardCb.type="checkbox"; guardCb.checked=(opts.guard!==false);
+  guardLbl.appendChild(guardCb); guardLbl.appendChild(document.createTextNode("guardrail"));
+  right.appendChild(verdict); right.appendChild(guardLbl);
+  cap.appendChild(formula); cap.appendChild(right); root.appendChild(cap);
 
   const svg=el("svg",{class:"nl-svg",viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:"xMidYMid meet"});
-  root.appendChild(svg);
+  root.appendChild(svg); container.appendChild(root);
 
-  const legend=document.createElement("div"); legend.className="nl-legend";
-  legend.innerHTML='<span><i class="nl-sw nl-good"></i>lands alone — reversible</span>'+
-                   '<span><i class="nl-sw nl-bad"></i>collision — inputs pile up</span>';
-  root.appendChild(legend);
-  container.appendChild(root);
-
-  svg.appendChild(el("text",{class:"nl-rowlbl",x:PADX,y:Y_ORIG-9})).textContent="input x · 0–25";
+  // static scaffold (no input-row label, no legend)
   svg.appendChild(el("line",{class:"nl-axis",x1:PADX,y1:Y_ORIG,x2:W-PADX,y2:Y_ORIG}));
-  for(let i=0;i<=25;i+=5){
-    svg.appendChild(el("line",{class:"nl-tick",x1:X(i),y1:Y_ORIG-2.5,x2:X(i),y2:Y_ORIG+2.5}));
-    svg.appendChild(el("text",{class:"nl-tlabel",x:X(i),y:Y_ORIG+9})).textContent=i;
-  }
-  svg.appendChild(el("text",{class:"nl-rowlbl",x:PADX,y:Y_RESULT-9})).textContent="output (a·x+b) mod 26";
+  for(let i=0;i<26;i++) svg.appendChild(el("circle",{class:"nl-dot",cx:X(i),cy:Y_ORIG,r:DOTR}));
+  svg.appendChild(el("text",{class:"nl-rowlbl",x:PADX,y:LAP_TOP-6})).textContent="× a stretch, then fold every 26 →";
+  svg.appendChild(el("text",{class:"nl-rowlbl",x:PADX,y:Y_RESULT-8})).textContent="output (a·x+b) mod 26";
   svg.appendChild(el("rect",{class:"nl-band",x:PADX-2,y:Y_RESULT-6,width:SPAN+4,height:12,rx:2}));
   svg.appendChild(el("line",{class:"nl-axis nl-result",x1:PADX,y1:Y_RESULT,x2:W-PADX,y2:Y_RESULT}));
   for(let i=0;i<=25;i+=5){
     svg.appendChild(el("line",{class:"nl-tick",x1:X(i),y1:Y_RESULT-2.5,x2:X(i),y2:Y_RESULT+2.5}));
     svg.appendChild(el("text",{class:"nl-tlabel",x:X(i),y:Y_RESULT+11})).textContent=i;
   }
-  svg.appendChild(el("text",{class:"nl-rowlbl",x:PADX,y:LAP_TOP-7})).textContent="× a stretch, then fold every 26 →";
 
   const gLapBands=el("g",{}); svg.appendChild(gLapBands);
   const gThreads=el("g",{}); svg.appendChild(gThreads);
-  const gOrig=el("g",{}); svg.appendChild(gOrig);
   const gFly=el("g",{}); svg.appendChild(gFly);
   const gResult=el("g",{}); svg.appendChild(gResult);
 
-  for(let i=0;i<26;i++) gOrig.appendChild(el("circle",{class:"nl-dot",cx:X(i),cy:Y_ORIG,r:DOTR}));
-
-  let raf=0, startT=0, current=null, lastA=null, lastGuard=null;
-
-  function model(a,b){
+  const lapY=lap => LAP_TOP + Math.min(lap,LAP_MAX-1)*LAP_H + LAP_H/2;
+  function targets(a,b){
     const counts={};
     for(let i=0;i<26;i++){const out=((a*i+b)%26+26)%26;counts[out]=(counts[out]||0)+1;}
-    const rows=[];
+    let trueMax=0; const rows=[];
     for(let i=0;i<26;i++){
-      const raw=a*i+b;
-      const lap=Math.floor(raw/26);
-      const out=((raw%26)+26)%26;
-      rows.push({i,raw,lap,out,clash:counts[out]>1});
+      const raw=a*i+b, lap=Math.floor(raw/26), out=((raw%26)+26)%26;
+      if(lap>trueMax) trueMax=lap;
+      rows.push({ i, lap, lapX:X(out), lapY:lapY(lap), outX:X(out), out, clash:counts[out]>1 });
     }
-    const maxLap=Math.min(LAP_MAX-1, Math.max(...rows.map(r=>r.lap)));
-    return {a,b,rows,counts,maxLap};
+    return { a, b, rows, counts, maxLap:Math.min(LAP_MAX-1,trueMax), trueMax, invertible:gcd(a,26)===1 };
   }
 
-  const lapY=lap => LAP_TOP + Math.min(lap,LAP_MAX-1)*LAP_H + LAP_H/2;
+  let disp=[], cur=null, from=null, animStart=0, raf=0;
+  const ease=p=> p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
+  const DUR=380;
 
-  function draw(guardOn,t){
-    const m=current; const rows=m.rows;
-    const tw=t;
-    const tc=Math.max(0,(t-0.35)/0.65);
-
-    gLapBands.textContent=""; gThreads.textContent=""; gFly.textContent=""; gResult.textContent="";
-
-    const trueMax=Math.max(...rows.map(r=>r.lap));
-    for(let L=0;L<=m.maxLap;L++){
-      const y=lapY(L);
-      const bd=el("rect",{class:"nl-lapband",x:PADX-2,y:y-LAP_H/2+1,width:SPAN+4,height:LAP_H-2,rx:2});
-      bd.style.opacity=String(0.5*tw); gLapBands.appendChild(bd);
-      const last=(L===LAP_MAX-1 && trueMax>LAP_MAX-1);
-      const ll=el("text",{class:"nl-laplbl",x:PADX-3.5,y:y+2});
-      ll.textContent=last ? ("…+"+(trueMax*26)) : ("+"+(L*26));
-      ll.style.opacity=String(0.75*tw); gLapBands.appendChild(ll);
-    }
-
-    const byOut={};
-    rows.forEach(r=>{(byOut[r.out]=byOut[r.out]||[]).push(r);});
-
-    rows.forEach(r=>{
-      const ox=X(r.i), oy=Y_ORIG;
-      const lx=X(r.out), ly=lapY(r.lap);
-      const dim=guardOn && r.clash;
-      const px=ox+(lx-ox)*tw, py=oy+(ly-oy)*tw;
-      gThreads.appendChild(el("line",{class:"nl-thread"+(dim?" nl-dim":""),x1:ox,y1:oy,x2:px,y2:py}));
-      if(tc>0){
-        const ct=el("line",{class:"nl-thread"+(dim?" nl-dim":""),x1:lx,y1:ly,x2:X(r.out),y2:Y_RESULT});
-        ct.style.opacity=String((dim?0.22:0.35)*tc); gThreads.appendChild(ct);
-      }
-      gFly.appendChild(el("circle",{class:"nl-dot"+(dim?" nl-dim":""),cx:px,cy:py,r:DOTR}));
-    });
-
-    Object.keys(byOut).forEach(k=>{
-      const out=+k, grp=byOut[k], clash=grp.length>1, rx=X(out);
-      const rd=el("circle",{class:"nl-rdot"+(guardOn&&clash?" nl-clash":""),cx:rx,cy:Y_RESULT,r:DOTR+0.5});
-      rd.style.opacity=String(0.15+0.85*tc); gResult.appendChild(rd);
-      if(guardOn && clash && tc>0.15){
-        const op=(tc-0.15)/0.85;
-        const ring=el("circle",{class:"nl-stack",cx:rx,cy:Y_RESULT,r:DOTR+2.6}); ring.style.opacity=String(op);
-        gResult.appendChild(ring);
-        const c=el("text",{class:"nl-rlabel",x:rx,y:Y_RESULT-5}); c.textContent="×"+grp.length;
-        c.style.opacity=String(op); gResult.appendChild(c);
-      }
-    });
-  }
-
-  function setCaption(a,b,guardOn,invertible){
-    const aS=`<span class="${(!invertible&&guardOn)?'nl-bad':''}">${a}</span>`;
-    formula.innerHTML=`y = ${aS}·x + ${b}  (mod 26)`;
+  function setCaption(){
+    const a=cur.a,b=cur.b,guardOn=guardCb.checked,inv=cur.invertible;
+    formula.innerHTML='y = <span class="'+((!inv&&guardOn)?'nl-bad':'')+'">'+a+'</span>·x + '+b+'  (mod 26)';
     verdict.className="nl-verdict";
-    if(!guardOn){verdict.classList.add("nl-off");verdict.textContent="guard off";return;}
-    if(invertible) verdict.textContent="clean · reversible";
+    if(!guardOn){verdict.classList.add("nl-off");verdict.textContent="guard off";}
+    else if(inv) verdict.textContent="clean · reversible";
     else {verdict.classList.add("nl-collide");verdict.textContent="collisions · no inverse";}
   }
 
-  function update(a,b,guardOn){
-    a=((Math.round(a)%26)+26)%26; b=((Math.round(b)%26)+26)%26;
-    guardOn=(guardOn===undefined)?true:!!guardOn;
-    const invertible=gcd(a,26)===1;
-    current=model(a,b);
-    setCaption(a,b,guardOn,invertible);
-
-    if(raf){cancelAnimationFrame(raf);raf=0;}
-    const replay=(a!==lastA)||(guardOn!==lastGuard);
-    lastA=a; lastGuard=guardOn;
-    if(!replay){ draw(guardOn,1); return; }
-
-    const DUR=720;
-    draw(guardOn,0);
-    startT=performance.now();
-    const tick=now=>{
-      let p=(now-startT)/DUR; if(p>1)p=1;
-      const e=p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
-      draw(guardOn,e);
-      if(p<1) raf=requestAnimationFrame(tick); else raf=0;
-    };
-    raf=requestAnimationFrame(tick);
+  function paint(){
+    const guardOn=guardCb.checked, m=cur, rows=m.rows;
+    gLapBands.textContent=""; gThreads.textContent=""; gFly.textContent=""; gResult.textContent="";
+    for(let L=0;L<=m.maxLap;L++){
+      const y=lapY(L);
+      gLapBands.appendChild(el("rect",{class:"nl-lapband",x:PADX-2,y:y-LAP_H/2+1,width:SPAN+4,height:LAP_H-2,rx:2}));
+      const last=(L===LAP_MAX-1 && m.trueMax>LAP_MAX-1);
+      const ll=el("text",{class:"nl-laplbl",x:PADX-3.5,y:y+2}); ll.textContent=last?("…+"+(m.trueMax*26)):("+"+(L*26));
+      gLapBands.appendChild(ll);
+    }
+    const byOut={}; rows.forEach(r=>{(byOut[r.out]=byOut[r.out]||[]).push(r);});
+    rows.forEach((r,i)=>{
+      const d=disp[i]||{lx:r.lapX,ly:r.lapY,ox:r.outX}, dim=guardOn && r.clash;
+      gThreads.appendChild(el("line",{class:"nl-thread"+(dim?" nl-dim":""),x1:X(r.i),y1:Y_ORIG,x2:d.lx,y2:d.ly}));
+      gThreads.appendChild(el("line",{class:"nl-thread"+(dim?" nl-dim":""),x1:d.lx,y1:d.ly,x2:d.ox,y2:Y_RESULT}));
+      gFly.appendChild(el("circle",{class:"nl-dot"+(dim?" nl-dim":""),cx:d.lx,cy:d.ly,r:DOTR}));
+    });
+    Object.keys(byOut).forEach(k=>{
+      const out=+k, grp=byOut[k], clash=grp.length>1, rx=X(out);
+      gResult.appendChild(el("circle",{class:"nl-rdot"+(guardOn&&clash?" nl-clash":""),cx:rx,cy:Y_RESULT,r:DOTR+0.5}));
+      if(guardOn && clash){
+        gResult.appendChild(el("circle",{class:"nl-stack",cx:rx,cy:Y_RESULT,r:DOTR+2.6}));
+        const c=el("text",{class:"nl-rlabel",x:rx,y:Y_RESULT-5}); c.textContent="×"+grp.length; gResult.appendChild(c);
+      }
+    });
   }
 
-  return { update };
+  function frame(now){
+    let p=(now-animStart)/DUR; if(p>1)p=1; const e=ease(p);
+    disp=cur.rows.map((r,i)=>({ lx:lerp(from[i].lx,r.lapX,e), ly:lerp(from[i].ly,r.lapY,e), ox:lerp(from[i].ox,r.outX,e) }));
+    paint();
+    if(p<1) raf=requestAnimationFrame(frame); else raf=0;
+  }
+
+  function update(a,b){
+    a=((Math.round(a)%26)+26)%26; b=((Math.round(b)%26)+26)%26;
+    cur=targets(a,b); setCaption();
+    from = (disp.length===26) ? disp.map(d=>({lx:d.lx,ly:d.ly,ox:d.ox}))
+                              : cur.rows.map(r=>({lx:X(r.i),ly:Y_ORIG,ox:X(r.i)}));
+    animStart=performance.now();
+    if(!raf) raf=requestAnimationFrame(frame);
+  }
+
+  guardCb.addEventListener('change', ()=>{ if(cur){ setCaption(); paint(); } if(opts.onGuard) opts.onGuard(guardCb.checked); });
+  return { update, getGuard: ()=>guardCb.checked };
 }
 
 // ---- per-user secrets: every dial's answer is derived from the ctf-uid cookie, so each
@@ -750,25 +721,18 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
       if(used.has(AZ(i).toLowerCase())) c.classList.add('used'); topRow.appendChild(c); }
     for(let j=0;j<78;j++){ const c=document.createElement('span'); c.className='cell'; c.textContent=AZ(j);
       strip.appendChild(c); stripCells.push(c); }
+    strip.classList.add('nl-instant');   // no transition for the very first positioning
   }
   function measure(){}   // position is percentage-based now — no pixel measuring needed
 
-  // ---- optional affine A→Z collision map + guardrail toggle + riddle ----
-  const amap = box.querySelector('.amap'); let mapCells=[];
-  if(amap){
-    for(let i=0;i<26;i++){ const c=document.createElement('span'); c.className='mcell';
-      c.appendChild(document.createTextNode(AZ(i))); const t=document.createElement('b'); c.appendChild(t);
-      amap.appendChild(c); mapCells.push({c,t}); }
-  }
-  const guard = box.querySelector('.gtoggle');          // affine guardrail (may be null)
-  const amapNote = box.querySelector('.amap-note');
-  const riddleEl = box.querySelector('.riddle');
-  if(type==='affine' && riddleEl){
-    riddleEl.innerHTML = 'Brute force is brutal here. The <b>stretch (×)</b> hides in a riddle — it is <b>'
-      + (A_CLUES[keys[0]] || ('the number '+keys[0])) + '</b>. Land that, then nudge the <b>slide (+)</b> until the static reads a flag.';
-  }
+  // ---- affine number-line visual (owns the riddle text + the guardrail toggle) ----
   const numlineEl = box.querySelector('.numline');
-  const numline = (type==='affine' && numlineEl) ? buildNumberLine(numlineEl) : null;
+  let numline = null;
+  if(type==='affine' && numlineEl){
+    const riddleHTML = 'Brute force is brutal here. The <b>stretch (×)</b> hides in a riddle — it is <b>'
+      + (A_CLUES[keys[0]] || ('the number '+keys[0])) + '</b>. Land that, then nudge the <b>slide (+)</b> until the static reads a flag.';
+    numline = buildNumberLine(numlineEl, { riddle: riddleHTML, guard: true, onGuard: ()=>render(false) });
+  }
 
   function decode(){
     if(type==='affine') return affineDecode(cipher, shifts[0], shifts[1]);
@@ -778,11 +742,11 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
   function render(animate){
     shifts = shifts.map(s => ((s % 26) + 26) % 26);
     const dec = decode();
-    const guardOn = !guard || guard.checked;
+    const guardOn = numline ? numline.getGuard() : true;
     read.firstChild.textContent = (dec == null)
       ? (guardOn ? '— multiplier shares a factor with 26: not reversible —' : '— — — — — — —')
       : dec;
-    if(numline) numline.update(shifts[0], shifts[1], guardOn);
+    if(numline) numline.update(shifts[0], shifts[1]);
     knobs.forEach((kn,k)=>{
       inputs[k].value = shifts[k];
       const ang = (shifts[k]/26)*2*Math.PI - Math.PI/2;
@@ -791,23 +755,12 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
     });
     if(ruler){
       const sh = shifts[0];
-      strip.style.transition = (animate && ruler.classList.contains('on')) ? '' : 'none';
+      // tape slides via the CSS transition on .strip — smooth on both +/- and knob-drag.
+      // (only the initial paint is instant, via the .nl-instant class set once below.)
       // tape is 78 cells (3 alphabets) = 300% wide; slide by whole cells as a % of the tape,
       // so the window always frames exactly one alphabet on any screen size. base offset 26 = middle copy.
       strip.style.transform = `translateX(${-(26+sh)/78*100}%)`;
       stripCells.forEach((c,j)=>{ const col=j-26-sh; c.classList.toggle('lit', col>=0 && col<26 && used.has(AZ(col).toLowerCase())); });
-    }
-    if(amap){
-      if(guardOn){
-        amap.style.display=''; if(amapNote) amapNote.style.display='';
-        const a=shifts[0], b=shifts[1];
-        const targets = mapCells.map((_,i)=>affineFwd(i,a,b));
-        const counts={}; targets.forEach(t=>counts[t]=(counts[t]||0)+1);
-        mapCells.forEach((mc,i)=>{ mc.t.textContent = AZ(targets[i]); mc.c.classList.toggle('clash', counts[targets[i]]>1); });
-        amap.classList.toggle('broken', invMod(a,26)==null);
-      } else {
-        amap.style.display='none'; if(amapNote) amapNote.style.display='none';
-      }
     }
     const locked = (dec != null) && shifts.every((s,k)=> s === keys[k]);
     read.classList.toggle('lock', locked);
@@ -838,7 +791,6 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
 
   if(ruler){ box.querySelector('.rtoggle').addEventListener('change', e=>{
     ruler.classList.toggle('on', e.target.checked); if(e.target.checked){ measure(); render(false); } }); }
-  if(guard){ guard.addEventListener('change', ()=>render(false)); }
 
   // restore a previously-captured puzzle on load (progress persists across reloads)
   if(storedSolved.has(id)){
@@ -846,6 +798,7 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
     if(box.dataset.bonus){ const bel=box.querySelector('.bonus'); if(bel){ bel.textContent='★ BONUS CODE  ·  '+box.dataset.bonus+'  ·  key it into Bonus Unlock ↓'; bel.classList.add('show'); } }
   }
   measure(); render(false);
+  if(strip) requestAnimationFrame(()=>strip.classList.remove('nl-instant'));   // enable smooth sliding after first paint
   window.addEventListener('resize', ()=>{ if(ruler && ruler.classList.contains('on')){ measure(); render(false); } });
 });
 
