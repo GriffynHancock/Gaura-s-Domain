@@ -243,6 +243,12 @@
   .reward{font-family:var(--mono); font-size:.72rem; text-decoration:none; color:#fff; background:var(--ok,#3f7d52);
     border-radius:6px; padding:8px 12px} .reward:hover{filter:brightness(1.08)}
 
+  .reset-row{display:flex; justify-content:center; margin-top:40px}
+  .reset-btn{font-family:var(--mono); font-size:.66rem; letter-spacing:.16em; cursor:pointer; color:var(--dim);
+    background:none; border:1px solid var(--edge); border-radius:6px; padding:8px 14px; transition:.2s}
+  .reset-btn:hover{color:var(--ink); border-color:var(--dim)}
+  .reset-btn.armed{color:#fff; background:var(--accent,#b23a26); border-color:var(--accent,#b23a26); letter-spacing:.1em}
+
   footer{text-align:center; font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; color:var(--dim); margin-top:46px; text-transform:uppercase}
 
   @media(max-width:520px){
@@ -445,6 +451,8 @@
     <div id="uwall" class="uwall"></div>
   </section>
 
+  <div class="reset-row"><button id="reset-mod" class="reset-btn">RESET MODULE</button></div>
+
   <footer>ctf.sandhi.com.au · crypto · caesar</footer>
 </div>
 
@@ -517,6 +525,7 @@ function buildKnob(svg){
   return {pointer};
 }
 
+let storedSolved = new Set(); try{ storedSolved = new Set(JSON.parse(localStorage.getItem('ctf-solved:caesar') || '[]')); }catch(e){}
 document.querySelectorAll('[data-puzzle]').forEach(box => {
   const cipher = box.dataset.cipher;
   const type   = box.dataset.type || 'caesar';
@@ -609,6 +618,11 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
   if(ruler){ box.querySelector('.rtoggle').addEventListener('change', e=>{
     ruler.classList.toggle('on', e.target.checked); if(e.target.checked){ measure(); render(false); } }); }
 
+  // restore a previously-captured puzzle on load (progress persists across reloads)
+  if(storedSolved.has(cipher)){
+    shifts = keys.slice();
+    if(box.dataset.bonus){ const bel=box.querySelector('.bonus'); if(bel){ bel.textContent='★ BONUS CODE  ·  '+box.dataset.bonus+'  ·  key it into Bonus Unlock ↓'; bel.classList.add('show'); } }
+  }
   measure(); render(false);
   window.addEventListener('resize', ()=>{ if(ruler && ruler.classList.contains('on')){ measure(); render(false); } });
 });
@@ -636,6 +650,17 @@ const REWARDS = {
   document.getElementById('ubtn').addEventListener('click', unlock);
   inp.addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
   renderWall();
+})();
+
+// two-step reset: clears this module's solved progress, then reloads
+(function(){
+  const btn=document.getElementById('reset-mod'); if(!btn) return;
+  let armed=false, t;
+  btn.addEventListener('click', ()=>{
+    if(!armed){ armed=true; btn.classList.add('armed'); btn.textContent='CONFIRM — ERASE PROGRESS?';
+      t=setTimeout(()=>{ armed=false; btn.classList.remove('armed'); btn.textContent='RESET MODULE'; }, 3500); }
+    else { clearTimeout(t); if(window.fxReset) window.fxReset(); try{ localStorage.removeItem('ctf-solved:caesar'); }catch(e){} location.reload(); }
+  });
 })();
 </script>
 <script src="../confetti/manifest.js"></script>

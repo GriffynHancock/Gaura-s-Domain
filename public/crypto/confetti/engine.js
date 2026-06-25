@@ -86,11 +86,18 @@
   window.fxPlay = i => spawn(EFFECTS[((i%EFFECTS.length)+EFFECTS.length)%EFFECTS.length]);
 
   // Module-completion reward: the rain only fires once EVERY main puzzle is solved.
-  // The page sets window.FX_TOTAL and calls window.fxSolved(id) as each puzzle is captured.
-  const solved = new Set(); let celebrated = false;
+  // Progress persists in localStorage (per module), so completion survives reloads and the
+  // rain fires on the final solve even across sessions. Page calls window.fxSolved(id) per
+  // capture, reads window.fxSolvedSet() to restore solved UI, and window.fxReset() to clear.
+  const STORE = 'ctf-solved:' + MODULE;
+  const load = ()=>{ try{ return new Set(JSON.parse(localStorage.getItem(STORE) || '[]')); }catch(e){ return new Set(); } };
+  const solved = load();
+  let celebrated = !!(window.FX_TOTAL && solved.size >= window.FX_TOTAL);   // already done -> don't re-rain on load
   window.fxSolved = (id)=>{
-    solved.add(id);
+    if(!solved.has(id)){ solved.add(id); try{ localStorage.setItem(STORE, JSON.stringify([...solved])); }catch(e){} }
     const total = window.FX_TOTAL || 0;
     if(total && solved.size >= total && !celebrated){ celebrated = true; spawn(EFFECTS[myIndex]); }
   };
+  window.fxSolvedSet = ()=> [...solved];
+  window.fxReset = ()=>{ solved.clear(); celebrated = false; try{ localStorage.removeItem(STORE); }catch(e){} };
 })();
