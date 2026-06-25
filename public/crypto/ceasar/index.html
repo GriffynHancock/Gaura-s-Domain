@@ -183,7 +183,7 @@
     background:linear-gradient(180deg,#1f1d16,#2a271c); border:1px solid #000; border-radius:0 0 4px 4px}
   /* the tape: 3 alphabets (78 cells) = 300% wide; slides as a % so it tracks on any screen */
   .strip{width:300%; display:grid; grid-template-columns:repeat(78,1fr);
-    transition:transform .2s cubic-bezier(.33,1,.68,1); will-change:transform}
+    transition:transform .34s cubic-bezier(.33,1,.68,1); will-change:transform}
   .strip.nl-instant{transition:none}
   .cell{display:flex; align-items:center; justify-content:center; min-width:0; height:42px;
     font-family:var(--mono); font-weight:700; font-size:clamp(.6rem,2.7vw,.95rem)}
@@ -609,7 +609,7 @@ function buildNumberLine(container, opts){
 
   let disp=[], cur=null, from=null, animStart=0, raf=0;
   const ease=p=> p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
-  const DUR=380;
+  const DUR=540;
 
   function setCaption(){
     const a=cur.a,b=cur.b,guardOn=guardCb.checked,inv=cur.invertible;
@@ -725,6 +725,25 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
   }
   function measure(){}   // position is percentage-based now — no pixel measuring needed
 
+  // Slide the tape the SHORT way and wrap seamlessly across the 0↔25 seam. vpos is a
+  // continuous visual position; when it drifts into a neighbour alphabet copy we snap it
+  // back by ±26 with no transition — invisible because the 3 copies are identical.
+  let vpos = null;
+  function setTape(sh){
+    if(!strip) return;
+    if(vpos === null){ vpos = sh; strip.style.transform = `translateX(${-(26+vpos)/78*100}%)`; return; }
+    if(vpos < 0 || vpos > 25){
+      strip.style.transition = 'none';
+      vpos = ((vpos % 26) + 26) % 26;
+      strip.style.transform = `translateX(${-(26+vpos)/78*100}%)`;
+      void strip.offsetWidth;                 // reflow so the next move animates from here
+      strip.style.transition = '';            // back to the CSS transition
+    }
+    let delta = ((sh - vpos) % 26 + 26) % 26; if(delta > 13) delta -= 26;   // shortest path on the ring
+    vpos += delta;
+    strip.style.transform = `translateX(${-(26+vpos)/78*100}%)`;
+  }
+
   // ---- affine number-line visual (owns the riddle text + the guardrail toggle) ----
   const numlineEl = box.querySelector('.numline');
   let numline = null;
@@ -757,9 +776,8 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
       const sh = shifts[0];
       // tape slides via the CSS transition on .strip — smooth on both +/- and knob-drag.
       // (only the initial paint is instant, via the .nl-instant class set once below.)
-      // tape is 78 cells (3 alphabets) = 300% wide; slide by whole cells as a % of the tape,
-      // so the window always frames exactly one alphabet on any screen size. base offset 26 = middle copy.
-      strip.style.transform = `translateX(${-(26+sh)/78*100}%)`;
+      // tape is 78 cells (3 alphabets) = 300% wide; setTape slides the short way + wraps the seam.
+      setTape(sh);
       stripCells.forEach((c,j)=>{ const col=j-26-sh; c.classList.toggle('lit', col>=0 && col<26 && used.has(AZ(col).toLowerCase())); });
     }
     const locked = (dec != null) && shifts.every((s,k)=> s === keys[k]);
