@@ -77,6 +77,19 @@ I (ROT 5) · II (ROT 16) · III (ROT 13) · IV (ROT, dial) · **V Vig-2** · **V
 - Real meme URLs (user supplies later; placeholders for now).
 - No backend; codes and unlocks are client-side.
 
+## Shipped (2026-06-25, revised)
+- **Three Wheel (Vigenère-3) removed** — didn't land.
+- **Per-user randomized answers**: each dial puzzle's key(s) derive from the `ctf-uid`
+  cookie via FNV hash; the flag is re-encoded in-browser so every student gets different
+  ciphertext/keys (anti shoulder-surf). Solve-tracking keyed by a stable `data-id`.
+- **Affine "Guardrail" toggle** (default on): gates the collision map + not-reversible
+  warning; off = hard mode (silent dashes).
+- **Affine cryptic riddle** generated from the user's multiplier `a` (clue table); `b`
+  found by scanning once `a` is right.
+- **Number-line stretch→wrap visual** (`buildNumberLine`, built by an Opus sub-agent):
+  input line → ×a stretch folded into 26-wide laps → collapse to output line; coprime =
+  clean fan, shared factor = oxblood collision rings (`×N`). Driven by `update(a,b,guardOn)`.
+
 ## Verification
 - Build each new puzzle; solve each with real dial interaction (Chrome MCP), confirm the
   readout resolves to `flag{…}`, the lamp/solved state and confetti fire once.
