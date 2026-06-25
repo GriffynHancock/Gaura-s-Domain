@@ -139,75 +139,69 @@ B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/
 # decoy chars: in the base64 alphabet but NOT hex digits ([0-9a-fA-F])
 DECOY = "GHIJKLMNOPQRSTUVWXYZghijklmnopqrstuvwxyz+/"
 assert all(c not in "0123456789abcdefABCDEF" for c in DECOY)
-
-def b64val(c): return B64_ALPHABET.index(c)
+DECOY_VALS = sorted(B64_ALPHABET.index(c) for c in DECOY)
+TROLL_SRC = os.path.join(ROOT, "tools", "assets", "trollface.png")
 
 def quad_to_rgb(quad):
     """The RGB pixel that a 4-char base64 group paints (matches bytesCanvas)."""
-    v0, v1, v2, v3 = (b64val(c) for c in quad)
+    v0, v1, v2, v3 = (B64_ALPHABET.index(c) for c in quad)
     b0 = ((v0 << 2) | (v1 >> 4)) & 255
     b1 = (((v1 & 15) << 4) | (v2 >> 2)) & 255
     b2 = (((v2 & 3) << 6) | v3) & 255
     return (b0, b1, b2)
 
-# A small palette of decoy-only quads (guaranteed exact, high contrast).
-PAL = {
-    "bg":   "////",  # white-ish
-    "face": "GGGG",  # teal
-    "mouth":"gggg",  # maroon
-    "eye":  "zzzz",  # magenta
-}
-PAL_RGB = {k: quad_to_rgb(v) for k, v in PAL.items()}
+def darkest_decoy_quad():
+    """The decoy-only 4-char group that paints the darkest reachable colour.
 
-def troll_grid(W, rows):
-    """Return a list of length W*rows of palette keys drawing a goofy troll face."""
-    g = ["bg"] * (W * rows)
-    cx, cy = W / 2.0, rows / 2.0
-    rx, ry = W * 0.42, rows * 0.46
-    def put(x, y, k):
-        if 0 <= x < W and 0 <= y < rows:
-            g[y * W + x] = k
-    for y in range(rows):
-        for x in range(W):
-            # head: filled ellipse
-            if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.0:
-                g[y * W + x] = "face"
-    # eyes
-    ey = int(cy - ry * 0.25)
-    for ex in (int(cx - rx * 0.42), int(cx + rx * 0.42)):
-        for dx in range(-2, 3):
-            for dy in range(-2, 3):
-                if dx * dx + dy * dy <= 4:
-                    put(ex + dx, ey + dy, "eye")
-    # wide grin: an arc band
-    my = int(cy + ry * 0.30)
-    for x in range(int(cx - rx * 0.55), int(cx + rx * 0.55) + 1):
-        t = (x - cx) / (rx * 0.55)
-        yy = int(my + (t * t) * ry * 0.18)
-        for dy in range(0, 3):
-            put(x, yy + dy, "mouth")
-    return g
+    base64 paints each group as one RGB pixel, but decoy chars can only encode a
+    subset of 6-bit values, so we can't reach pure black — pick the darkest we can
+    (used for the trollface's line art; the background uses '////' = white).
+    """
+    v0 = DECOY_VALS[0]                      # b0 = v0<<2|.. so smallest v0 -> darkest red channel
+    best = None
+    for v1 in DECOY_VALS:
+        for v2 in DECOY_VALS:
+            for v3 in DECOY_VALS:
+                b0 = ((v0 << 2) | (v1 >> 4)) & 255
+                b1 = (((v1 & 15) << 4) | (v2 >> 2)) & 255
+                b2 = (((v2 & 3) << 6) | v3) & 255
+                lum = 0.299 * b0 + 0.587 * b1 + 0.114 * b2
+                if best is None or lum < best[0]:
+                    best = (lum, "".join(B64_ALPHABET[v] for v in (v0, v1, v2, v3)))
+    return best[1]
+
+WHITE_QUAD = "////"                          # -> (255,255,255)
+DARK_QUAD = darkest_decoy_quad()
+
+def troll_mask(W, rows):
+    """Downscale the real trollface to W x rows and return a per-pixel bool: True=line."""
+    src = Image.open(TROLL_SRC).convert("RGBA")
+    flat = Image.alpha_composite(Image.new("RGBA", src.size, (255, 255, 255, 255)), src)
+    g = flat.convert("L").resize((W, rows), Image.LANCZOS)
+    px = g.load()
+    return [px[x, y] < 128 for y in range(rows) for x in range(W)]
 
 def build_two_faces(flag_text):
-    flag_png = png_bytes(flag_bitmap(flag_text))
-    hexs = flag_png.hex()  # lowercase 0-9a-f, even length
+    # 1-bit PNG keeps the flag image tiny -> short hex -> a thin data strip
+    flag_png = png_bytes(flag_bitmap(flag_text).convert("1"))
+    hexs = flag_png.hex()                     # lowercase 0-9a-f, even length
 
     W = 48
-    total = W * W            # 2304 pixels -> perfect square so JS round(sqrt)==48
-    band_px = -(-len(hexs) // 4)          # ceil: pixels needed to carry the hex
+    total = W * W                             # 2304 px -> perfect square so JS round(sqrt)==48
+    band_px = -(-len(hexs) // 4)              # ceil: pixels needed to carry the hex
     band_rows = -(-band_px // W)
     face_rows = W - band_rows
-    if face_rows < 18:
+    if face_rows < 24:
         raise SystemExit(f"flag PNG too big for Two Faces grid: face_rows={face_rows}")
 
-    grid = troll_grid(W, face_rows)
+    mask = troll_mask(W, face_rows)           # real trollface, 2-tone
     chars = []
-    for k in grid:                         # face pixels: 4 decoy chars -> exact color
-        chars.append(PAL[k])
-    chars = list("".join(chars))           # flatten to per-char
-    chars.extend(hexs)                      # data band: the flag hex, in order
-    while len(chars) < total * 4:           # pad to a full WxW image with a non-hex decoy
-        chars.append("G")
+    for is_line in mask:                       # face pixels: 4 decoy chars -> exact colour
+        chars.append(DARK_QUAD if is_line else WHITE_QUAD)
+    chars = list("".join(chars))               # flatten to per-char
+    chars.extend(hexs)                          # data strip: the flag hex, in order
+    while len(chars) < total * 4:               # pad the rest of the strip white so it blends
+        chars.append("/")
     S = "".join(chars)
     assert len(S) == total * 4
 
@@ -216,7 +210,7 @@ def build_two_faces(flag_text):
     painted = m_base64(S.encode("latin1"))
     assert len(painted) == total * 3, "Two Faces: base64 path wrong length"
 
-    # write a builder preview of the troll for a human eyeball check
+    # write a builder preview of the troll for a human/vision eyeball check
     os.makedirs(OUTDIR, exist_ok=True)
     timg = Image.new("RGB", (W, W))
     timg.putdata([(painted[i*3], painted[i*3+1], painted[i*3+2]) for i in range(total)])
@@ -269,14 +263,17 @@ def main():
     two_faces, tf_flag = build_two_faces("flag{two_faces}")
     flags["two_faces"] = tf_flag
 
-    # 9 — final: base64 with red herrings baked into the decoded text
-    i_flag = "flag{read_to_the_very_end}"
-    i_plain = ("STATUS: OK\n"
-               "flag{almost_but_not_quite}   <- decoy, keep reading\n"
-               "trace=666c61677b6e6f7d looks like hex? it's a trap\n"
-               "ref=%66%6c%61%67 looks like url? also a trap\n"
-               "the real one is below.\n"
-               + i_flag + "\n")
+    # 9 — final: one base64 layer, but the plaintext is a dump salted with UNLABELLED
+    # decoys. florg{...} looks flag-ish but isn't the flag{...} format; the hex/url
+    # look-alikes lead nowhere. Nothing tells you which is real — that's the puzzle.
+    i_flag = "flag{read_every_line_first}"
+    i_plain = ("-- capture 0x5f --\n"
+               "auth_token: florg{that-isnt-a-flag}\n"
+               "trace=666c61677b6e6f7d\n"
+               "ref=%66%6c%61%67\n"
+               "payload:\n"
+               + i_flag + "\n"
+               "-- end of capture --\n")
     i_b64 = base64.b64encode(i_plain.encode()).decode()
     flags["i"] = i_flag
 
@@ -298,7 +295,7 @@ def main():
     # image puzzles: pipeline yields a PNG/marker
     assert m_base64(b_png.encode()).startswith(b"\x89PNG"), "2: not a PNG"
     assert c_flag.encode() in m_base64(c_b64.encode()), "5: flag not in bytes"
-    assert m_hex(two_faces.encode("latin1")) == png_bytes(flag_bitmap("flag{two_faces}")), "8 hex face"
+    assert m_hex(two_faces.encode("latin1")) == png_bytes(flag_bitmap("flag{two_faces}").convert("1")), "8 hex face"
 
     assets = {
         "a_b64": a_b64, "b_png": b_png, "c_b64": c_b64, "d_b64": d_b64,

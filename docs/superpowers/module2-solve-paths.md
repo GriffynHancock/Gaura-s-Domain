@@ -88,6 +88,8 @@ screams its method). V–IX mix layers and start baiting with decoys.
 - **Tell:** base64 → printable punctuation-y gibberish (rot47'd hex) → rot47 → clean hex → hex.
 - **Red herrings:** after base64 the middle layer *looks* like it might be its own cipher;
   rot13/atbash on it produce plausible-but-wrong letters. rot47 is the only one that lands.
+- **CyberChef Magic stalls here:** ROT47 isn't in Magic's default search, so auto-solve
+  fails — this is the puzzle where students learn to peel by hand. The hint says so.
 - **Future salt:** this is the natural home for a "looks-like-base64-again" middle layer —
   pick a flag whose hex, after rot47, contains `+`/`/`-ish chars to bait a second base64.
 
@@ -96,28 +98,34 @@ screams its method). V–IX mix layers and start baiting with decoys.
 - **`hex` path:** strips every non-hex char → reconstructs the flag PNG **byte-exact** →
   IMAGE shows `flag{two_faces}`.
 - **`base64` path:** keeps every char → IMAGE view paints the bytes as raw RGB. Each
-  base64 4-char group = one pixel. Top rows = a troll face built from decoy-only quads;
-  bottom band = the hex data as colour static.
+  base64 4-char group = one pixel. Top rows = the real trollface (2-tone: white background +
+  darkest reachable decoy colour for the line art); a thin bottom strip = the hex data as
+  colour static.
 - **Construction:** see `build_two_faces()` in the builder. The decoy alphabet shares no
   characters with hex, which is what lets the two readings coexist. Grid is 48×48 (a perfect
-  square so the canvas's `round(sqrt(px))` lands on 48).
-- **How to change the troll:** edit `troll_grid()` / the `PAL` quads. Only decoy-encodable
-  colours are available; `quad_to_rgb()` shows what a quad paints. The flag path is
-  independent and always exact.
+  square so the canvas's `round(sqrt(px))` lands on 48). The flag PNG is saved **1-bit** to
+  keep its hex short, so the data strip is only a couple of rows.
+- **How to change the troll:** swap `tools/assets/trollface.png` and rerun. `troll_mask()`
+  downscales + thresholds it; decoy chars can't reach pure black, so `darkest_decoy_quad()`
+  picks the darkest line colour available (`quad_to_rgb()` shows what a quad paints). The flag
+  path is independent and always exact.
 - **Red herrings:** the whole puzzle *is* the red herring — the "obvious" base64 gives a
   joke image, the less-obvious hex gives the flag.
 
 ### IX — Read the Room · `base64`, mind the decoys
-- **Blob:** `base64` of a short report containing, in order:
-  1. a decoy `flag{almost_but_not_quite}`,
-  2. a hex-looking `trace=...` (bait to re-apply hex),
-  3. a url-looking `ref=%66%6c%61%67` (bait to re-apply url),
-  4. the real `flag{read_to_the_very_end}` at the end.
-- **Tell:** one base64 layer is enough; the trap is *reading comprehension*, not crypto.
-- **Red herrings (this is the showcase):**
-  - **Fake flag** earlier in the text — submission checks exact match, so the decoy fails.
-  - **Fake hex layer** (`trace=666c61...`) — decoding it as hex yields more nonsense.
-  - **Fake url layer** (`ref=%66%6c...`) — url-decoding yields a fragment, not a flag.
+- **Blob:** `base64` of a short capture dump containing, in order, an **unlabelled**:
+  1. `florg{that-isnt-a-flag}` — looks flag-ish but is NOT the `flag{...}` format,
+  2. a hex-looking `trace=666c61677b6e6f7d` (decodes to `flag{no}` if you bite),
+  3. a url-looking `ref=%66%6c%61%67` (url-decodes to `flag`, a fragment),
+  4. the real `flag{read_every_line_first}` under `payload:`.
+- **Tell:** one base64 layer is enough; the trap is *reading*, not crypto. Nothing in the
+  text labels the decoys — earlier versions did, which gave the game away.
+- **Why florg, not a fake `flag{...}`:** a second real-format `flag{...}` is unfair (no way
+  to disambiguate) and the preview highlights every `flag{...}`. `florg{...}` teaches the
+  **format** instead — only `flag{...}` highlights, so a careful student isn't misled, and a
+  skimmer who grabs the florg token submits a wrong answer.
+- **Red herrings:** the florg look-alike, plus the unlabelled hex/url fragments that lead
+  nowhere when re-decoded.
 - **Authoring pattern (reuse this):** to salt *any* puzzle, drop a `flag{decoy}` and/or a
   `0-9a-f`/`%XX` substring into the **plaintext before encoding**. Because the builder
   re-encodes from plaintext, the decoys travel through every outer layer automatically and
