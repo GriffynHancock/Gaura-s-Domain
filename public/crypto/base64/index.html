@@ -96,7 +96,7 @@
   .preview .txt{font-family:var(--mono); font-size:.82rem; line-height:1.5; color:#9fb0a8; white-space:pre-wrap;
     word-break:break-all; width:100%; align-self:flex-start}
   .preview .txt mark{background:none; color:var(--read-on); font-weight:700}
-  .preview img, .preview canvas{image-rendering:pixelated; max-width:100%; height:auto; border-radius:3px}
+  .preview img, .preview canvas{image-rendering:pixelated; width:240px; max-width:100%; height:auto; border-radius:3px}
   .preview img{background:#fff}
 
   .submit{display:flex; gap:9px; margin-top:18px; flex-wrap:wrap; align-items:center}
@@ -144,7 +144,10 @@
       <div class="tiles">
         <span class="tile" data-m="base64">Base64</span>
         <span class="tile" data-m="hex">Hex</span>
+        <span class="tile" data-m="url">URL</span>
         <span class="tile" data-m="rot13">ROT13</span>
+        <span class="tile" data-m="rot47">ROT47</span>
+        <span class="tile" data-m="atbash">Atbash</span>
       </div>
       <div class="pipe"></div>
       <div class="ctl"><button class="mini clear">CLEAR</button></div>
@@ -185,6 +188,9 @@ const METHODS = {
   base64(b){ let t=toStr(b).replace(/[^A-Za-z0-9+/]/g,''); while(t.length%4) t+='='; try{ return toBytes(atob(t)); }catch(e){ return new Uint8Array(0); } },
   hex(b){ let t=toStr(b).replace(/[^0-9a-fA-F]/g,''); if(t.length%2) t=t.slice(0,-1); const u=new Uint8Array(t.length/2); for(let i=0;i<u.length;i++) u[i]=parseInt(t.substr(i*2,2),16); return u; },
   rot13(b){ return toBytes(rot13(toStr(b))); },
+  rot47(b){ const o=new Uint8Array(b.length); for(let i=0;i<b.length;i++){ const c=b[i]; o[i]=(c>=33&&c<=126)?((c-33+47)%94)+33:c; } return o; },
+  url(b){ const s=toStr(b); const o=[]; for(let i=0;i<s.length;){ if(s[i]==='%'&&/^[0-9a-fA-F]{2}$/.test(s.substr(i+1,2))){ o.push(parseInt(s.substr(i+1,2),16)); i+=3; } else { o.push(s.charCodeAt(i)&255); i++; } } return Uint8Array.from(o); },
+  atbash(b){ const o=new Uint8Array(b.length); for(let i=0;i<b.length;i++){ const c=b[i]; o[i]=(c>=97&&c<=122)?219-c:(c>=65&&c<=90)?155-c:c; } return o; },
 };
 const isImage = b => (b.length>4 && b[0]===0x89&&b[1]===0x50&&b[2]===0x4E&&b[3]===0x47) || (b.length>2 && b[0]===0xFF&&b[1]===0xD8);
 const printable = s => s.replace(/[^\x20-\x7E\n]/g,'·');
@@ -198,7 +204,6 @@ function bytesCanvas(bytes){
   const ctx=cv.getContext('2d'); const id=ctx.createImageData(W,H);
   for(let i=0;i<W*H;i++){ id.data[i*4]=bytes[i*3]||0; id.data[i*4+1]=bytes[i*3+1]||0; id.data[i*4+2]=bytes[i*3+2]||0; id.data[i*4+3]=255; }
   ctx.putImageData(id,0,0);
-  cv.style.width = Math.min(220, W*6)+'px';
   return cv;
 }
 
@@ -217,11 +222,18 @@ function sting(){
   /* Presenter: drop imposter.mp3 beside this file and play it here for the real SFX. */
 }
 
+const TWOFACE_HINT = 'One blob, <b>two pictures</b> — both real, both precomputed. Decode as <b>hex</b> for one face; then decode as <b>base64</b> and flip the preview to <b>IMAGE</b> for the other. The string is a hex dump with junk letters wedged in: hex throws the letters away, base64 keeps them.';
+const FINAL_HINT = 'Read the <b>whole</b> output. Not every <b>flag{…}</b> is the flag, and a hex- or %-looking string isn\'t always another layer. CTFs bait you with decoys on purpose.';
 const PUZZLES = [
-  {id:'I',  title:'Decode the Signal', sub:'one layer',        blob:A.a_b64, answer:A.flags.a, view:'text'},
-  {id:'II', title:'Picture This',      sub:'base64 to image',  blob:A.b_png, answer:A.flags.b, view:'image'},
-  {id:'III',title:'Among the Bytes',   sub:'image hides text', blob:A.c_b64, answer:A.flags.c, view:'image', sting:true},
-  {id:'IV', title:'Order Matters',     sub:'two layers',       blob:A.d_b64, answer:A.flags.d, view:'text', cyber:true},
+  {id:'I',   title:'Decode the Signal', sub:'base64',           blob:A.a_b64,     answer:A.flags.a, view:'text'},
+  {id:'II',  title:'Picture This',      sub:'base64 to image',  blob:A.b_png,     answer:A.flags.b, view:'image'},
+  {id:'III', title:'Sixteen',           sub:'hex',              blob:A.e_hex,     answer:A.flags.e, view:'text'},
+  {id:'IV',  title:'Percent Sign',      sub:'url-encoded',      blob:A.f_url,     answer:A.flags.f, view:'text'},
+  {id:'V',   title:'Among the Bytes',   sub:'image hides text', blob:A.c_b64,     answer:A.flags.c, view:'image', sting:true},
+  {id:'VI',  title:'Order Matters',     sub:'two layers',       blob:A.d_b64,     answer:A.flags.d, view:'text', cyber:true},
+  {id:'VII', title:'Three Deep',        sub:'three layers',     blob:A.g_b64,     answer:A.flags.g, view:'text', cyber:true},
+  {id:'VIII',title:'Two Faces',         sub:'one blob, two pictures', blob:A.two_faces, answer:A.flags.two_faces, view:'image', hint:TWOFACE_HINT},
+  {id:'IX',  title:'Read the Room',     sub:'mind the decoys',  blob:A.i_b64,     answer:A.flags.i, view:'text', hint:FINAL_HINT},
 ];
 
 const tpl = document.getElementById('mod');
@@ -260,7 +272,7 @@ PUZZLES.forEach((p,i)=>{
     if(view==='image'){
       if(isImage(lastBytes)){                       // a real image file -> show it coherently
         imgURL = URL.createObjectURL(new Blob([lastBytes], {type:'image/png'}));
-        const img=new Image(); img.src=imgURL; img.style.width=(lastBytes.length>2000?240:160)+'px';
+        const img=new Image(); img.src=imgURL;
         preview.appendChild(img);
       } else {                                       // anything else -> paint the bytes as scrambled pixels
         preview.appendChild(bytesCanvas(lastBytes));
@@ -283,6 +295,12 @@ PUZZLES.forEach((p,i)=>{
     });
   }
 
+  // shuffle the method tiles per card, per page load — so "click the first one" never transfers
+  const tilesWrap=node.querySelector('.tiles');
+  const shuf=[...tilesWrap.children];
+  for(let k=shuf.length-1;k>0;k--){ const j=Math.random()*(k+1)|0; [shuf[k],shuf[j]]=[shuf[j],shuf[k]]; }
+  shuf.forEach(n=>tilesWrap.appendChild(n));
+
   node.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{ pipeline.push(t.dataset.m); renderPipe(); applyPipeline(); });
   node.querySelector('.clear').onclick=()=>{ pipeline=[]; renderPipe(); applyPipeline(); };
   seg.forEach(b=>b.onclick=()=>{ view=b.dataset.v; drawPreview(); });
@@ -297,9 +315,12 @@ PUZZLES.forEach((p,i)=>{
   }
   node.querySelector('.check').onclick=check; input.addEventListener('keydown',e=>{ if(e.key==='Enter') check(); });
 
-  if(p.cyber){
+  if(p.hint){
     const cy=node.querySelector('.cyber'); cy.classList.remove('hide');
-    cy.innerHTML = 'Two layers. Spot the tells: base64 uses <b>A-Z a-z 0-9 + /</b> and often ends in <b>=</b>; hex is only <b>0-9 a-f</b>. Do them in the wrong order and you just get nonsense. Real CTFers let <a href="https://gchq.github.io/CyberChef/" target="_blank" rel="noopener">CyberChef</a> auto-peel it &mdash; <button class="mini copy2">COPY BLOB</button>';
+    cy.innerHTML = p.hint;
+  } else if(p.cyber){
+    const cy=node.querySelector('.cyber'); cy.classList.remove('hide');
+    cy.innerHTML = 'Stacked layers. Spot the tells: base64 uses <b>A-Z a-z 0-9 + /</b> and often ends in <b>=</b>; hex is only <b>0-9 a-f</b>; ROT47 leaves printable gibberish. Wrong order &rarr; nonsense. Real CTFers let <a href="https://gchq.github.io/CyberChef/" target="_blank" rel="noopener">CyberChef</a> auto-peel it &mdash; <button class="mini copy2">COPY BLOB</button>';
     cy.querySelector('.copy2').onclick=()=>{ if(navigator.clipboard) navigator.clipboard.writeText(p.blob); cy.querySelector('.copy2').textContent='COPIED'; };
   }
 
