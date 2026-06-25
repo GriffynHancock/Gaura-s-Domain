@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crypto 101 — Tuning the Caesar Cipher</title>
+<style>
+  :root{
+    --bg:#0a0e1a; --panel:#121829; --panel2:#0e1322; --line:#22304d;
+    --txt:#dbe5ff; --dim:#7d8cb0; --accent:#39d98a; --accent2:#ffb454;
+    --glow:#39d98a55; --bad:#ff5d6c;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:radial-gradient(1200px 600px at 50% -200px,#16203a,var(--bg));
+    color:var(--txt); font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    min-height:100vh; padding:32px 16px 80px;
+  }
+  .wrap{max-width:760px; margin:0 auto}
+  header{text-align:center; margin-bottom:28px}
+  header h1{font-size:1.9rem; margin:0 0 6px; letter-spacing:-.5px}
+  header h1 .c{color:var(--accent)}
+  header p{color:var(--dim); margin:0; font-size:.98rem; line-height:1.5}
+  .hint{
+    margin:18px auto 30px; max-width:620px; background:var(--panel2);
+    border:1px solid var(--line); border-left:3px solid var(--accent2);
+    border-radius:10px; padding:14px 16px; color:#c7d2ee; font-size:.9rem; line-height:1.55;
+  }
+  .hint b{color:var(--accent2)}
+
+  details{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    margin-bottom:20px; overflow:hidden;
+  }
+  details[open]{box-shadow:0 0 0 1px var(--accent)22, 0 18px 40px -24px #000}
+  summary{
+    cursor:pointer; list-style:none; padding:18px 20px; font-weight:600; font-size:1.1rem;
+    display:flex; align-items:center; gap:12px; user-select:none;
+  }
+  summary::-webkit-details-marker{display:none}
+  summary .tag{
+    font-family:var(--mono); font-size:.72rem; font-weight:700; letter-spacing:1px;
+    background:#1d2540; color:var(--accent); padding:4px 9px; border-radius:6px;
+  }
+  summary .chev{margin-left:auto; transition:transform .25s; color:var(--dim)}
+  details[open] summary .chev{transform:rotate(90deg)}
+  .body{padding:4px 20px 26px}
+
+  .label{font-size:.78rem; text-transform:uppercase; letter-spacing:1.2px; color:var(--dim); margin:18px 0 7px}
+  .cipher{
+    font-family:var(--mono); font-size:1.25rem; background:var(--panel2);
+    border:1px dashed var(--line); border-radius:10px; padding:14px 16px; letter-spacing:1px;
+    word-break:break-all; color:#aeb9dd;
+  }
+
+  .dial-row{display:flex; gap:24px; align-items:center; flex-wrap:wrap; margin-top:8px}
+  .knob-box{display:flex; flex-direction:column; align-items:center; gap:8px}
+  .knob{
+    width:150px; height:150px; touch-action:none; cursor:grab; user-select:none;
+    filter:drop-shadow(0 6px 16px #000a);
+  }
+  .knob:active{cursor:grabbing}
+  .knob .ring{fill:var(--panel2); stroke:var(--line); stroke-width:3}
+  .knob .ticks line{stroke:#33425f; stroke-width:1.5}
+  .knob .pointer{stroke:var(--accent); stroke-width:5; stroke-linecap:round; transition:stroke .3s}
+  .knob .hub{fill:#1a2236; stroke:var(--accent); stroke-width:2.5}
+  .knob .num{fill:var(--txt); font:700 30px var(--mono); text-anchor:middle; dominant-baseline:central}
+  .knob.solved .pointer{stroke:var(--accent2)}
+  .knob.solved .hub{stroke:var(--accent2)}
+  .knob-cap{font-size:.78rem; color:var(--dim)}
+
+  .manual{display:flex; flex-direction:column; gap:8px}
+  .manual label{font-size:.78rem; text-transform:uppercase; letter-spacing:1.2px; color:var(--dim)}
+  .manual input{
+    width:120px; font-family:var(--mono); font-size:1.4rem; text-align:center;
+    background:var(--panel2); border:1px solid var(--line); border-radius:10px;
+    color:var(--txt); padding:10px;
+  }
+  .manual input:focus{outline:none; border-color:var(--accent)}
+  .manual .sub{font-size:.74rem; color:var(--dim)}
+  .stepbtns{display:flex; gap:6px}
+  .stepbtns button{
+    flex:1; background:#1a2236; border:1px solid var(--line); color:var(--txt);
+    border-radius:8px; padding:6px 0; font-size:1.1rem; cursor:pointer;
+  }
+  .stepbtns button:hover{border-color:var(--accent); color:var(--accent)}
+
+  .out{
+    margin-top:22px; font-family:var(--mono); font-size:1.45rem; letter-spacing:1px;
+    background:#070b14; border:1px solid var(--line); border-radius:12px;
+    padding:20px 18px; text-align:center; word-break:break-all; transition:.25s;
+    position:relative;
+  }
+  .out.solved{
+    border-color:var(--accent); color:var(--accent);
+    box-shadow:0 0 0 1px var(--accent), 0 0 38px -6px var(--glow);
+  }
+  .out:not(.solved){color:#8b96b8}
+  .badge{
+    display:inline-block; margin-top:14px; font-size:.85rem; font-weight:600;
+    color:var(--accent); opacity:0; transform:translateY(6px); transition:.3s;
+  }
+  .out.solved + .badge{opacity:1; transform:none}
+  footer{text-align:center; color:var(--dim); font-size:.8rem; margin-top:40px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Tuning the <span class="c">Caesar</span> Cipher</h1>
+    <p>A Caesar (ROT) cipher just shifts every letter forward by the same amount.<br>
+       Crack it like tuning a radio or spinning a safe dial — turn the knob until the noise snaps into words.</p>
+  </header>
+
+  <div class="hint">
+    <b>How to play:</b> Each box below shows scrambled text. Drag the dial (or type a number)
+    to shift the letters. Most settings produce gibberish — keep turning until a real
+    <span style="font-family:var(--mono)">flag{…}</span> appears. That's your answer.
+  </div>
+
+  <!-- FLAG 1 -->
+  <details open>
+    <summary><span class="tag">FLAG&nbsp;1</span> Radio Tuning · ROT-13<span class="chev">▶</span></summary>
+    <div class="body" data-puzzle data-cipher="synt{Pnrfne_Fnynq}" data-key="13">
+      <div class="label">Scrambled signal</div>
+      <div class="cipher">synt{Pnrfne_Fnynq}</div>
+
+      <div class="label">Tune the dial</div>
+      <div class="dial-row">
+        <div class="knob-box">
+          <svg class="knob" viewBox="0 0 200 200"></svg>
+          <span class="knob-cap">drag to spin</span>
+        </div>
+        <div class="manual">
+          <label>shift</label>
+          <input type="number" min="0" max="25" value="0">
+          <div class="stepbtns"><button data-step="-1">−</button><button data-step="1">+</button></div>
+          <span class="sub">0 – 25 letters</span>
+        </div>
+      </div>
+
+      <div class="out">—</div>
+      <div class="badge">✅ Flag captured!</div>
+    </div>
+  </details>
+
+  <!-- FLAG 2 -->
+  <details>
+    <summary><span class="tag">FLAG&nbsp;2</span> Safe Cracking · ROT-20<span class="chev">▶</span></summary>
+    <div class="body" data-puzzle data-cipher="zfua{Muzy_Wluweyl}" data-key="6">
+      <div class="label">Locked text</div>
+      <div class="cipher">zfua{Muzy_Wluweyl}</div>
+
+      <div class="label">Spin the safe dial</div>
+      <div class="dial-row">
+        <div class="knob-box">
+          <svg class="knob" viewBox="0 0 200 200"></svg>
+          <span class="knob-cap">drag to spin</span>
+        </div>
+        <div class="manual">
+          <label>shift</label>
+          <input type="number" min="0" max="25" value="0">
+          <div class="stepbtns"><button data-step="-1">−</button><button data-step="1">+</button></div>
+          <span class="sub">0 – 25 letters</span>
+        </div>
+      </div>
+
+      <div class="out">—</div>
+      <div class="badge">✅ Flag captured!</div>
+    </div>
+  </details>
+
+  <footer>ctf.sandhi.com.au · crypto · intro module</footer>
+</div>
+
+<script>
+// Apply ROT(shift) to text — letters only, case preserved.
+function rot(text, shift){
+  shift = ((shift % 26) + 26) % 26;
+  return text.replace(/[a-z]/gi, ch => {
+    const base = ch <= 'Z' ? 65 : 97;
+    return String.fromCharCode((ch.charCodeAt(0) - base + shift) % 26 + base);
+  });
+}
+
+function buildKnob(svg){
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (n,a) => { const e=document.createElementNS(NS,n); for(const k in a) e.setAttribute(k,a[k]); return e; };
+  svg.appendChild(el("circle",{class:"ring",cx:100,cy:100,r:90}));
+  const ticks = el("g",{class:"ticks"});
+  for(let i=0;i<26;i++){
+    const ang = (i/26)*2*Math.PI - Math.PI/2;
+    const r1=78, r2=88;
+    ticks.appendChild(el("line",{
+      x1:100+r1*Math.cos(ang), y1:100+r1*Math.sin(ang),
+      x2:100+r2*Math.cos(ang), y2:100+r2*Math.sin(ang)
+    }));
+  }
+  svg.appendChild(ticks);
+  const pointer = el("line",{class:"pointer",x1:100,y1:100,x2:100,y2:30});
+  svg.appendChild(pointer);
+  svg.appendChild(el("circle",{class:"hub",cx:100,cy:100,r:34}));
+  const num = el("text",{class:"num",x:100,y:100}); num.textContent="0";
+  svg.appendChild(num);
+  return {pointer, num};
+}
+
+document.querySelectorAll('[data-puzzle]').forEach(box => {
+  const cipher = box.dataset.cipher;
+  const key    = parseInt(box.dataset.key,10);
+  const svg    = box.querySelector('.knob');
+  const input  = box.querySelector('input');
+  const out     = box.querySelector('.out');
+  const parts  = buildKnob(svg);
+  let shift = 0;
+
+  function render(){
+    shift = ((shift % 26) + 26) % 26;
+    const result = rot(cipher, shift);
+    out.textContent = result;
+    input.value = shift;
+    parts.num.textContent = shift;
+    const ang = (shift/26)*2*Math.PI - Math.PI/2;
+    parts.pointer.setAttribute('x2', 100 + 70*Math.cos(ang));
+    parts.pointer.setAttribute('y2', 100 + 70*Math.sin(ang));
+    const solved = shift === key;
+    out.classList.toggle('solved', solved);
+    svg.classList.toggle('solved', solved);
+  }
+
+  // manual number entry
+  input.addEventListener('input', () => {
+    const v = parseInt(input.value,10);
+    if(!isNaN(v)){ shift = v; render(); }
+  });
+  // +/- step buttons
+  box.querySelectorAll('.stepbtns button').forEach(b =>
+    b.addEventListener('click', () => { shift += parseInt(b.dataset.step,10); render(); }));
+
+  // drag the knob -> angle maps to shift
+  let dragging = false;
+  function angleToShift(ev){
+    const r = svg.getBoundingClientRect();
+    const cx = r.left + r.width/2, cy = r.top + r.height/2;
+    const p = ev.touches ? ev.touches[0] : ev;
+    let a = Math.atan2(p.clientY - cy, p.clientX - cx) + Math.PI/2;
+    a = (a + 2*Math.PI) % (2*Math.PI);
+    shift = Math.round(a/(2*Math.PI)*26) % 26;
+    render();
+  }
+  const start = e => { dragging = true; angleToShift(e); e.preventDefault(); };
+  const move  = e => { if(dragging) angleToShift(e); };
+  const end   = () => dragging = false;
+  svg.addEventListener('mousedown', start);
+  svg.addEventListener('touchstart', start, {passive:false});
+  window.addEventListener('mousemove', move);
+  window.addEventListener('touchmove', move, {passive:false});
+  window.addEventListener('mouseup', end);
+  window.addEventListener('touchend', end);
+
+  render();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Caesar Set — Crypto 101</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bone:#e7dec9; --panel:#efe7d3; --panel2:#e2d8be; --edge:#cdc09f;
+    --ink:#241f17; --dim:#7c7259; --line:#cabd9c;
+    --signal:#b23a26; --brass:#a9772a; --lamp:#3f7d52;
+    --read-bg:#1a1812; --read-dim:#5e5a3a; --read-on:#f0bb4d;
+    --disp:"Fraunces",Georgia,serif;
+    --ui:"Hanken Grotesk",system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  /* ---------- dark mode ---------- */
+  html[data-theme="dark"]{
+    --bone:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
+    --ink:#ece3cd; --dim:#9a8f72; --line:#403a28;
+    --signal:#e0593d; --brass:#c79338; --lamp:#62ab77;
+    --read-bg:#14120c;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; color:var(--ink); font-family:var(--ui); background:var(--bone);
+    background-image:
+      radial-gradient(circle at 20% 0%, #f1ead9 0%, transparent 55%),
+      radial-gradient(circle at 100% 100%, #ddd2b6 0%, transparent 60%);
+    min-height:100vh; padding:40px 18px 90px;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; opacity:.45; z-index:0; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] body{
+    background-image:
+      radial-gradient(circle at 20% 0%, #211d12 0%, transparent 55%),
+      radial-gradient(circle at 100% 100%, #0f0d08 0%, transparent 60%);
+  }
+  [data-theme="dark"] body::before{mix-blend-mode:overlay; opacity:.22}
+  .wrap{max-width:780px; margin:0 auto; position:relative; z-index:1}
+
+  /* ---- masthead ---- */
+  header{margin:0 0 30px; border-bottom:2px solid var(--ink); padding-bottom:18px}
+  .kicker{
+    font-family:var(--mono); font-size:.7rem; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--signal); display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;
+  }
+  .theme-btn{
+    font-family:var(--mono); font-size:.64rem; letter-spacing:.18em; cursor:pointer; color:var(--ink);
+    background:linear-gradient(#f4eedd,#ddd2b6); border:1px solid var(--edge); border-radius:4px;
+    padding:5px 11px; box-shadow:0 1px 0 #fff8 inset;
+  }
+  [data-theme="dark"] .theme-btn{background:linear-gradient(#322d1d,#211e14); box-shadow:0 1px 0 #ffffff14 inset}
+  header h1{
+    font-family:var(--disp); font-weight:900; font-size:clamp(2.3rem,7vw,3.6rem);
+    line-height:.95; margin:0; letter-spacing:-.02em;
+  }
+  header h1 em{font-style:italic; font-weight:400; color:var(--signal)}
+  header p{
+    font-family:var(--disp); font-weight:400; font-size:1.02rem; line-height:1.5;
+    color:var(--ink); opacity:.82; margin:12px 0 0; max-width:54ch;
+  }
+
+  .note{
+    font-family:var(--mono); font-size:.78rem; line-height:1.6; color:var(--ink);
+    background:var(--panel2); border:1px solid var(--edge);
+    border-left:3px solid var(--brass); padding:12px 15px; border-radius:3px; margin:24px 0 32px;
+  }
+  .note b{color:var(--signal)}
+
+  /* ---- instrument module ---- */
+  .module{
+    background:linear-gradient(180deg, #f3ecd9, var(--panel) 8%, var(--panel) 92%, #ddd2b6);
+    border:1px solid var(--edge); border-radius:8px; margin-bottom:26px;
+    box-shadow:0 1px 0 #fff8 inset, 0 14px 30px -22px #000, 0 2px 0 #b9ac8a;
+    position:relative; overflow:hidden;
+  }
+  [data-theme="dark"] .module{
+    background:linear-gradient(180deg,#2a2618,var(--panel) 8%,var(--panel) 92%,#171510);
+    box-shadow:0 1px 0 #ffffff10 inset, 0 14px 30px -20px #000, 0 2px 0 #000;
+  }
+  .module::before,.module::after,.module .scr1,.module .scr2{
+    content:""; position:absolute; width:11px; height:11px; border-radius:50%;
+    background:radial-gradient(circle at 38% 35%, #fbf6ea, #b3a585 70%, #8c8064);
+    box-shadow:0 1px 1px #0004; z-index:3;
+  }
+  [data-theme="dark"] .module::before,[data-theme="dark"] .module::after,
+  [data-theme="dark"] .module .scr1,[data-theme="dark"] .module .scr2{
+    background:radial-gradient(circle at 38% 35%, #6f6549, #322d1d 70%, #1d1a12);
+  }
+  .module::before{top:11px; left:11px}
+  .module::after{top:11px; right:11px}
+  .module .scr1{bottom:11px; left:11px}
+  .module .scr2{bottom:11px; right:11px}
+
+  summary{
+    cursor:pointer; list-style:none; user-select:none;
+    display:flex; align-items:center; gap:13px; padding:18px 30px 14px;
+  }
+  summary::-webkit-details-marker{display:none}
+  .idx{
+    font-family:var(--mono); font-weight:700; font-size:.72rem; letter-spacing:.16em;
+    color:#fff; background:var(--signal); padding:4px 8px; border-radius:3px; min-width:30px; text-align:center;
+    transition:background .25s;
+  }
+  details.solved .idx{background:var(--lamp)}
+  .ttl{font-family:var(--disp); font-weight:600; font-size:1.32rem; letter-spacing:-.01em}
+  .done{
+    font-family:var(--mono); font-size:.68rem; letter-spacing:.14em; color:var(--lamp);
+    border:1px solid var(--lamp); border-radius:20px; padding:2px 9px;
+    opacity:0; transform:scale(.8); transition:.25s;
+  }
+  details.solved .done{opacity:1; transform:none}
+  .sub{font-family:var(--mono); font-size:.72rem; color:var(--dim); margin-left:auto; letter-spacing:.1em}
+  details[open] summary .sub::after{content:" ▾"}
+  summary .sub::after{content:" ▸"}
+
+  .panel-body{padding:6px 30px 30px}
+  .lab{
+    font-family:var(--mono); font-size:.68rem; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--dim); margin:22px 0 9px;
+  }
+
+  .plate{
+    font-family:var(--mono); font-weight:500; font-size:1.18rem; letter-spacing:.18em;
+    color:#3a3322; background:linear-gradient(180deg,#ded3b6,#e8dfc6);
+    border:1px solid var(--edge); border-radius:4px; padding:15px 17px; word-break:break-all;
+    box-shadow:0 1px 0 #fff9 inset, 0 1px 3px #0001 inset;
+  }
+  [data-theme="dark"] .plate{background:linear-gradient(180deg,#15130d,#201d14); color:#cdbf9f}
+
+  .deck{display:flex; gap:clamp(16px,5vw,34px); align-items:center; margin-top:10px}
+
+  /* gauge dial */
+  .gauge{display:flex; flex-direction:column; align-items:center; gap:7px; flex:0 0 auto}
+  .knob{width:clamp(116px,32vw,158px); height:clamp(116px,32vw,158px); touch-action:none; cursor:grab; user-select:none}
+  .knob:active{cursor:grabbing}
+  .knob .face{fill:url(#dialface); stroke:var(--edge); stroke-width:2}
+  [data-theme="dark"] .knob .face{fill:#262216}
+  .knob .ticks line{stroke:#9c8f6e; stroke-width:1.4}
+  .knob .ticks line.major{stroke:#3a3322; stroke-width:2}
+  [data-theme="dark"] .knob .ticks line{stroke:#6b6147}
+  [data-theme="dark"] .knob .ticks line.major{stroke:#cdbf9f}
+  .knob .well{fill:#1c1a14; stroke:var(--brass); stroke-width:2}
+  .knob .pointer{stroke:var(--signal); stroke-width:5; stroke-linecap:round}
+  .knob .cap{fill:url(#brasscap); stroke:#7d5b1c; stroke-width:1.4}
+  .knob.lock .pointer{stroke:var(--lamp)}
+  .gauge .cap-lbl{font-family:var(--mono); font-size:.64rem; letter-spacing:.2em; color:var(--dim)}
+
+  /* manual entry */
+  .entry{display:flex; flex-direction:column; gap:9px}
+  .entry .lab{margin:0}
+  .entry input{
+    width:clamp(84px,22vw,108px); font-family:var(--mono); font-weight:700; font-size:1.5rem; text-align:center;
+    color:var(--read-on); background:var(--read-bg); border:1px solid #000; border-radius:4px;
+    padding:9px; box-shadow:0 0 0 1px var(--edge), 0 2px 6px #0003 inset;
+  }
+  .entry input:focus{outline:none; box-shadow:0 0 0 1px var(--signal), 0 2px 6px #0003 inset}
+  .steps{display:flex; gap:7px}
+  .steps button{
+    flex:1; font-family:var(--mono); font-size:1.1rem; padding:7px 0; cursor:pointer;
+    color:var(--ink); background:linear-gradient(#f4eedd,#ddd2b6);
+    border:1px solid var(--edge); border-radius:4px; box-shadow:0 1px 0 #fff8 inset;
+  }
+  [data-theme="dark"] .steps button{background:linear-gradient(#322d1d,#211e14); box-shadow:0 1px 0 #ffffff14 inset}
+  .steps button:active{filter:brightness(.94)}
+
+  /* slide-rule toggle */
+  .toggle-row{display:flex; align-items:center; gap:11px; margin-top:26px; cursor:pointer; width:fit-content}
+  .toggle-row .tlabel{font-family:var(--mono); font-size:.72rem; letter-spacing:.14em; color:var(--ink); opacity:.82}
+  .switch{position:relative; width:50px; height:26px; flex:0 0 auto; cursor:pointer}
+  .switch input{position:absolute; opacity:0; inset:0; margin:0; cursor:pointer}
+  .switch .track{position:absolute; inset:0; border-radius:14px; background:#cabd9c; border:1px solid var(--edge); box-shadow:0 1px 3px #0002 inset; transition:.2s}
+  [data-theme="dark"] .switch .track{background:#403a28}
+  .switch .knb{position:absolute; top:2px; left:2px; width:22px; height:22px; border-radius:50%; background:radial-gradient(circle at 38% 35%,#fff,#d8cdb0); box-shadow:0 1px 2px #0005; transition:.2s}
+  .switch input:checked + .track{background:var(--signal)}
+  .switch input:checked ~ .knb{transform:translateX(24px)}
+
+  /* slide rule */
+  .ruler{margin-top:16px; max-height:0; opacity:0; overflow:hidden; transition:max-height .35s ease, opacity .3s ease}
+  .ruler.on{max-height:260px; opacity:1}
+  .ruler-scroll{overflow-x:auto; padding:4px 2px 8px}
+  .ruler-inner{display:inline-block}
+  .rrow{position:relative; height:42px; white-space:nowrap}
+  .rrow.top{background:linear-gradient(180deg,#ded3b6,#e9e0c7); border:1px solid var(--edge); border-radius:4px 4px 0 0; border-bottom:none; box-shadow:0 1px 0 #fff8 inset}
+  [data-theme="dark"] .rrow.top{background:linear-gradient(180deg,#2a2618,#201d13)}
+  .rrow.bot{background:linear-gradient(180deg,#1f1d16,#2a271c); border:1px solid #000; border-radius:0 0 4px 4px; overflow:hidden}
+  .strip{position:absolute; top:0; left:0; height:100%; transition:transform .44s cubic-bezier(.34,1.36,.64,1)}
+  .cell{display:inline-flex; align-items:center; justify-content:center; width:26px; height:42px; font-family:var(--mono); font-weight:700; font-size:.95rem}
+  .rrow.top .cell{color:#3a3322; border-right:1px solid #c6ba9a}
+  [data-theme="dark"] .rrow.top .cell{color:#cdbf9f; border-right-color:#403a28}
+  .rrow.top .cell.used{color:var(--signal); background:#0000000a}
+  .rrow.bot .cell{color:var(--read-dim); border-right:1px solid #000}
+  .rrow.bot .strip .cell.lit{color:var(--read-on)}
+  .rlabels{display:flex; justify-content:space-between; font-family:var(--mono); font-size:.6rem; letter-spacing:.2em; color:var(--dim); margin:6px 2px 0}
+
+  /* readout */
+  .readout{
+    margin-top:26px; font-family:var(--mono); font-weight:700; font-size:1.4rem; letter-spacing:.16em;
+    color:var(--read-dim); background:var(--read-bg); border:1px solid #000; border-radius:5px;
+    padding:20px 16px; text-align:center; word-break:break-all;
+    box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset; transition:color .25s; position:relative;
+  }
+  .readout.lock{color:var(--read-on); text-shadow:0 0 16px #f0bb4d88}
+  .lamp{position:absolute; top:50%; right:14px; transform:translateY(-50%); width:10px; height:10px; border-radius:50%; background:#3a3a30; box-shadow:0 0 0 2px #0006; transition:.25s}
+  .readout.lock .lamp{background:var(--lamp); box-shadow:0 0 12px var(--lamp),0 0 0 2px #0006}
+  .stamp{font-family:var(--mono); font-size:.68rem; letter-spacing:.22em; text-transform:uppercase; color:var(--lamp); margin-top:12px; min-height:1em; opacity:0; transition:.3s}
+  .readout.lock ~ .stamp{opacity:1}
+
+  footer{text-align:center; font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; color:var(--dim); margin-top:46px; text-transform:uppercase}
+
+  @media(max-width:520px){
+    body{padding:26px 12px 70px}
+    .panel-body{padding:6px 16px 24px}
+    summary{padding:16px 16px 12px; gap:9px}
+    .deck{gap:16px}
+    .entry input{font-size:1.3rem}
+    .plate{font-size:1.02rem; letter-spacing:.1em}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <radialGradient id="dialface" cx="40%" cy="35%" r="75%">
+    <stop offset="0%" stop-color="#f3ecd9"/><stop offset="70%" stop-color="#e3d9bf"/><stop offset="100%" stop-color="#cfc4a4"/>
+  </radialGradient>
+  <radialGradient id="brasscap" cx="38%" cy="32%" r="80%">
+    <stop offset="0%" stop-color="#e8c87f"/><stop offset="55%" stop-color="#b98c32"/><stop offset="100%" stop-color="#7d5b1c"/>
+  </radialGradient>
+</defs></svg>
+
+<div class="wrap">
+  <header>
+    <div class="kicker"><span>Crypto 101 · Substitution</span><button id="theme" class="theme-btn">☾ DARK</button></div>
+    <h1>The <em>Caesar</em> Set</h1>
+    <p>A Caesar cipher slides every letter forward by a fixed amount. No code to break — just a setting to find.
+       Turn the dial like tuning a receiver or working a safe until the static resolves into language.</p>
+  </header>
+
+  <div class="note"><b>OPERATION.</b> Each module holds a scrambled signal. Work the dial — or key a number —
+    to shift every letter. Most settings read as noise; one snaps into a clean <span style="color:var(--signal)">flag{…}</span>.
+    Flip <b>SLIDE RULE</b> to watch the two alphabets line up. Modules get harder top to bottom.</div>
+
+  <!-- MODULE I -->
+  <details class="module" open>
+    <span class="scr1"></span><span class="scr2"></span>
+    <summary><span class="idx">I</span><span class="ttl">Test Signal</span><span class="done">✓ captured</span><span class="sub">ROT · band 5</span></summary>
+    <div class="panel-body" data-puzzle data-cipher="agvb{B}" data-key="5">
+      <div class="lab">Scrambled signal</div>
+      <div class="plate">agvb{B}</div>
+      <div class="lab">Tuning</div>
+      <div class="deck">
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">SPIN</span></div>
+        <div class="entry"><span class="lab">Shift</span>
+          <input type="number" min="0" max="25" value="0" aria-label="shift">
+          <div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div>
+        </div>
+      </div>
+      <label class="toggle-row"><span class="switch"><input type="checkbox" class="rtoggle" aria-label="slide rule"><span class="track"></span><span class="knb"></span></span><span class="tlabel">Slide rule — alphabet alignment</span></label>
+      <div class="ruler"><div class="ruler-scroll"><div class="ruler-inner">
+        <div class="rrow top"></div><div class="rrow bot"><div class="strip"></div></div>
+      </div></div><div class="rlabels"><span>CIPHER LETTER →</span><span>← DECODES TO</span></div></div>
+      <div class="readout">———<span class="lamp"></span></div>
+      <div class="stamp">Signal locked · flag captured</div>
+    </div>
+  </details>
+
+  <!-- MODULE II -->
+  <details class="module">
+    <span class="scr1"></span><span class="scr2"></span>
+    <summary><span class="idx">II</span><span class="ttl">Bee Line</span><span class="done">✓ captured</span><span class="sub">ROT · band 16</span></summary>
+    <div class="panel-body" data-puzzle data-cipher="pvkq{Loo}" data-key="16">
+      <div class="lab">Scrambled note</div>
+      <div class="plate">pvkq{Loo}</div>
+      <div class="lab">Tuning</div>
+      <div class="deck">
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">SPIN</span></div>
+        <div class="entry"><span class="lab">Shift</span>
+          <input type="number" min="0" max="25" value="0" aria-label="shift">
+          <div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div>
+        </div>
+      </div>
+      <label class="toggle-row"><span class="switch"><input type="checkbox" class="rtoggle" aria-label="slide rule"><span class="track"></span><span class="knb"></span></span><span class="tlabel">Slide rule — alphabet alignment</span></label>
+      <div class="ruler"><div class="ruler-scroll"><div class="ruler-inner">
+        <div class="rrow top"></div><div class="rrow bot"><div class="strip"></div></div>
+      </div></div><div class="rlabels"><span>CIPHER LETTER →</span><span>← DECODES TO</span></div></div>
+      <div class="readout">———<span class="lamp"></span></div>
+      <div class="stamp">Signal locked · flag captured</div>
+    </div>
+  </details>
+
+  <!-- MODULE III -->
+  <details class="module">
+    <span class="scr1"></span><span class="scr2"></span>
+    <summary><span class="idx">III</span><span class="ttl">Radio Tuning</span><span class="done">✓ captured</span><span class="sub">ROT · band 13</span></summary>
+    <div class="panel-body" data-puzzle data-cipher="synt{Pnrfne_Fnynq}" data-key="13">
+      <div class="lab">Intercepted signal</div>
+      <div class="plate">synt{Pnrfne_Fnynq}</div>
+      <div class="lab">Tuning</div>
+      <div class="deck">
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">SPIN</span></div>
+        <div class="entry"><span class="lab">Shift</span>
+          <input type="number" min="0" max="25" value="0" aria-label="shift">
+          <div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div>
+        </div>
+      </div>
+      <label class="toggle-row"><span class="switch"><input type="checkbox" class="rtoggle" aria-label="slide rule"><span class="track"></span><span class="knb"></span></span><span class="tlabel">Slide rule — alphabet alignment</span></label>
+      <div class="ruler"><div class="ruler-scroll"><div class="ruler-inner">
+        <div class="rrow top"></div><div class="rrow bot"><div class="strip"></div></div>
+      </div></div><div class="rlabels"><span>CIPHER LETTER →</span><span>← DECODES TO</span></div></div>
+      <div class="readout">———<span class="lamp"></span></div>
+      <div class="stamp">Signal locked · flag captured</div>
+    </div>
+  </details>
+
+  <!-- MODULE IV -->
+  <details class="module">
+    <span class="scr1"></span><span class="scr2"></span>
+    <summary><span class="idx">IV</span><span class="ttl">Safe Cracking</span><span class="done">✓ captured</span><span class="sub">ROT · dial 20</span></summary>
+    <div class="panel-body" data-puzzle data-cipher="zfua{Muzy_Wluweyl}" data-key="6">
+      <div class="lab">Locked text</div>
+      <div class="plate">zfua{Muzy_Wluweyl}</div>
+      <div class="lab">Dial</div>
+      <div class="deck">
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">SPIN</span></div>
+        <div class="entry"><span class="lab">Shift</span>
+          <input type="number" min="0" max="25" value="0" aria-label="shift">
+          <div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div>
+        </div>
+      </div>
+      <label class="toggle-row"><span class="switch"><input type="checkbox" class="rtoggle" aria-label="slide rule"><span class="track"></span><span class="knb"></span></span><span class="tlabel">Slide rule — alphabet alignment</span></label>
+      <div class="ruler"><div class="ruler-scroll"><div class="ruler-inner">
+        <div class="rrow top"></div><div class="rrow bot"><div class="strip"></div></div>
+      </div></div><div class="rlabels"><span>CIPHER LETTER →</span><span>← DECODES TO</span></div></div>
+      <div class="readout">———<span class="lamp"></span></div>
+      <div class="stamp">Tumblers aligned · flag captured</div>
+    </div>
+  </details>
+
+  <footer>ctf.sandhi.com.au · crypto · caesar</footer>
+</div>
+
+<script>
+const AZ = i => String.fromCharCode(65 + ((i % 26) + 26) % 26);
+
+function rot(text, shift){
+  shift = ((shift % 26) + 26) % 26;
+  return text.replace(/[a-z]/gi, ch => {
+    const base = ch <= 'Z' ? 65 : 97;
+    return String.fromCharCode((ch.charCodeAt(0) - base + shift) % 26 + base);
+  });
+}
+
+// ---- theme toggle (persisted) ----
+(function(){
+  const root = document.documentElement;
+  const saved = localStorage.getItem('caesar-theme');
+  if(saved) root.dataset.theme = saved;
+  const btn = document.getElementById('theme');
+  const sync = () => btn.textContent = root.dataset.theme === 'dark' ? '☀ LIGHT' : '☾ DARK';
+  sync();
+  btn.addEventListener('click', () => {
+    root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('caesar-theme', root.dataset.theme);
+    sync();
+  });
+})();
+
+function buildKnob(svg){
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e;};
+  svg.appendChild(el("circle",{class:"face",cx:100,cy:100,r:92}));
+  const ticks = el("g",{class:"ticks"});
+  for(let i=0;i<26;i++){
+    const ang=(i/26)*2*Math.PI - Math.PI/2, major=i%5===0;
+    const r1=major?72:78, r2=88;
+    const ln=el("line",{x1:100+r1*Math.cos(ang),y1:100+r1*Math.sin(ang),x2:100+r2*Math.cos(ang),y2:100+r2*Math.sin(ang)});
+    if(major) ln.setAttribute("class","major");
+    ticks.appendChild(ln);
+  }
+  svg.appendChild(ticks);
+  svg.appendChild(el("circle",{class:"well",cx:100,cy:100,r:40}));
+  const pointer=el("line",{class:"pointer",x1:100,y1:100,x2:100,y2:34});
+  svg.appendChild(pointer);
+  svg.appendChild(el("circle",{class:"cap",cx:100,cy:100,r:24}));
+  svg.appendChild(el("circle",{cx:100,cy:88,r:3,fill:"#5e4413"}));
+  return {pointer};
+}
+
+document.querySelectorAll('[data-puzzle]').forEach(box => {
+  const cipher = box.dataset.cipher;
+  const key    = parseInt(box.dataset.key,10);
+  const det    = box.closest('details');
+  const svg    = box.querySelector('.knob');
+  const input  = box.querySelector('input[type=number]');
+  const read   = box.querySelector('.readout');
+  const knob   = buildKnob(svg);
+
+  const used = new Set(cipher.toLowerCase().match(/[a-z]/g));
+
+  const topRow = box.querySelector('.rrow.top');
+  const strip  = box.querySelector('.rrow.bot .strip');
+  for(let i=0;i<26;i++){
+    const c=document.createElement('span'); c.className='cell'; c.textContent=AZ(i);
+    if(used.has(AZ(i).toLowerCase())) c.classList.add('used');
+    topRow.appendChild(c);
+  }
+  const stripCells=[];
+  for(let j=0;j<78;j++){
+    const c=document.createElement('span'); c.className='cell'; c.textContent=AZ(j);
+    strip.appendChild(c); stripCells.push(c);
+  }
+  const cellW = 26; // fixed in CSS (.cell width) — no layout-dependent measuring
+  function measure(){ strip.style.left = (-26*cellW)+'px'; }
+
+  let shift = 0;
+  function render(animate){
+    shift = ((shift % 26) + 26) % 26;
+    read.firstChild.textContent = rot(cipher, shift);
+    input.value = shift;
+    const ang=(shift/26)*2*Math.PI - Math.PI/2;
+    knob.pointer.setAttribute('x2', 100+70*Math.cos(ang));
+    knob.pointer.setAttribute('y2', 100+70*Math.sin(ang));
+    // CSS transition gives the slide+overshoot; disable it for instant moves (drag, open, init).
+    // The inline transform is always the correct resting position regardless of the animation.
+    strip.style.transition = (animate && ruler.classList.contains('on')) ? '' : 'none';
+    strip.style.transform = `translateX(${-shift*cellW}px)`;
+    stripCells.forEach((c,j)=>{
+      const col = j - 26 - shift;
+      c.classList.toggle('lit', col>=0 && col<26 && used.has(AZ(col).toLowerCase()));
+    });
+    const locked = shift === key;
+    read.classList.toggle('lock', locked);
+    svg.classList.toggle('lock', locked);
+    det.classList.toggle('solved', locked);
+  }
+
+  input.addEventListener('input', ()=>{const v=parseInt(input.value,10); if(!isNaN(v)){shift=v; render(true);}});
+  box.querySelectorAll('.steps button').forEach(b=>
+    b.addEventListener('click', ()=>{shift+=parseInt(b.dataset.step,10); render(true);}));
+
+  let dragging=false;
+  function angle(ev){
+    const r=svg.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+    const p=ev.touches?ev.touches[0]:ev;
+    let a=Math.atan2(p.clientY-cy, p.clientX-cx)+Math.PI/2;
+    a=(a+2*Math.PI)%(2*Math.PI);
+    shift=Math.round(a/(2*Math.PI)*26)%26; render(false);
+  }
+  const start=e=>{dragging=true; angle(e); e.preventDefault();};
+  svg.addEventListener('mousedown',start);
+  svg.addEventListener('touchstart',start,{passive:false});
+  window.addEventListener('mousemove',e=>{if(dragging)angle(e);});
+  window.addEventListener('touchmove',e=>{if(dragging)angle(e);},{passive:false});
+  window.addEventListener('mouseup',()=>dragging=false);
+  window.addEventListener('touchend',()=>dragging=false);
+
+  const ruler = box.querySelector('.ruler');
+  box.querySelector('.rtoggle').addEventListener('change', e=>{
+    ruler.classList.toggle('on', e.target.checked);
+    if(e.target.checked){ measure(); render(false); }
+  });
+
+  measure(); render(false);
+  window.addEventListener('resize', ()=>{ if(ruler.classList.contains('on')){ measure(); render(false); } });
+});
+</script>
+</body>
+</html>

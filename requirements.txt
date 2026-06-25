@@ -1,0 +1,4 @@
+# Build-time only (asset precompute). Install into the project venv:
+#   .venv/bin/pip install -r requirements.txt
+# Global python on this Mac is broken (PEP-668 / pending system reset) — always use .venv.
+Pillow

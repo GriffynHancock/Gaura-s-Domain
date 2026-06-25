@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hidden in Plain Sight — Crypto 101 · Encoding</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#e7dec9; --panel:#efe7d3; --panel2:#e2d8be; --edge:#cdc09f;
+    --ink:#241f17; --dim:#7c7259;
+    --accent:#b23a26; --gold:#a9772a; --ok:#3f7d52;
+    --read-bg:#1a1812; --read-dim:#5e5a3a; --read-on:#f0bb4d;
+    --disp:"Fraunces",Georgia,serif; --ui:"Hanken Grotesk",system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  html[data-theme="dark"]{
+    --bg:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
+    --ink:#ece3cd; --dim:#9a8f72; --accent:#e0593d; --gold:#c79338; --ok:#62ab77; --read-bg:#14120c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg);
+    background-image:radial-gradient(circle at 20% 0%, #f1ead9 0, transparent 55%),
+                     radial-gradient(circle at 100% 100%, #ddd2b6 0, transparent 60%);
+    min-height:100vh; padding:40px 18px 90px;}
+  [data-theme="dark"] body{background-image:radial-gradient(circle at 20% 0%, #211d12 0, transparent 55%),
+                     radial-gradient(circle at 100% 100%, #0f0d08 0, transparent 60%);}
+  .wrap{max-width:780px; margin:0 auto}
+
+  header{border-bottom:2px solid var(--ink); padding-bottom:18px; margin-bottom:26px}
+  .kicker{font-family:var(--mono); font-size:.7rem; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--accent); display:flex; justify-content:space-between; align-items:center; margin-bottom:8px}
+  .theme-btn{font-family:var(--mono); font-size:.64rem; letter-spacing:.18em; cursor:pointer; color:var(--ink);
+    background:linear-gradient(#f4eedd,#ddd2b6); border:1px solid var(--edge); border-radius:4px; padding:5px 11px}
+  [data-theme="dark"] .theme-btn{background:linear-gradient(#322d1d,#211e14)}
+  h1{font-family:var(--disp); font-weight:900; font-size:clamp(2.1rem,6.5vw,3.3rem); line-height:.96; margin:0; letter-spacing:-.02em}
+  h1 em{font-style:italic; font-weight:400; color:var(--accent)}
+  header p{font-family:var(--disp); font-size:1.02rem; line-height:1.5; opacity:.82; margin:12px 0 0; max-width:56ch}
+
+  .note{font-family:var(--mono); font-size:.78rem; line-height:1.6; color:var(--ink); background:var(--panel2);
+    border:1px solid var(--edge); border-left:3px solid var(--gold); padding:12px 15px; border-radius:3px; margin:22px 0 30px}
+  .note b{color:var(--accent)}
+  .note .vs{color:var(--gold)}
+
+  details.card{background:var(--panel); border:1px solid var(--edge); border-radius:10px; margin-bottom:22px;
+    box-shadow:0 14px 30px -24px #000; overflow:hidden}
+  summary{cursor:pointer; list-style:none; display:flex; align-items:center; gap:13px; padding:18px 24px}
+  summary::-webkit-details-marker{display:none}
+  .idx{font-family:var(--mono); font-weight:700; font-size:.72rem; letter-spacing:.16em; color:#fff;
+    background:var(--accent); padding:4px 8px; border-radius:3px; min-width:34px; text-align:center; transition:background .25s}
+  details.solved .idx{background:var(--ok)}
+  .ttl{font-family:var(--disp); font-weight:600; font-size:1.28rem}
+  .done{font-family:var(--mono); font-size:.66rem; letter-spacing:.14em; color:var(--ok); border:1px solid var(--ok);
+    border-radius:20px; padding:2px 9px; opacity:0; transform:scale(.8); transition:.25s}
+  details.solved .done{opacity:1; transform:none}
+  .sub{font-family:var(--mono); font-size:.72rem; color:var(--dim); margin-left:auto; letter-spacing:.08em}
+  summary .sub::after{content:" \25B8"} details[open] summary .sub::after{content:" \25BE"}
+  .body{padding:2px 24px 26px}
+
+  .lab{font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--dim); margin:20px 0 8px}
+  .blob{font-family:var(--mono); font-size:.86rem; line-height:1.5; color:#3a3322; background:var(--panel2);
+    border:1px solid var(--edge); border-radius:5px; padding:12px 14px; word-break:break-all; max-height:84px; overflow:auto}
+  [data-theme="dark"] .blob{color:#cdbf9f}
+
+  .tiles{display:flex; gap:8px; flex-wrap:wrap}
+  .tile{font-family:var(--mono); font-size:.8rem; font-weight:700; cursor:pointer; user-select:none;
+    color:var(--ink); background:linear-gradient(#f6f0e0,#e3d8bd); border:1px solid var(--edge);
+    border-radius:7px; padding:9px 13px; box-shadow:0 2px 0 #b9ac8a; transition:transform .08s, box-shadow .08s}
+  [data-theme="dark"] .tile{background:linear-gradient(#342f1f,#241f14); box-shadow:0 2px 0 #000}
+  .tile:active{transform:translateY(2px); box-shadow:0 0 0 #b9ac8a}
+  .pipe{display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-height:48px; margin-top:10px;
+    background:repeating-linear-gradient(90deg,transparent,transparent 6px, #00000008 6px, #00000008 12px);
+    border:1px dashed var(--edge); border-radius:7px; padding:8px 10px}
+  .pipe .ph{font-family:var(--mono); font-size:.74rem; color:var(--dim)}
+  .chip{font-family:var(--mono); font-size:.8rem; font-weight:700; color:#fff; background:var(--gold);
+    border-radius:6px; padding:8px 11px; cursor:pointer; display:flex; align-items:center; gap:7px; animation:pop .18s ease}
+  .chip .x{opacity:.7}
+  @keyframes pop{from{transform:scale(.6); opacity:0} to{transform:none; opacity:1}}
+  .arrow{color:var(--dim); font-family:var(--mono)}
+  .ctl{display:flex; gap:10px; align-items:center; margin-top:8px}
+  .mini{font-family:var(--mono); font-size:.7rem; letter-spacing:.1em; cursor:pointer; color:var(--dim);
+    background:none; border:1px solid var(--edge); border-radius:5px; padding:5px 9px}
+
+  .pv-head{display:flex; align-items:center; gap:10px; margin:20px 0 8px}
+  .pv-head .lab{margin:0}
+  .pv-tools{margin-left:auto; display:flex; gap:8px; align-items:center}
+  .seg{display:inline-flex; border:1px solid var(--edge); border-radius:7px; overflow:hidden}
+  .seg button{font-family:var(--mono); font-size:.7rem; letter-spacing:.1em; cursor:pointer; border:none;
+    padding:6px 12px; background:transparent; color:var(--dim)}
+  .seg button.on{background:var(--accent); color:#fff}
+  .preview{min-height:110px; height:150px; background:#070b10; border:1px solid #000; border-radius:7px; padding:14px;
+    box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset; display:flex; align-items:center; justify-content:center;
+    overflow:auto; resize:vertical}
+  .preview .txt{font-family:var(--mono); font-size:.82rem; line-height:1.5; color:#9fb0a8; white-space:pre-wrap;
+    word-break:break-all; width:100%; align-self:flex-start}
+  .preview .txt mark{background:none; color:var(--read-on); font-weight:700}
+  .preview img, .preview canvas{image-rendering:pixelated; max-width:100%; height:auto; border-radius:3px}
+  .preview img{background:#fff}
+
+  .submit{display:flex; gap:9px; margin-top:18px; flex-wrap:wrap; align-items:center}
+  .submit input{flex:1; min-width:150px; font-family:var(--mono); font-size:1rem; color:var(--read-on);
+    background:var(--read-bg); border:1px solid #000; border-radius:6px; padding:11px 13px; box-shadow:0 0 0 1px var(--edge)}
+  .submit input:focus{outline:none; box-shadow:0 0 0 1px var(--accent)}
+  .submit .check{font-family:var(--mono); font-weight:700; font-size:.86rem; cursor:pointer; color:#fff;
+    background:var(--accent); border:none; border-radius:6px; padding:0 18px}
+  .verdict{font-family:var(--mono); font-size:.76rem; margin-top:9px; min-height:1.1em; color:var(--dim)}
+  .verdict.ok{color:var(--ok)} .verdict.no{color:var(--accent)}
+
+  .cyber{font-family:var(--mono); font-size:.76rem; line-height:1.6; color:var(--ink); opacity:.9;
+    background:var(--panel2); border:1px solid var(--edge); border-radius:6px; padding:11px 13px; margin-top:18px}
+  .cyber a{color:var(--accent)} .cyber .mini{margin-left:6px}
+  .hide{display:none}
+
+  footer{text-align:center; font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; color:var(--dim); margin-top:42px; text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker"><span>Crypto 101 · Module 02 · Encoding</span><button id="theme" class="theme-btn">DARK</button></div>
+    <h1>Hidden in <em>Plain</em> Sight</h1>
+    <p>Encoding isn't a lock, it's a costume. The same bytes can be worn as text, as an image, as base64.
+       Nothing here is secret; you just have to recognise the disguise and take it off.</p>
+  </header>
+
+  <div class="note"><b>THE IDEA.</b> <span class="vs">Encoding</span> (base64, hex, ROT) is reversible and needs
+    <b>no key</b> &mdash; anyone can undo it. That's different from <span class="vs">encryption</span>, which needs a key
+    to read. Attackers still <i>stack</i> encodings to dodge antivirus and slow analysts down; every layer is
+    visible on purpose. Your job: <b>recognise &rarr; pick the method &rarr; decode &rarr; read the flag.</b></div>
+
+  <footer>ctf.sandhi.com.au · crypto · encoding</footer>
+</div>
+
+<template id="mod">
+  <details class="card">
+    <summary><span class="idx"></span><span class="ttl"></span><span class="done">captured</span><span class="sub"></span></summary>
+    <div class="body">
+      <div class="lab">Intercepted blob</div>
+      <div class="blob"></div>
+
+      <div class="lab">Decode as &mdash; click methods to build the pipeline (empty = raw, untouched)</div>
+      <div class="tiles">
+        <span class="tile" data-m="base64">Base64</span>
+        <span class="tile" data-m="hex">Hex</span>
+        <span class="tile" data-m="rot13">ROT13</span>
+      </div>
+      <div class="pipe"></div>
+      <div class="ctl"><button class="mini clear">CLEAR</button></div>
+
+      <div class="pv-head"><span class="lab">Preview</span>
+        <span class="pv-tools">
+          <button class="mini copy">COPY</button>
+          <span class="seg"><button data-v="text">TEXT</button><button data-v="image">IMAGE</button></span>
+        </span>
+      </div>
+      <div class="preview"></div>
+
+      <div class="submit">
+        <input placeholder="type the flag you found, e.g. flag{...}" aria-label="flag"><button class="check">SUBMIT</button>
+      </div>
+      <div class="verdict"></div>
+      <div class="cyber hide"></div>
+    </div>
+  </details>
+</template>
+
+<script src="assets.js"></script>
+<script>
+const A = window.ASSETS;
+const FLAG_RE = /flag\{[^}]{0,40}\}/i;
+const FLAG_RE_G = /(flag\{[^}]{0,40}\})/gi;
+
+(function(){const r=document.documentElement, s=localStorage.getItem('caesar-theme'); if(s)r.dataset.theme=s;
+  const b=document.getElementById('theme'); const sync=()=>b.textContent=r.dataset.theme==='dark'?'LIGHT':'DARK'; sync();
+  b.onclick=()=>{r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; localStorage.setItem('caesar-theme',r.dataset.theme); sync();};})();
+
+const toBytes = s => { const u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i)&255; return u; };
+const toStr   = b => { let s=''; for(let i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return s; };
+const rot13   = s => s.replace(/[a-z]/gi,c=>{const o=c<='Z'?65:97; return String.fromCharCode((c.charCodeAt(0)-o+13)%26+o);});
+
+// best-effort decoders: NEVER throw. Wrong input just yields nonsense bytes.
+const METHODS = {
+  base64(b){ let t=toStr(b).replace(/[^A-Za-z0-9+/]/g,''); while(t.length%4) t+='='; try{ return toBytes(atob(t)); }catch(e){ return new Uint8Array(0); } },
+  hex(b){ let t=toStr(b).replace(/[^0-9a-fA-F]/g,''); if(t.length%2) t=t.slice(0,-1); const u=new Uint8Array(t.length/2); for(let i=0;i<u.length;i++) u[i]=parseInt(t.substr(i*2,2),16); return u; },
+  rot13(b){ return toBytes(rot13(toStr(b))); },
+};
+const isImage = b => (b.length>4 && b[0]===0x89&&b[1]===0x50&&b[2]===0x4E&&b[3]===0x47) || (b.length>2 && b[0]===0xFF&&b[1]===0xD8);
+const printable = s => s.replace(/[^\x20-\x7E\n]/g,'·');
+
+// paint arbitrary bytes as raw RGB pixels — coherent only when the bytes really are pixels; noise otherwise
+function bytesCanvas(bytes){
+  const px = Math.max(1, Math.floor(bytes.length/3));
+  const W = Math.max(8, Math.round(Math.sqrt(px)));
+  const H = Math.max(1, Math.ceil(px/W));
+  const cv = document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx=cv.getContext('2d'); const id=ctx.createImageData(W,H);
+  for(let i=0;i<W*H;i++){ id.data[i*4]=bytes[i*3]||0; id.data[i*4+1]=bytes[i*3+1]||0; id.data[i*4+2]=bytes[i*3+2]||0; id.data[i*4+3]=255; }
+  ctx.putImageData(id,0,0);
+  cv.style.width = Math.min(220, W*6)+'px';
+  return cv;
+}
+
+let stung=false;
+function sting(){
+  if(stung) return; stung=true;
+  try{
+    const C=new (window.AudioContext||window.webkitAudioContext)(); const t=C.currentTime;
+    [[330,0],[247,.18],[165,.42]].forEach(([f,d])=>{
+      const o=C.createOscillator(), g=C.createGain(); o.type='sawtooth'; o.frequency.value=f;
+      o.connect(g); g.connect(C.destination); g.gain.setValueAtTime(.0001,t+d);
+      g.gain.exponentialRampToValueAtTime(.22,t+d+.02); g.gain.exponentialRampToValueAtTime(.0001,t+d+.32);
+      o.start(t+d); o.stop(t+d+.34);
+    });
+  }catch(e){}
+  /* Presenter: drop imposter.mp3 beside this file and play it here for the real SFX. */
+}
+
+const PUZZLES = [
+  {id:'I',  title:'Decode the Signal', sub:'one layer',        blob:A.a_b64, answer:A.flags.a, view:'text'},
+  {id:'II', title:'Picture This',      sub:'base64 to image',  blob:A.b_png, answer:A.flags.b, view:'image'},
+  {id:'III',title:'Among the Bytes',   sub:'image hides text', blob:A.c_b64, answer:A.flags.c, view:'image', sting:true},
+  {id:'IV', title:'Order Matters',     sub:'two layers',       blob:A.d_b64, answer:A.flags.d, view:'text', cyber:true},
+];
+
+const tpl = document.getElementById('mod');
+const footer = document.querySelector('footer');
+PUZZLES.forEach((p,i)=>{
+  const node = tpl.content.firstElementChild.cloneNode(true);
+  footer.parentNode.insertBefore(node, footer);
+  if(i===0) node.open = true;
+  node.querySelector('.idx').textContent = p.id;
+  node.querySelector('.ttl').textContent = p.title;
+  node.querySelector('.sub').textContent = p.sub;
+  node.querySelector('.blob').textContent = p.blob;
+
+  const pipeEl = node.querySelector('.pipe');
+  const preview = node.querySelector('.preview');
+  const seg = node.querySelectorAll('.seg button');
+  const verdict = node.querySelector('.verdict');
+  let pipeline = [];
+  let view = p.view;
+  let lastBytes = toBytes(p.blob);
+  let imgURL = null;
+
+  function curText(){ return printable(toStr(lastBytes)); }
+
+  function applyPipeline(){
+    let bytes = toBytes(p.blob);
+    for(const m of pipeline){ try{ bytes = METHODS[m](bytes); }catch(e){ bytes = new Uint8Array(0); } }
+    lastBytes = bytes;
+    if(p.sting && isImage(bytes) && pipeline.length) sting();
+    drawPreview();
+  }
+  function drawPreview(){
+    if(imgURL){ URL.revokeObjectURL(imgURL); imgURL=null; }
+    seg.forEach(b=>b.classList.toggle('on', b.dataset.v===view));
+    preview.innerHTML='';
+    if(view==='image'){
+      if(isImage(lastBytes)){                       // a real image file -> show it coherently
+        imgURL = URL.createObjectURL(new Blob([lastBytes], {type:'image/png'}));
+        const img=new Image(); img.src=imgURL; img.style.width=(lastBytes.length>2000?240:160)+'px';
+        preview.appendChild(img);
+      } else {                                       // anything else -> paint the bytes as scrambled pixels
+        preview.appendChild(bytesCanvas(lastBytes));
+      }
+    } else {
+      const d=document.createElement('div'); d.className='txt';
+      curText().split(FLAG_RE_G).forEach((part,k)=>{ if(!part) return; if(k%2){ const m=document.createElement('mark'); m.textContent=part; d.appendChild(m); } else d.appendChild(document.createTextNode(part)); });
+      preview.appendChild(d);
+    }
+  }
+  function renderPipe(){
+    pipeEl.innerHTML='';
+    if(!pipeline.length){ const ph=document.createElement('span'); ph.className='ph'; ph.textContent='empty — raw bytes, untouched'; pipeEl.appendChild(ph); return; }
+    pipeline.forEach((m,idx)=>{
+      if(idx){ const a=document.createElement('span'); a.className='arrow'; a.textContent='→'; pipeEl.appendChild(a); }
+      const c=document.createElement('span'); c.className='chip';
+      c.appendChild(document.createTextNode(m+' ')); const x=document.createElement('span'); x.className='x'; x.textContent='✕'; c.appendChild(x);
+      c.onclick=()=>{ pipeline.splice(idx,1); renderPipe(); applyPipeline(); };
+      pipeEl.appendChild(c);
+    });
+  }
+
+  node.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{ pipeline.push(t.dataset.m); renderPipe(); applyPipeline(); });
+  node.querySelector('.clear').onclick=()=>{ pipeline=[]; renderPipe(); applyPipeline(); };
+  seg.forEach(b=>b.onclick=()=>{ view=b.dataset.v; drawPreview(); });
+  node.querySelector('.copy').onclick=()=>{ if(navigator.clipboard) navigator.clipboard.writeText(curText()); const b=node.querySelector('.copy'); b.textContent='COPIED'; setTimeout(()=>b.textContent='COPY',900); };
+
+  const input=node.querySelector('.submit input');
+  function capture(){ node.classList.add('solved'); verdict.className='verdict ok'; verdict.textContent='correct — flag captured'; }
+  function check(){
+    const v=input.value.trim();
+    if(v.toLowerCase()===p.answer.toLowerCase()) capture();
+    else if(v){ verdict.className='verdict no'; verdict.textContent='not it — keep decoding'; }
+  }
+  node.querySelector('.check').onclick=check; input.addEventListener('keydown',e=>{ if(e.key==='Enter') check(); });
+
+  if(p.cyber){
+    const cy=node.querySelector('.cyber'); cy.classList.remove('hide');
+    cy.innerHTML = 'Two layers. Spot the tells: base64 uses <b>A-Z a-z 0-9 + /</b> and often ends in <b>=</b>; hex is only <b>0-9 a-f</b>. Do them in the wrong order and you just get nonsense. Real CTFers let <a href="https://gchq.github.io/CyberChef/" target="_blank" rel="noopener">CyberChef</a> auto-peel it &mdash; <button class="mini copy2">COPY BLOB</button>';
+    cy.querySelector('.copy2').onclick=()=>{ if(navigator.clipboard) navigator.clipboard.writeText(p.blob); cy.querySelector('.copy2').textContent='COPIED'; };
+  }
+
+  renderPipe(); applyPipeline();
+});
+</script>
+</body>
+</html>
