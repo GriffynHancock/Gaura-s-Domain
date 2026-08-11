@@ -43,6 +43,10 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   this Mac is broken (PEP-668, pending system reset) — do NOT `pip install` globally or `--break-system-packages`.
   Deps in `requirements.txt`. Asset build scripts live in `tools/` (e.g. `tools/build_base64_assets.py`).
 
+## Working with the user
+- **Never volunteer time/effort estimates** ("this will take X min", "this is cheap/expensive to build",
+  session-time budgeting, etc.) unless explicitly asked. Just assess feasibility/scope and get on with it.
+
 ## Local dev & gotchas (learned the hard way)
 - **Serve locally:** `python3 -m http.server 8787` from the repo root, then open
   `http://localhost:8787/public/crypto/<name>/`. **Path quirk:** locally you need the `/public/` prefix; in
