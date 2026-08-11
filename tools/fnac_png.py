@@ -77,3 +77,35 @@ def read_text_chunks(png_bytes: bytes) -> dict:
         if ctype == b'IEND':
             break
     return out
+
+
+def embed_lsb_message(img: Image.Image, message: bytes) -> Image.Image:
+    """Hides a length-prefixed message in the LSB of the red channel,
+    one bit per pixel, row-major. Green/blue channels are untouched —
+    they're the 'noise' a bit-plane viewer will show as pure static
+    next to the R-channel plane that isn't."""
+    img = img.convert('RGB')
+    payload = struct.pack('>I', len(message)) + message
+    bits = ''.join(f'{byte:08b}' for byte in payload)
+    pixels = list(img.getdata())
+    if len(bits) > len(pixels):
+        raise ValueError(f'image too small for payload: need {len(bits)} pixels, have {len(pixels)}')
+    out = []
+    for i, (r, g, b) in enumerate(pixels):
+        if i < len(bits):
+            r = (r & ~1) | int(bits[i])
+        out.append((r, g, b))
+    img2 = Image.new('RGB', img.size)
+    img2.putdata(out)
+    return img2
+
+
+def extract_lsb_message(img: Image.Image, max_len: int = 4096) -> bytes:
+    img = img.convert('RGB')
+    pixels = list(img.getdata())
+    length_bits = ''.join(str(p[0] & 1) for p in pixels[:32])
+    length = min(int(length_bits, 2), max_len)
+    need_bits = 32 + length * 8
+    all_bits = ''.join(str(p[0] & 1) for p in pixels[:need_bits])
+    payload_bits = all_bits[32:32 + length * 8]
+    return bytes(int(payload_bits[i:i + 8], 2) for i in range(0, len(payload_bits), 8))
