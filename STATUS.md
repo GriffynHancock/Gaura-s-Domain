@@ -15,6 +15,25 @@ Spine: **recognise → identify → decode/crack → submit.**
 | 4 | XOR | 🚧 **in progress** (demo+C1–C3 done, C4 left, not deployed) | `public/crypto/xor/` → `/crypto/xor/` |
 | — | Live Kali demo (CyberChef + archive crack) | ⬜ presenter prep | n/a |
 
+## Module 3 — Hashing (live, `/crypto/hash`) — post-deploy juice/legibility pass (2026-08-13)
+Real-user feedback after the redesign above shipped: SHA-3 read as "twitchy, blurred, fighting to
+animate" and "a single flat plane." Both reproduced and measured before touching anything — ρ's
+twist (300ms hold) and π's slide (220ms hold) overlapped 5×–75× at every slider position (the two
+effects meant to be most distinct were permanently smeared); separately, the 25 lane elements'
+pseudo-3D depth turned out to be **zero, not shallow** — `opacity`/`filter` on `.lane` were silently
+forcing `transform-style:flat` on its 3D context (new CLAUDE.md gotcha). Fixed: SHA-3 got its own
+speed function decoupled from MD5's (full 24-round run now ~12.5s at default speed, per the user's
+"slow default, full run, real slider" choice over two faster/thinner alternatives), and `.lane`'s
+pulse moved to leaf-level child elements so the parent stays a clean 3D context — 25 elongated bars
+now, not flat tiles (independently verified via pixel/shade analysis, not just code review). Also
+added MD5 "juice" on request (Balatro-score-counter reference): block cards wiggle+flash in sync
+with their inner register-box pulses on every step, the whole run ramps ~50% faster start-to-finish,
+wiggle amplitude grows with progress. Both pieces independently reviewed and empirically verified
+(monkey-patched speed functions, MutationObserver-counted wiggle events, rendered-transform proofs)
+rather than trusted from the implementer reports. Deferred/parked: showing each lane's actual
+content changing per round (real signal, bigger scope — trace-schema extension) and using a colour
+gradient for ρ's rotation amount (user's own idea) — both in `docs/ideas-backlog.md`.
+
 ## Module 3 — Hashing (live, `/crypto/hash`) — visualization redesign (2026-08-13)
 Rebuilt the SHA-3 and MD5 diagrams after user feedback that the original build (below) was
 functionally correct but visually thin — a flat rotating panel for SHA-3, plain stage-boxes for

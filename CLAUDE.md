@@ -62,6 +62,17 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   *pre-animation* value and look "stuck/broken" even when the code is correct. The **inline transform/style is the
   source of truth**; to verify a position, set `transition:none` first (or read the inline value), don't trust
   computed style of an animating element. (This cost two phantom-bug hunts.)
+- **CSS 3D gotcha — `opacity`/`filter` silently flatten `transform-style:preserve-3d`.** Any element
+  with `opacity < 1` or a non-`none` `filter` becomes a CSS "grouping property" trigger, which forces
+  the element's *used* `transform-style` to `flat` — even though `getComputedStyle` still reports
+  `preserve-3d` as declared, so this is easy to miss by inspection. Any `::before`/`::after` 3D faces
+  on that element then render with zero real depth (they never got the parent's `preserve-3d`
+  context), and the element visually reads as flat no matter how large the transform values are. Hit
+  this building the SHA-3 hash-module's 25-lane cuboid grid (`public/crypto/hash/index.html`): `.lane`
+  had `opacity:.92` and `filter:brightness(1)` for its pulse effect, which meant its pseudo-3D
+  `::before`/`::after` faces were rendering completely flat (not just shallow) the whole time — the
+  fix was moving the painted/opacity/filter-bearing visuals to leaf-level child elements and keeping
+  the 3D-context parent element free of both properties.
 - **Deploy quirk:** first `wrangler deploy` of a new worker can throw `code 10007` on the workers.dev subdomain
   step. Already mitigated by `"workers_dev": false` in `wrangler.jsonc` (we use a custom domain, not workers.dev).
 - **Worker script + static assets, together:** once `wrangler.jsonc` has both a `main` script (`src/index.js`)
