@@ -2,9 +2,12 @@
   "name": "ceasar-crypto-ctf",
   "compatibility_date": "2026-06-24",
   "workers_dev": false,
+  "main": "src/index.js",
   "assets": {
     "directory": "./public",
-    "html_handling": "auto-trailing-slash"
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": true
   },
   "routes": [
     { "pattern": "ctf.sandhi.com.au", "custom_domain": true }
