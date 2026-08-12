@@ -716,9 +716,17 @@ function getSpeedMs() {
 }
 
 async function onHashClick() {
-  const bytes = await getActiveInputBytes();
+  // algo/label MUST be read synchronously here, before the only await in this function — NOT
+  // after it. getActiveInputBytes() does a real `await fetch(...)` for the pubtext/cat presets
+  // on their first (uncached) use, which is a genuine yield back to the event loop: a user could
+  // switch preset/algorithm while that fetch is in flight. Reading algo/label before the await
+  // means they're locked in at the moment Hash was actually clicked, matching what `bytes` below
+  // will end up being computed from (getActiveInputBytes reads PRESETS[presetIndex]/customText
+  // synchronously before its own await, so bytes are already determined by the pre-await state
+  // too — algo/label just need the same treatment for consistency).
   const algo = getAlgorithm();
-  const label = inputLabel(); // captured now (click time), not re-read when the animation finishes
+  const label = inputLabel();
+  const bytes = await getActiveInputBytes();
   document.getElementById('input-box').classList.add('active-flash');
   setTimeout(() => document.getElementById('input-box').classList.remove('active-flash'), 400);
   if (algo === 'md5') {
