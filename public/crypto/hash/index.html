@@ -4,9 +4,196 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hashing — Crypto 101</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#e7dec9; --panel:#efe7d3; --panel2:#e2d8be; --edge:#cdc09f;
+    --ink:#241f17; --dim:#7c7259;
+    --accent:#b23a26; --gold:#a9772a; --ok:#3f7d52;
+    --read-bg:#1a1812; --read-dim:#5e5a3a; --read-on:#f0bb4d;
+    --disp:"Fraunces",Georgia,serif; --ui:"Hanken Grotesk",system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  html[data-theme="dark"]{
+    --bg:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
+    --ink:#ece3cd; --dim:#9a8f72; --accent:#e0593d; --gold:#c79338; --ok:#62ab77; --read-bg:#14120c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg);
+    background-image:radial-gradient(circle at 20% 0%, #f1ead9 0, transparent 55%),
+                     radial-gradient(circle at 100% 100%, #ddd2b6 0, transparent 60%);
+    min-height:100vh; padding:40px 18px 90px;}
+  [data-theme="dark"] body{background-image:radial-gradient(circle at 20% 0%, #211d12 0, transparent 55%),
+                     radial-gradient(circle at 100% 100%, #0f0d08 0, transparent 60%);}
+  .wrap{max-width:900px; margin:0 auto}
+
+  header{border-bottom:2px solid var(--ink); padding-bottom:18px; margin-bottom:30px}
+  .kicker{font-family:var(--mono); font-size:.7rem; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--accent); display:flex; justify-content:space-between; align-items:center; margin-bottom:8px}
+  .theme-btn{font-family:var(--mono); font-size:.64rem; letter-spacing:.18em; cursor:pointer; color:var(--ink);
+    background:linear-gradient(#f4eedd,#ddd2b6); border:1px solid var(--edge); border-radius:4px; padding:5px 11px}
+  [data-theme="dark"] .theme-btn{background:linear-gradient(#322d1d,#211e14)}
+  h1{font-family:var(--disp); font-weight:900; font-size:clamp(2.1rem,6.5vw,3.3rem); line-height:.96; margin:0; letter-spacing:-.02em}
+  h1 em{font-style:italic; font-weight:400; color:var(--accent)}
+  header p{font-family:var(--disp); font-size:1.02rem; line-height:1.5; opacity:.82; margin:12px 0 0; max-width:60ch}
+
+  .lab{font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--dim); margin:0 0 8px}
+
+  /* ---- controls row: input / algorithm / output ---- */
+  .hash-row{display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:16px; margin-bottom:22px}
+  @media (max-width:720px){ .hash-row{grid-template-columns:1fr} }
+  .box{background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px 18px;
+    box-shadow:0 14px 30px -24px #000; display:flex; flex-direction:column; gap:10px; position:relative}
+  .box-title{font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--dim)}
+  .stage-box .box-title, .round-box .box-title{margin:0}
+
+  #input-box, #algo-box{flex-direction:row; flex-wrap:wrap; align-items:center}
+  #input-box .box-title, #algo-box .box-title{flex:0 0 100%}
+  #output-box{gap:8px}
+
+  .arrow-btn{font-family:var(--mono); font-size:.9rem; cursor:pointer; color:var(--ink);
+    background:linear-gradient(#f4eedd,#ddd2b6); border:1px solid var(--edge); border-radius:6px;
+    padding:6px 10px; line-height:1; flex:0 0 auto}
+  [data-theme="dark"] .arrow-btn{background:linear-gradient(#322d1d,#211e14)}
+  .arrow-btn:hover{border-color:var(--accent)}
+  .arrow-btn:active{transform:translateY(1px)}
+
+  #input-custom{flex:1 1 auto; min-width:0; font-family:var(--mono); font-size:.82rem; color:var(--ink);
+    background:var(--panel2); border:1px solid var(--edge); border-radius:5px; padding:8px 10px;
+    resize:vertical; min-height:44px; max-height:120px}
+  .preset-display{flex:1 1 auto; min-width:0; font-family:var(--mono); font-size:.86rem; color:var(--ink);
+    background:var(--panel2); border:1px solid var(--edge); border-radius:5px; padding:12px 10px;
+    text-align:center; word-break:break-word}
+
+  #algo-name{flex:1 1 auto; font-family:var(--disp); font-weight:600; font-size:1.15rem; text-align:center}
+  #hash-btn{flex:0 0 100%; font-family:var(--mono); font-weight:700; font-size:.78rem; letter-spacing:.14em;
+    text-transform:uppercase; cursor:pointer; color:#fff; background:var(--accent); border:none;
+    border-radius:6px; padding:10px 14px; margin-top:4px}
+  #hash-btn:hover{filter:brightness(1.08)}
+  #hash-btn:disabled{opacity:.5; cursor:default}
+  #speed-slider{flex:0 0 100%; accent-color:var(--accent)}
+
+  #output-digest{font-family:var(--mono); font-size:.82rem; color:var(--read-on); background:var(--read-bg);
+    border:1px solid #000; border-radius:5px; padding:12px 10px; word-break:break-all;
+    box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset; min-height:1.6em}
+  #output-bits{font-family:var(--mono); font-size:.68rem; color:var(--dim); letter-spacing:.06em}
+
+  /* ---- animation / diagram box ---- */
+  .animation-box{background:var(--panel); border:1px solid var(--edge); border-radius:10px;
+    padding:22px 20px; box-shadow:0 14px 30px -24px #000; overflow-x:auto}
+  .diagram{display:flex; flex-direction:column; align-items:center; gap:0; min-width:min-content}
+
+  .stage-box{background:var(--panel2); border:1px solid var(--edge); border-radius:8px;
+    padding:12px 18px; text-align:center; display:flex; flex-direction:column; align-items:center;
+    gap:4px; min-width:180px; transition:border-color .2s, box-shadow .2s}
+  .stage-box .sample{font-family:var(--mono); font-size:.72rem; color:var(--dim); min-height:1.2em; word-break:break-all}
+  .stage-box.active{border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+    animation:hashPulse .6s ease-out}
+  @keyframes hashPulse{
+    0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent)}
+    100%{box-shadow:0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent)}
+  }
+
+  .flow-arrow{width:2px; height:26px; background:var(--edge); position:relative; margin:2px 0}
+  .flow-arrow::after{content:""; position:absolute; left:50%; bottom:-1px; transform:translateX(-50%);
+    border:5px solid transparent; border-top-color:var(--edge)}
+  .flow-arrow.active::after{border-top-color:var(--accent)}
+  .flow-arrow.active{background:var(--accent)}
+
+  .block-chain{display:flex; align-items:flex-start; gap:22px; flex-wrap:wrap; justify-content:center}
+  .block-group{display:flex; flex-direction:column; align-items:center; gap:8px;
+    border:1px dashed var(--edge); border-radius:10px; padding:12px}
+  .block-label{font-family:var(--mono); font-size:.66rem; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
+  .round-row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
+  .round-box{min-width:110px; padding:10px 12px; position:relative}
+  .loop-dot{width:9px; height:9px; border-radius:50%; background:var(--edge); display:inline-block;
+    transition:background .2s, transform .2s}
+  .loop-dot.spin{background:var(--gold); animation:loopSpin .5s linear infinite}
+  @keyframes loopSpin{ 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+
+  .chain-link{display:none; align-items:center; justify-content:center; gap:6px;
+    font-family:var(--mono); font-size:.66rem; color:var(--dim); letter-spacing:.1em;
+    border:1px solid var(--edge); border-radius:20px; padding:4px 12px; background:var(--panel2)}
+  .chain-link.shown{display:flex}
+  .chain-link.active{border-color:var(--gold); color:var(--gold)}
+</style>
 </head>
 <body>
-<div id="app"></div>
+<div class="wrap">
+  <header>
+    <div class="kicker"><span>Crypto 101 · Module 03 · Hashing</span><button id="theme" class="theme-btn">DARK</button></div>
+    <h1>Watch a hash <em>eat</em> your input.</h1>
+    <p>Pick something to hash, pick an algorithm, and watch the machinery — padding, blocks, rounds,
+      chaining — grind it into a fixed-length fingerprint. Same input, same output, every time. Change
+      one bit, and the whole fingerprint changes beyond recognition.</p>
+  </header>
+
+  <div class="hash-row">
+    <div class="box" id="input-box">
+      <div class="box-title">Input</div>
+      <button class="arrow-btn" id="input-prev">&#9664;</button>
+      <textarea id="input-custom" placeholder="type something..."></textarea>
+      <div id="input-preset-display" class="preset-display"></div>
+      <button class="arrow-btn" id="input-next">&#9654;</button>
+    </div>
+    <div class="box" id="algo-box">
+      <div class="box-title">Algorithm</div>
+      <button class="arrow-btn" id="algo-prev">&#9664;</button>
+      <span id="algo-name">MD5</span>
+      <button class="arrow-btn" id="algo-next">&#9654;</button>
+      <button id="hash-btn">Hash</button>
+      <input type="range" id="speed-slider" min="1" max="100" value="50">
+    </div>
+    <div class="box" id="output-box">
+      <div class="box-title">Output</div>
+      <div id="output-digest">&mdash;</div>
+      <div id="output-bits"></div>
+    </div>
+  </div>
+
+  <div class="animation-box" id="animation-box">
+    <div class="diagram" id="diagram-md5">
+      <div class="stage-box" id="hash-box-pad"><span class="box-title">Pad</span><span class="sample"></span></div>
+      <div class="flow-arrow"></div>
+      <div class="stage-box" id="hash-box-split"><span class="box-title">Split into 512-bit blocks</span><span class="sample"></span></div>
+      <div class="flow-arrow"></div>
+      <div class="block-chain" id="md5-block-chain">
+        <div class="block-group" id="block-group-0">
+          <div class="block-label">Block 0</div>
+          <div class="round-row">
+            <div class="stage-box round-box" id="hash-box-block-0-r1">
+              <span class="box-title">Round 1</span>
+              <span class="loop-dot" id="hash-box-block-0-r1-loop"></span>
+              <span class="sample"></span>
+            </div>
+            <div class="stage-box round-box" id="hash-box-block-0-r2">
+              <span class="box-title">Round 2</span>
+              <span class="loop-dot" id="hash-box-block-0-r2-loop"></span>
+              <span class="sample"></span>
+            </div>
+            <div class="stage-box round-box" id="hash-box-block-0-r3">
+              <span class="box-title">Round 3</span>
+              <span class="loop-dot" id="hash-box-block-0-r3-loop"></span>
+              <span class="sample"></span>
+            </div>
+            <div class="stage-box round-box" id="hash-box-block-0-r4">
+              <span class="box-title">Round 4</span>
+              <span class="loop-dot" id="hash-box-block-0-r4-loop"></span>
+              <span class="sample"></span>
+            </div>
+          </div>
+        </div>
+        <div class="chain-link" id="hash-box-chain-0"><span>chains into next block</span></div>
+        <!-- Task 6 adds/removes additional block-group / chain-link elements here for however many
+             real blocks the current input actually produces (block count varies by input length) -->
+      </div>
+      <div class="flow-arrow"></div>
+      <div class="stage-box" id="hash-box-output"><span class="box-title">Output state</span><span class="sample"></span></div>
+    </div>
+  </div>
+</div>
 <script>
 function strToBytes(s) { return [...new TextEncoder().encode(s)]; }
 function hexToBytes(h) { const a=[]; for (let i=0;i<h.length;i+=2) a.push(parseInt(h.substr(i,2),16)); return a; }
@@ -142,6 +329,74 @@ function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32
   trace.push({ boxId:'output', kind:'activate', sample: digest });
   return { digest, trace };
 }
+
+// ---- theme toggle ----
+(function(){const r=document.documentElement, s=localStorage.getItem('hash-theme'); if(s)r.dataset.theme=s;
+  const b=document.getElementById('theme'); function sync(){b.textContent=r.dataset.theme==='dark'?'LIGHT':'DARK';}
+  sync();
+  b.onclick=()=>{r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; localStorage.setItem('hash-theme',r.dataset.theme); sync();};})();
+
+// ---- presets ----
+const PRESETS = [
+  { id: 'custom', label: 'Custom', kind: 'custom' },
+  { id: 'letter-a', label: 'Letter: a', kind: 'fixed', text: 'a' },
+  { id: 'letter-cyrillic-a', label: 'Letter: а (Cyrillic)', kind: 'fixed', text: 'а' },
+  { id: 'whitespace', label: 'Whitespace jumble', kind: 'fixed',
+    text: '  \t ​     \t​  ' },
+  { id: 'pubtext', label: 'Public-domain text', kind: 'fetch', url: 'assets/pubtext.txt' },
+  { id: 'cat', label: 'Cat photo', kind: 'fetch-binary', url: 'assets/cat-thumb.jpg' },
+  { id: 'collision', label: 'MD5 collision message', kind: 'fixed-hex',
+    hex: 'd131dd02c5e6eec4693d9a0698aff95c2fcab58712467eab4004583eb8fb7f8955ad340609f4b30283e488832571415a085125e8f7cdc99fd91dbdf280373c5bd8823e3156348f5bae6dacd436c919c6dd53e2b487da03fd02396306d248cda0e99f33420f577ee8ce54b67080a80d1ec69821bcb6a8839396f9652b6ff72a70' },
+];
+
+let presetIndex = 0;
+let currentAlgorithm = 'md5'; // or 'sha3'
+let customText = '';
+let cachedFetchedBytes = {}; // presetId -> number[]
+
+function getAlgorithm() { return currentAlgorithm; }
+function setAlgorithm(name) { currentAlgorithm = name; renderAlgorithmBox(); }
+
+async function getActiveInputBytes() {
+  const p = PRESETS[presetIndex];
+  if (p.kind === 'custom') return strToBytes(customText);
+  if (p.kind === 'fixed') return strToBytes(p.text);
+  if (p.kind === 'fixed-hex') return hexToBytes(p.hex);
+  if (p.kind === 'fetch' || p.kind === 'fetch-binary') {
+    if (cachedFetchedBytes[p.id]) return cachedFetchedBytes[p.id];
+    const res = await fetch(p.url);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    const bytes = [...buf];
+    cachedFetchedBytes[p.id] = bytes;
+    return bytes;
+  }
+  return [];
+}
+
+function renderInputBox() {
+  const p = PRESETS[presetIndex];
+  const customEl = document.getElementById('input-custom');
+  const displayEl = document.getElementById('input-preset-display');
+  if (p.kind === 'custom') {
+    customEl.style.display = '';
+    displayEl.style.display = 'none';
+  } else {
+    customEl.style.display = 'none';
+    displayEl.style.display = '';
+    displayEl.textContent = p.label;
+  }
+}
+document.getElementById('input-prev').onclick = () => { presetIndex = (presetIndex - 1 + PRESETS.length) % PRESETS.length; renderInputBox(); };
+document.getElementById('input-next').onclick = () => { presetIndex = (presetIndex + 1) % PRESETS.length; renderInputBox(); };
+document.getElementById('input-custom').addEventListener('input', e => { customText = e.target.value; });
+renderInputBox();
+
+function renderAlgorithmBox() {
+  document.getElementById('algo-name').textContent = currentAlgorithm === 'md5' ? 'MD5' : 'SHA-3';
+}
+document.getElementById('algo-prev').onclick = document.getElementById('algo-next').onclick =
+  () => setAlgorithm(currentAlgorithm === 'md5' ? 'sha3' : 'md5');
+renderAlgorithmBox();
 </script>
 </body>
 </html>
