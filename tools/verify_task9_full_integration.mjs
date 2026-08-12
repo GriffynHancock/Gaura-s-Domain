@@ -30,7 +30,9 @@ console.log('OK  MD5 register boxes updated during animation');
 // ---- 3. SHA-3 digest spot-check + lane grid + round counter ----
 await page.click('#algo-next'); // -> SHA-3
 await page.click('#hash-btn');
-await page.waitForFunction(() => document.getElementById('output-digest').textContent.length === 64, { timeout: 15000 });
+// 30s, not the original 15s: SHA-3's animation is deliberately slow-by-default now
+// (getSha3SpeedMs), ~10.7s at the fastest slider setting. Timeout headroom only.
+await page.waitForFunction(() => document.getElementById('output-digest').textContent.length === 64, { timeout: 30000 });
 const sha3Digest = await page.locator('#output-digest').innerText();
 const expectedSha3 = crypto.createHash('sha3-256').update('abc').digest('hex');
 if (sha3Digest !== expectedSha3) throw new Error(`SHA3-256 digest mismatch: got ${sha3Digest}, expected ${expectedSha3}`);

@@ -161,35 +161,64 @@
   /* #lane-grid is a 1x1 point (every .lane is absolutely positioned around its centre), so it
      contributes ~0 height to the flex column and the ~180px-tall painted grid would sit on top
      of the legend and the round counter below it. The margin reserves the grid's real projected
-     footprint: lanes reach +/-(2*LANE_CELL + 13) = 81px from centre, ~92px once the
-     rotateX/rotateY projection and the perspective scale are counted. */
+     footprint. Since the lanes became 64px-deep BARS (see --lane-depth) the footprint is no
+     longer the symmetric +/-(2*LANE_CELL + 13) it was for flat tiles — the depth projects
+     asymmetrically under rotateX(-24deg)/rotateY(34deg), and the grid is drag-rotatable to any
+     angle. 150x140px is tuned from real painted pixels at the default angle and re-checked at a
+     worst-case rotateX(-45)/rotateY(45) drag (no clipping, legend/counter still clear), not
+     derived from a formula. */
   .lane-grid{ width:1px; height:1px; position:relative; transform-style:preserve-3d;
-    margin:92px 92px; transform: rotateX(-20deg) rotateY(30deg); cursor:grab; touch-action:none; }
+    margin:150px 140px; transform: rotateX(-24deg) rotateY(34deg); cursor:grab; touch-action:none; }
   .lane-grid:active{ cursor:grabbing; }
-  /* transform is transitioned from the stylesheet (NOT from an inline `transition:` shorthand in
-     JS — that would reset transition-property to `transform` alone and permanently kill the
-     filter decay below for every lane it touched). JS only ever writes `style.transform`;
+  /* transform is transitioned from the stylesheet, NOT from an inline `transition:` shorthand in
+     JS. (Historically that mattered because .lane also carried the pulse's filter transition and
+     the shorthand wiped it; those filter transitions now live on the three leaf faces instead, so
+     the hazard is smaller — but keep writing only `style.transform` from JS anyway.)
      --lane-tdur is pi's own slide duration (.22s), set once per pi event so its transition
      doesn't fight the stylesheet default. rho's twist is a separate mechanism entirely — it
      animates .lane-tick via the .rho-twist/@keyframes rhoSwing rule below, not this transition. */
+  /* .lane is a PURE 3D CONTAINER — it deliberately carries no `opacity`, no `filter` and no
+     painted background of its own. Both `opacity < 1` and any `filter` other than `none` are
+     CSS grouping properties: they force this element's USED transform-style to `flat` even
+     though the computed value still reports `preserve-3d`. That is what silently collapsed the
+     old ::before/::after faces to zero-height slivers, so the "pseudo-3D block" never actually
+     extruded at all and the grid read as a flat tray of 25 tiles. The painted faces are now
+     three separate leaf boxes (.lane-front + ::before + ::after) and the brightness/pulse
+     filters live on THOSE, where flattening a leaf costs nothing. */
   .lane{ position:absolute; top:-13px; left:-13px; width:26px; height:26px;
-    transform-style:preserve-3d; border:1px solid var(--edge); background:var(--gold);
-    opacity:.92; filter:brightness(1);
-    transition:filter 1.2s ease-out, transform var(--lane-tdur, .22s) ease-in-out; }
-  .lane.capacity{ background:var(--panel2); }
-  /* same top-up/decay pulse convention as .stage-box/.cube/.chain-link elsewhere in this file */
-  .lane.pulse{ filter:brightness(1.85); transition:filter .06s ease-out, transform var(--lane-tdur, .22s) ease-in-out; }
-  /* pseudo-3D block: the .lane div itself is the front face; ::before/::after are the top and
-     right-side faces, rotated into the XZ / YZ planes off the front face's own edges — same
+    /* z-extrusion of the bar. FIPS 202's Keccak-f[1600] state is 5x5 lanes each 64 BITS DEEP —
+       at the old 13px (and, given the flattening bug above, effectively 0px) this read as a
+       flat tray of nubs; at 64px it reads as 25 elongated bars, i.e. a volume. */
+    --lane-depth:64px;
+    /* per-lane face colour, and the pulse multiplier the three faces each scale their own base
+       brightness by (see .lane-front/::before/::after). */
+    --lane-col:var(--gold); --lane-bright:1;
+    transform-style:preserve-3d;
+    transition:transform var(--lane-tdur, .22s) ease-in-out; }
+  .lane.capacity{ --lane-col:var(--panel2); }
+  /* same top-up/decay pulse convention as .stage-box/.cube/.chain-link elsewhere in this file:
+     fast attack via the .pulse rule, slow decay via each face's base transition. The custom
+     property changes discretely, but each face's `filter` COMPUTED value changes with it, and
+     it is that filter value the transition interpolates. */
+  .lane.pulse{ --lane-bright:1.85; }
+  /* pseudo-3D bar: .lane-front is the front face; ::before/::after are the top and right-side
+     faces, rotated into the XZ / YZ planes off the front face's own edges — same
      rotateX/rotateY 3D-transform technique as the single cube this replaces, just sized down to
-     one lane instead of one 90px cube. */
-  .lane::before, .lane::after{ content:''; position:absolute; background:inherit; border:1px solid var(--edge); }
-  .lane::before{ width:26px; height:13px; top:-13px; left:0; filter:brightness(1.3);
-    transform:rotateX(90deg); transform-origin:bottom; }
-  .lane::after{ width:13px; height:26px; top:0; right:-13px; filter:brightness(.65);
-    transform:rotateY(90deg); transform-origin:left; }
+     one lane instead of one 90px cube, and now genuinely --lane-depth deep. */
+  .lane-front, .lane::before, .lane::after{ position:absolute; background:var(--lane-col);
+    border:1px solid var(--edge); transition:filter 1.2s ease-out; }
+  .lane.pulse .lane-front, .lane.pulse::before, .lane.pulse::after{ transition:filter .06s ease-out; }
+  .lane-front{ inset:0; filter:brightness(var(--lane-bright)); }
+  .lane::before, .lane::after{ content:''; }
+  .lane::before{ width:26px; height:var(--lane-depth); top:calc(-1 * var(--lane-depth)); left:0;
+    filter:brightness(calc(1.16 * var(--lane-bright))); transform:rotateX(90deg); transform-origin:bottom; }
+  /* LEFT face, not right: the grid's rotateY(+34deg) projects the -z depth axis to screen-LEFT,
+     so it is the left side of each bar that turns toward the camera. A right-side face here is
+     geometrically correct but self-occluded — it only ever leaked out as a 1px dark sliver. */
+  .lane::after{ width:var(--lane-depth); height:26px; top:0; left:calc(-1 * var(--lane-depth));
+    filter:brightness(calc(.72 * var(--lane-bright))); transform:rotateY(-90deg); transform-origin:right; }
   .lane-tick{ position:absolute; left:50%; top:50%; width:2px; height:11px; background:var(--ink);
-    transform:translate(-50%,-100%) rotate(0deg); transform-origin:bottom center; opacity:.55;
+    transform:translate(-50%,-100%) translateZ(1px) rotate(0deg); transform-origin:bottom center; opacity:.55;
     transition:transform .3s ease-out, opacity .3s ease-out; }
   .round-counter{ font-family:var(--mono); font-size:.7rem; color:var(--dim); }
   /* rho ONLY. Deliberately not hung off the shared `.pulse` pathway (theta/pi/chi pulse too, and
@@ -203,8 +232,8 @@
   .lane.rho-twist .lane-tick{ animation:rhoSwing .3s ease-out both;
     opacity:1; height:13px; background:var(--accent); }
   @keyframes rhoSwing{
-    0%{ transform:translate(-50%,-100%) rotate(0deg) }
-    100%{ transform:translate(-50%,-100%) rotate(var(--tick-deg, 0deg)) }
+    0%{ transform:translate(-50%,-100%) translateZ(1px) rotate(0deg) }
+    100%{ transform:translate(-50%,-100%) translateZ(1px) rotate(var(--tick-deg, 0deg)) }
   }
   .cube-legend{ font-family:var(--mono); font-size:.62rem; color:var(--dim); display:flex; gap:10px; }
   .legend-rate::before{ content:'■ '; color:var(--gold); }
@@ -410,7 +439,10 @@ const KECCAK_MASK64 = (1n << 64n) - 1n;
 function rol64(x, n) { n = BigInt(n % 64); return ((x << n) | (x >> (64n - n))) & KECCAK_MASK64; }
 function laneHex(x) { return x.toString(16).padStart(16,'0'); }
 
-const LANE_CELL = 34; // px between lane centers; keeps the 5x5 grid's footprint close to the old 90x90 cube
+// px between lane centers. Widened from 34 when the lanes gained real depth (--lane-depth,
+// 13px -> 64px): at 34px spacing the deep bars occluded their own neighbours badly enough that
+// the 5x5 arrangement stopped being readable. Tuned empirically from screenshots.
+const LANE_CELL = 42;
 const KECCAK_RATE_LANES = new Set();
 for (let i = 0; i < 17; i++) {
   // mirrors the absorb-order logic already used in keccak256WithTrace's j-loop
@@ -433,6 +465,11 @@ function buildLaneGrid() {
       const baseTransform = `translate3d(${(x - 2) * LANE_CELL}px, ${(y - 2) * LANE_CELL}px, 0)`;
       lane.dataset.baseTransform = baseTransform;
       lane.style.transform = baseTransform;
+      // .lane itself paints nothing — it is only the 3D container (see the CSS note on why it
+      // must carry no opacity/filter). The front face is this real child box.
+      const front = document.createElement('span');
+      front.className = 'lane-front';
+      lane.appendChild(front);
       const tick = document.createElement('span');
       tick.className = 'lane-tick';
       lane.appendChild(tick);
@@ -769,7 +806,9 @@ applyRhoTicks();
 
 (function setupLaneGridDrag() {
   const grid = document.getElementById('lane-grid');
-  let rotX = -20, rotY = 30, dragging = false, lastX = 0, lastY = 0;
+  // MUST match .lane-grid's stylesheet `transform: rotateX(...) rotateY(...)` — the first
+  // pointermove writes an inline transform built from these, so a mismatch makes the grid jump.
+  let rotX = -24, rotY = 34, dragging = false, lastX = 0, lastY = 0;
   function apply() { grid.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`; }
   grid.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; grid.setPointerCapture(e.pointerId); });
   grid.addEventListener('pointermove', e => {
@@ -1040,12 +1079,51 @@ function pulseBoxOrCube(boxId, sample) {
   pulseBox(boxId, sample);
 }
 
-function getSpeedMs() {
-  // slider 1..100 maps to ~43.6ms (slow) .. ~4ms (fast) per event; the slider is read LIVE
-  // each frame inside playTrace's loop (it calls this function every frame), so dragging it
-  // during playback changes pacing immediately.
-  const v = Number(document.getElementById('speed-slider').value);
-  return 4 + (100 - v) * 0.4;
+function readSpeedSlider() {
+  // the slider is read LIVE each frame inside playTrace's loop (it calls the speed function
+  // every frame), so dragging it during playback changes pacing immediately.
+  return Number(document.getElementById('speed-slider').value);
+}
+
+// MD5 and SHA-3 deliberately have SEPARATE speed functions rather than one shared one. Their
+// traces are nothing alike in shape (MD5: ~70 events, all the same kind of box-flash, no
+// held visual state; SHA-3: ~125 events with 300ms rho-twist / 220ms pi-slide HOLDS that a
+// too-fast event spacing smears on top of each other), so a pacing change tuned for one
+// algorithm must never silently retune the other.
+function getMd5SpeedMs() {
+  // slider 1..100 maps to ~43.6ms (slow) .. ~4ms (fast) per event. Unchanged from the original
+  // shared getSpeedMs(); MD5 has no held per-event effects, so fast spacing costs it nothing.
+  return 4 + (100 - readSpeedSlider()) * 0.4;
+}
+
+function getSha3SpeedMs() {
+  // "Slow default": every one of the 24 rounds plays all five sub-steps at a pace where each is
+  // actually a distinct visual event, instead of 125 events smeared into ~3 seconds.
+  //
+  // Event budget for a one-rate-block input (the common case: anything <= 135 bytes):
+  //   24 rounds x 5 sub-steps (theta/rho/pi/chi/iota) = 120
+  //   + pad + absorb-split + absorb-0 + squeeze + output                  = 5
+  //   ---------------------------------------------------------------------------
+  //   125 events total.   125 events x 100ms = 12.5s   <- default (slider 50)
+  //                       125 events x  85ms = 10.6s   <- fastest (slider 100)
+  //                       125 events x 320ms = 40s     <- slowest (slider 1)
+  // Longer inputs scale linearly (one extra rate-block = +121 events = +12.1s at default).
+  //
+  // FLOOR RATIONALE (85ms, not lower): rho holds its .rho-twist class 300ms and pi holds its
+  // slide 220ms, and each fires once per round — so the round-to-round spacing (5 x ms/event)
+  // is what has to clear those holds, or rho and pi are permanently painted on top of each
+  // other (the original 4-43.6ms range overlapped them by 5x-75x at EVERY slider position).
+  //   5 x 85ms = 425ms round spacing  >  300ms rho hold (125ms of genuine clear time)
+  //                                   >  220ms pi hold
+  // 85ms is also comfortably above one 60fps frame (16.7ms), so playTrace's
+  // `while (elapsed >= stepMs)` loop can never collapse two SHA-3 events into a single paint.
+  //
+  // Piecewise-linear so the default sits at 100ms with real range on both sides: the fast half
+  // is necessarily narrow (the 85ms floor is a hard legibility floor), the slow half opens up
+  // to 320ms for anyone who wants to actually read each sub-step.
+  const v = readSpeedSlider();
+  if (v >= 50) return 100 - (v - 50) * 0.3;   // 50 -> 100ms, 100 -> 85ms
+  return 100 + (50 - v) * 4.5;                 // 50 -> 100ms,   1 -> 320.5ms
 }
 
 async function onHashClick() {
@@ -1080,7 +1158,7 @@ async function onHashClick() {
     const numBlocks = Number(trace.find(e => e.boxId === 'split').sample.split(' ')[0]);
     renderMd5BlockChain(numBlocks);
     showDiagramFor('md5');
-    playTrace(trace, getSpeedMs, (ev) => { pulseBoxOrCube(ev.boxId, ev.sample); updateMd5RegisterView(ev); }, () => {
+    playTrace(trace, getMd5SpeedMs, (ev) => { pulseBoxOrCube(ev.boxId, ev.sample); updateMd5RegisterView(ev); }, () => {
       addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '128-bit / 32 hex chars';
@@ -1095,7 +1173,7 @@ async function onHashClick() {
     renderSha3AbsorbChain(numBlocks);
     showDiagramFor('sha3');
     document.getElementById('round-counter').textContent = 'round 0 / 24';
-    playTrace(trace, getSpeedMs, (ev) => { if (!pulseLanesFor(ev)) pulseBoxOrCube(ev.boxId, ev.sample); }, () => {
+    playTrace(trace, getSha3SpeedMs, (ev) => { if (!pulseLanesFor(ev)) pulseBoxOrCube(ev.boxId, ev.sample); }, () => {
       addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '256-bit / 64 hex chars';

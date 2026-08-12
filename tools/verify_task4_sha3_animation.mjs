@@ -18,7 +18,10 @@ await page.click('#hash-btn');
 // wait for the round counter to reach the final round
 await page.waitForFunction(
   () => document.getElementById('round-counter').textContent === 'round 24 / 24',
-  { timeout: 15000 }
+  // 30s, not the original 15s: SHA-3's pacing is deliberately slow now (getSha3SpeedMs — a full
+  // 125-event run is ~10.7s even at the FASTEST slider setting, ~12.5s at default). Purely a
+  // timeout headroom change; the assertion itself (24/24 actually reached) is unchanged.
+  { timeout: 30000 }
 );
 
 // The round counter updates on the LAST round's `iota` event, but `squeeze`/`output` trace
