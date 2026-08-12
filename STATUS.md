@@ -11,9 +11,27 @@ Spine: **recognise → identify → decode/crack → submit.**
 |---|--------|-------|-----------|
 | 1 | ROT / Caesar (+ Vigenère + Affine) | ✅ **live** | `ctf.sandhi.com.au/crypto/ceasar` |
 | 2 | Encoding | ✅ **live** | `ctf.sandhi.com.au/crypto/encoding` |
-| 3 | Hashing | ⬜ planned | `public/crypto/hash/` (planned) |
+| 3 | Hashing | ✅ **live** | `ctf.sandhi.com.au/crypto/hash` |
 | 4 | XOR | 🚧 **in progress** (demo+C1–C3 done, C4 left, not deployed) | `public/crypto/xor/` → `/crypto/xor/` |
 | — | Live Kali demo (CyberChef + archive crack) | ⬜ presenter prep | n/a |
+
+## Module 3 — Hashing (live, `/crypto/hash`)
+Avalanche-effect + internals visualization, not a puzzle ramp — no scored challenges yet (one
+idea logged in `docs/ideas-backlog.md`). From-scratch, trace-instrumented MD5 and SHA3-256/Keccak
+(no native SubtleCrypto — it lacks both, and internal-round instrumentation needs a hand-rolled
+implementation either way). One row: input (7 arrow-cycled presets, custom text first) →
+algorithm toggle + Hash + live speed slider → output (digest + fixed bit-length label). Below:
+an always-visible idle structural diagram — MD5 (Merkle–Damgård chain, real 16-op inner loop,
+block-chaining hand-off called out as the length-extension weak point) or SHA-3 (2D pad/absorb →
+rotatable CSS-3D cube for the permutation state, rate/capacity color-coded, real 24-round loop →
+2D squeeze/output) — light travels through it as it hashes, top-up-not-reset brightness pulses.
+History log (last 5, content-hash IDs so re-hashing the same input never false-flags) +
+dedicated MD5 collision demo panel, both using the real published Wang/Rescorla 2004 collision
+pair. Built via `docs/superpowers/plans/2026-08-12-hash-visualization.md` (10-task subagent-driven
+build); final whole-branch review caught a real Critical bug — SHA3-256 produced a wrong digest
+for any input where `length % 136 === 135` (a padding-merge edge case none of the standard test
+vectors happen to hit) — fixed and independently re-verified with a boundary-spanning length sweep
+before merge. Spec: `docs/superpowers/specs/2026-08-12-hash-visualization-design.md`.
 
 ## Module 1 — Caesar set (live, `/crypto/ceasar`) — 6 puzzles
 Dial instrument(s) + alphabet slide-rule + dark mode + solved-ticks. Ramp:
