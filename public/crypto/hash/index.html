@@ -166,6 +166,12 @@
   .h-label{ color:var(--dim); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .h-digest{ color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
   .h-flag{ color:var(--accent); font-weight:700; }
+
+  .collision-panel{ margin-top:24px; border:1px solid var(--edge); border-radius:8px; padding:14px 18px; background:var(--panel); }
+  .collision-panel summary{ cursor:pointer; font-family:var(--mono); font-size:.8rem; color:var(--gold); }
+  .collision-cols{ display:flex; gap:20px; margin-top:12px; }
+  .collision-col{ flex:1; }
+  #collision-verdict.ok{ color:var(--ok); } #collision-verdict.no{ color:var(--accent); }
 </style>
 </head>
 <body>
@@ -202,6 +208,22 @@
   </div>
 
   <div id="history-list"></div>
+
+  <details class="collision-panel">
+    <summary>MD5 collision demo — two different real messages, one digest</summary>
+    <div class="collision-cols">
+      <div class="collision-col">
+        <div class="box-title">Message 1</div>
+        <div id="collision-digest-1" class="h-digest">—</div>
+      </div>
+      <div class="collision-col">
+        <div class="box-title">Message 2</div>
+        <div id="collision-digest-2" class="h-digest">—</div>
+      </div>
+    </div>
+    <button id="collision-run-btn">Hash both, live</button>
+    <div id="collision-verdict"></div>
+  </details>
 
   <div class="animation-box" id="animation-box">
     <div class="diagram" id="diagram-md5">
@@ -696,6 +718,24 @@ async function onHashClick() {
   }
 }
 document.getElementById('hash-btn').onclick = onHashClick;
+
+// ---- collision demo panel ----
+const COLLISION_MSG_1_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab58712467eab4004583eb8fb7f8955ad340609f4b30283e488832571415a085125e8f7cdc99fd91dbdf280373c5bd8823e3156348f5bae6dacd436c919c6dd53e2b487da03fd02396306d248cda0e99f33420f577ee8ce54b67080a80d1ec69821bcb6a8839396f9652b6ff72a70';
+const COLLISION_MSG_2_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab50712467eab4004583eb8fb7f8955ad340609f4b30283e4888325f1415a085125e8f7cdc99fd91dbd7280373c5bd8823e3156348f5bae6dacd436c919c6dd53e23487da03fd02396306d248cda0e99f33420f577ee8ce54b67080280d1ec69821bcb6a8839396f965ab6ff72a70';
+
+document.getElementById('collision-run-btn').onclick = () => {
+  const b1 = hexToBytes(COLLISION_MSG_1_HEX), b2 = hexToBytes(COLLISION_MSG_2_HEX);
+  const r1 = md5WithTrace(b1), r2 = md5WithTrace(b2);
+  document.getElementById('collision-digest-1').textContent = r1.digest;
+  document.getElementById('collision-digest-2').textContent = r2.digest;
+  const verdict = document.getElementById('collision-verdict');
+  verdict.textContent = r1.digest === r2.digest
+    ? 'Identical. Two different real messages, the exact same MD5 output.'
+    : 'unexpected mismatch — this should never happen with these two fixed messages';
+  verdict.className = r1.digest === r2.digest ? 'verdict ok' : 'verdict no';
+  addHistoryEntry('md5', r1.digest, b1);
+  addHistoryEntry('md5', r2.digest, b2);
+};
 </script>
 </body>
 </html>
