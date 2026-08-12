@@ -135,7 +135,7 @@
     transition:border-color .2s, color .2s, box-shadow 1.2s ease-out}
   .chain-link.shown{display:flex}
   .chain-link.active{border-color:var(--gold); color:var(--gold)}
-  .chain-link.pulse{border-color:var(--gold); color:var(--gold); box-shadow:0 0 8px var(--gold);
+  .chain-link.pulse{border-color:var(--accent); color:var(--accent); box-shadow:0 0 8px var(--accent);
     transition:border-color .06s ease-out, color .06s ease-out, box-shadow .06s ease-out}
 
   .absorb-chain{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center}
@@ -159,7 +159,7 @@
   .face.bottom{ transform: translateY(45px) rotateX(-90deg); }
   .cube-legend{ font-family:var(--mono); font-size:.62rem; color:var(--dim); display:flex; gap:10px; }
   .legend-rate::before{ content:'■ '; color:var(--gold); }
-  .legend-capacity::before{ content:'■ '; color:var(--panel2); }
+  .legend-capacity::before{ content:'■ '; color:var(--dim); }
 
   /* Task 6: outer input/output box flash on Hash click, distinct from per-diagram-box pulses */
   #input-box, #output-box{ transition: background-color .4s ease-out; }
@@ -194,18 +194,18 @@
   <div class="hash-row">
     <div class="box" id="input-box">
       <div class="box-title">Input</div>
-      <button class="arrow-btn" id="input-prev">&#9664;</button>
+      <button class="arrow-btn" id="input-prev" aria-label="Previous input preset">&#9664;</button>
       <textarea id="input-custom" placeholder="type something..."></textarea>
       <div id="input-preset-display" class="preset-display"></div>
-      <button class="arrow-btn" id="input-next">&#9654;</button>
+      <button class="arrow-btn" id="input-next" aria-label="Next input preset">&#9654;</button>
     </div>
     <div class="box" id="algo-box">
       <div class="box-title">Algorithm</div>
-      <button class="arrow-btn" id="algo-prev">&#9664;</button>
+      <button class="arrow-btn" id="algo-prev" aria-label="Previous algorithm">&#9664;</button>
       <span id="algo-name">MD5</span>
-      <button class="arrow-btn" id="algo-next">&#9654;</button>
+      <button class="arrow-btn" id="algo-next" aria-label="Next algorithm">&#9654;</button>
       <button id="hash-btn">Hash</button>
-      <input type="range" id="speed-slider" min="1" max="100" value="50">
+      <input type="range" id="speed-slider" min="1" max="100" value="50" aria-label="Animation speed">
     </div>
     <div class="box" id="output-box">
       <div class="box-title">Output</div>
@@ -213,24 +213,6 @@
       <div id="output-bits"></div>
     </div>
   </div>
-
-  <div id="history-list"></div>
-
-  <details class="collision-panel">
-    <summary>MD5 collision demo — two different real messages, one digest</summary>
-    <div class="collision-cols">
-      <div class="collision-col">
-        <div class="box-title">Message 1</div>
-        <div id="collision-digest-1" class="h-digest">—</div>
-      </div>
-      <div class="collision-col">
-        <div class="box-title">Message 2</div>
-        <div id="collision-digest-2" class="h-digest">—</div>
-      </div>
-    </div>
-    <button id="collision-run-btn">Hash both, live</button>
-    <div id="collision-verdict"></div>
-  </details>
 
   <div class="animation-box" id="animation-box">
     <div class="diagram" id="diagram-md5">
@@ -264,7 +246,7 @@
             </div>
           </div>
         </div>
-        <div class="chain-link" id="hash-box-chain-0"><span>chains into next block</span></div>
+        <div class="chain-link" id="hash-box-chain-0" title="entire state passed in the clear — this hand-off is what a length-extension attack exploits"><span>chains into next block</span></div>
         <!-- Task 6 adds/removes additional block-group / chain-link elements here for however many
              real blocks the current input actually produces (block count varies by input length) -->
       </div>
@@ -299,6 +281,24 @@
       <div class="stage-box" id="hash-box-output"><span class="box-title">Output</span><span class="sample"></span></div>
     </div>
   </div>
+
+  <div id="history-list"></div>
+
+  <details class="collision-panel">
+    <summary>MD5 collision demo — two different real messages, one digest</summary>
+    <div class="collision-cols">
+      <div class="collision-col">
+        <div class="box-title">Message 1</div>
+        <div id="collision-digest-1" class="h-digest">—</div>
+      </div>
+      <div class="collision-col">
+        <div class="box-title">Message 2</div>
+        <div id="collision-digest-2" class="h-digest">—</div>
+      </div>
+    </div>
+    <button id="collision-run-btn">Hash both, live</button>
+    <div id="collision-verdict"></div>
+  </details>
 </div>
 <script>
 function strToBytes(s) { return [...new TextEncoder().encode(s)]; }
@@ -405,8 +405,8 @@ function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32
   const trace = [];
   trace.push({ boxId:'pad', kind:'activate', sample:`+0x${suffix.toString(16)}, multi-rate pad` });
   const msg = [...bytes, suffix];
-  while (msg.length % rateBytes !== rateBytes - 1) msg.push(0);
-  msg.push(0x80);
+  while (msg.length % rateBytes !== 0) msg.push(0);
+  msg[msg.length - 1] |= 0x80;
   const numBlocks = msg.length / rateBytes;
   trace.push({ boxId:'absorb-split', kind:'activate', sample:`${numBlocks} rate-block(s) x ${rateBytes*8} bits` });
   for (let i = 0; i < msg.length; i += rateBytes) {
@@ -481,6 +481,7 @@ async function getActiveInputBytes() {
   if (p.kind === 'fetch' || p.kind === 'fetch-binary') {
     if (cachedFetchedBytes[p.id]) return cachedFetchedBytes[p.id];
     const res = await fetch(p.url);
+    if (!res.ok) throw new Error(`failed to load preset "${p.id}": ${res.status}`);
     const buf = new Uint8Array(await res.arrayBuffer());
     const bytes = [...buf];
     cachedFetchedBytes[p.id] = bytes;
@@ -545,10 +546,22 @@ function renderHistory() {
       other.algo === entry.algo && other.digest === entry.digest && other.id !== entry.id);
     const row = document.createElement('div');
     row.className = 'history-row' + (isCollision ? ' collision' : '');
-    row.innerHTML = `<span class="h-algo">${entry.algo.toUpperCase()}</span>` +
-      `<span class="h-label">${entry.label}</span>` +
-      `<span class="h-digest">${entry.digest}</span>` +
-      (isCollision ? '<span class="h-flag">⚑ COLLISION</span>' : '');
+    const algoEl = document.createElement('span');
+    algoEl.className = 'h-algo';
+    algoEl.textContent = entry.algo.toUpperCase();
+    const labelEl = document.createElement('span');
+    labelEl.className = 'h-label';
+    labelEl.textContent = entry.label;
+    const digestEl = document.createElement('span');
+    digestEl.className = 'h-digest';
+    digestEl.textContent = entry.digest;
+    row.append(algoEl, labelEl, digestEl);
+    if (isCollision) {
+      const flagEl = document.createElement('span');
+      flagEl.className = 'h-flag';
+      flagEl.textContent = '⚑ COLLISION';
+      row.appendChild(flagEl);
+    }
     el.appendChild(row);
   });
 }
@@ -726,7 +739,19 @@ async function onHashClick() {
   // too — algo/label just need the same treatment for consistency).
   const algo = getAlgorithm();
   const label = inputLabel();
-  const bytes = await getActiveInputBytes();
+  const myRunId = currentRunId;
+  let bytes;
+  try {
+    bytes = await getActiveInputBytes();
+  } catch (err) {
+    if (myRunId !== currentRunId) return; // superseded while the fetch was failing
+    document.getElementById('output-digest').textContent = "couldn't load that preset";
+    return;
+  }
+  // A newer click (algorithm/preset switch, or another Hash click) may have superseded this one
+  // while getActiveInputBytes()'s fetch was in flight — the only await in this function. Bail
+  // silently rather than animate the wrong (now-hidden) diagram with stale bytes.
+  if (myRunId !== currentRunId) return;
   document.getElementById('input-box').classList.add('active-flash');
   setTimeout(() => document.getElementById('input-box').classList.remove('active-flash'), 400);
   if (algo === 'md5') {
