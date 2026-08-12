@@ -56,6 +56,92 @@ function md5WithTrace(bytes) {
   trace.push({ boxId:'output', kind:'activate', sample: digest });
   return { digest, trace };
 }
+
+function keccakRoundConstants() {
+  function rc(t) {
+    if (t % 255 === 0) return 1;
+    let R = [1,0,0,0,0,0,0,0];
+    for (let i = 1; i <= (t % 255); i++) {
+      R = [0, ...R];
+      R[0] ^= R[8]; R[4] ^= R[8]; R[5] ^= R[8]; R[6] ^= R[8];
+      R = R.slice(0, 8);
+    }
+    return R[0];
+  }
+  const RC = [];
+  for (let rnd = 0; rnd < 24; rnd++) {
+    let val = 0n;
+    for (let j = 0; j < 7; j++) {
+      const bitpos = (1 << j) - 1;
+      if (rc(j + 7*rnd)) val |= (1n << BigInt(bitpos));
+    }
+    RC.push(val);
+  }
+  return RC;
+}
+const KECCAK_RC = keccakRoundConstants();
+const KECCAK_RHO_OFFSETS = [[0,36,3,41,18],[1,44,10,45,2],[62,6,43,15,61],[28,55,25,21,56],[27,20,39,8,14]];
+const KECCAK_MASK64 = (1n << 64n) - 1n;
+function rol64(x, n) { n = BigInt(n % 64); return ((x << n) | (x >> (64n - n))) & KECCAK_MASK64; }
+function laneHex(x) { return x.toString(16).padStart(16,'0'); }
+
+function keccakF1600WithTrace(state, trace) {
+  for (let rnd = 0; rnd < 24; rnd++) {
+    const C = [];
+    for (let x = 0; x < 5; x++) C.push(state[x][0]^state[x][1]^state[x][2]^state[x][3]^state[x][4]);
+    const D = [];
+    for (let x = 0; x < 5; x++) D.push(C[(x+4)%5] ^ rol64(C[(x+1)%5], 1));
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) state[x][y] ^= D[x];
+    const B = [[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n]];
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
+      const nx = y, ny = (2*x + 3*y) % 5;
+      B[nx][ny] = rol64(state[x][y], KECCAK_RHO_OFFSETS[x][y]);
+    }
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
+      state[x][y] = (B[x][y] ^ ((~B[(x+1)%5][y]) & B[(x+2)%5][y])) & KECCAK_MASK64;
+    }
+    state[0][0] ^= KECCAK_RC[rnd];
+    trace.push({ boxId:`cube-r${rnd}`, kind:'activate', sample: laneHex(state[0][0]).slice(0,8) });
+  }
+  return state;
+}
+
+function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32) {
+  let state = [];
+  for (let x = 0; x < 5; x++) state.push([0n,0n,0n,0n,0n]);
+  const trace = [];
+  trace.push({ boxId:'pad', kind:'activate', sample:`+0x${suffix.toString(16)}, multi-rate pad` });
+  const msg = [...bytes, suffix];
+  while (msg.length % rateBytes !== rateBytes - 1) msg.push(0);
+  msg.push(0x80);
+  const numBlocks = msg.length / rateBytes;
+  trace.push({ boxId:'absorb-split', kind:'activate', sample:`${numBlocks} rate-block(s) x ${rateBytes*8} bits` });
+  for (let i = 0; i < msg.length; i += rateBytes) {
+    const blockIdx = i / rateBytes;
+    trace.push({ boxId:`absorb-${blockIdx}`, kind:'flow', sample:`block ${blockIdx} -> rate` });
+    const block = msg.slice(i, i + rateBytes);
+    for (let j = 0; j < rateBytes; j += 8) {
+      const x = (j/8) % 5, y = Math.floor((j/8)/5);
+      let lane = 0n;
+      for (let b = 7; b >= 0; b--) lane = (lane << 8n) | BigInt(block[j+b] || 0);
+      state[x][y] ^= lane;
+    }
+    state = keccakF1600WithTrace(state, trace);
+  }
+  trace.push({ boxId:'squeeze', kind:'flow', sample:'reading rate -> output' });
+  let out = [];
+  while (out.length < outBytes) {
+    for (let j = 0; j < rateBytes && out.length < outBytes; j += 8) {
+      const x = (j/8) % 5, y = Math.floor((j/8)/5);
+      let lane = state[x][y];
+      for (let b = 0; b < 8 && out.length < outBytes; b++) { out.push(Number(lane & 0xffn)); lane >>= 8n; }
+    }
+    if (out.length < outBytes) state = keccakF1600WithTrace(state, trace);
+  }
+  const digest = out.map(b => b.toString(16).padStart(2,'0')).join('');
+  trace.push({ boxId:'output', kind:'activate', sample: digest });
+  return { digest, trace };
+}
 </script>
 </body>
 </html>
