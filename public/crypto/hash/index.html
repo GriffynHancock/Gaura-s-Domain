@@ -157,6 +157,15 @@
   /* Task 6: outer input/output box flash on Hash click, distinct from per-diagram-box pulses */
   #input-box, #output-box{ transition: background-color .4s ease-out; }
   #input-box.active-flash, #output-box.active-flash{ background-color: color-mix(in srgb, var(--gold) 25%, var(--panel)); transition: background-color .05s ease-out; }
+
+  #history-list{ display:flex; flex-direction:column; gap:6px; margin-top:14px; }
+  .history-row{ font-family:var(--mono); font-size:.7rem; display:flex; gap:10px; align-items:center;
+    padding:6px 10px; border:1px solid var(--edge); border-radius:4px; background:var(--panel2); }
+  .history-row.collision{ border-color:var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel2)); }
+  .h-algo{ color:var(--gold); font-weight:700; min-width:34px; }
+  .h-label{ color:var(--dim); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .h-digest{ color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
+  .h-flag{ color:var(--accent); font-weight:700; }
 </style>
 </head>
 <body>
@@ -191,6 +200,8 @@
       <div id="output-bits"></div>
     </div>
   </div>
+
+  <div id="history-list"></div>
 
   <div class="animation-box" id="animation-box">
     <div class="diagram" id="diagram-md5">
@@ -457,6 +468,46 @@ document.getElementById('input-next').onclick = () => { presetIndex = (presetInd
 document.getElementById('input-custom').addEventListener('input', e => { customText = e.target.value; });
 renderInputBox();
 
+// ---- history log ----
+let historyLog = []; // {algo, digest, id, label}, newest first, max 5
+
+function fnvId(bytes) {
+  let h = 2166136261 >>> 0;
+  for (const b of bytes) { h ^= b; h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+function inputLabel() {
+  const p = PRESETS[presetIndex];
+  if (p.kind === 'custom') return customText ? `"${customText.slice(0, 24)}${customText.length > 24 ? '…' : ''}"` : '(empty custom)';
+  return p.label;
+}
+
+function addHistoryEntry(algo, digest, inputBytes) {
+  const entry = { algo, digest, id: fnvId(inputBytes), label: inputLabel() };
+  historyLog.unshift(entry);
+  historyLog = historyLog.slice(0, 5);
+  renderHistory();
+}
+
+function renderHistory() {
+  const el = document.getElementById('history-list');
+  el.innerHTML = '';
+  historyLog.forEach((entry, i) => {
+    // a real collision: same algo, same digest, but a DIFFERENT id (different actual input) —
+    // re-hashing the identical input (same id) must NOT be flagged, that's expected/boring.
+    const isCollision = historyLog.some((other, j) => j !== i &&
+      other.algo === entry.algo && other.digest === entry.digest && other.id !== entry.id);
+    const row = document.createElement('div');
+    row.className = 'history-row' + (isCollision ? ' collision' : '');
+    row.innerHTML = `<span class="h-algo">${entry.algo.toUpperCase()}</span>` +
+      `<span class="h-label">${entry.label}</span>` +
+      `<span class="h-digest">${entry.digest}</span>` +
+      (isCollision ? '<span class="h-flag">⚑ COLLISION</span>' : '');
+    el.appendChild(row);
+  });
+}
+
 function renderAlgorithmBox() {
   document.getElementById('algo-name').textContent = currentAlgorithm === 'md5' ? 'MD5' : 'SHA-3';
 }
@@ -622,6 +673,7 @@ async function onHashClick() {
     document.getElementById('diagram-md5').style.display = '';
     document.getElementById('diagram-sha3').style.display = 'none';
     playTrace(trace, getSpeedMs, (ev) => pulseBoxOrCube(ev.boxId, ev.sample), () => {
+      addHistoryEntry(algo, digest, bytes);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '128-bit / 32 hex chars';
       document.getElementById('output-box').classList.add('active-flash');
@@ -635,6 +687,7 @@ async function onHashClick() {
     document.getElementById('diagram-md5').style.display = 'none';
     document.getElementById('diagram-sha3').style.display = '';
     playTrace(trace, getSpeedMs, (ev) => pulseBoxOrCube(ev.boxId, ev.sample), () => {
+      addHistoryEntry(algo, digest, bytes);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '256-bit / 64 hex chars';
       document.getElementById('output-box').classList.add('active-flash');
