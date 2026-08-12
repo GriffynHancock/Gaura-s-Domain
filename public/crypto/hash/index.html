@@ -81,6 +81,7 @@
     border:1px solid #000; border-radius:5px; padding:12px 10px; word-break:break-all;
     box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset; min-height:1.6em}
   #output-bits{font-family:var(--mono); font-size:.68rem; color:var(--dim); letter-spacing:.06em}
+  .output-annotation{ font-family:var(--mono); font-size:.72rem; color:var(--accent); min-height:1.2em; }
 
   /* ---- animation / diagram box ---- */
   .animation-box{background:var(--panel); border:1px solid var(--edge); border-radius:10px;
@@ -220,6 +221,7 @@
       <div class="box-title">Output</div>
       <div id="output-digest">&mdash;</div>
       <div id="output-bits"></div>
+      <div id="output-annotation" class="output-annotation"></div>
     </div>
   </div>
 
@@ -505,6 +507,13 @@ function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32
   b.onclick=()=>{r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; localStorage.setItem('hash-theme',r.dataset.theme); sync();};})();
 
 // ---- presets ----
+// COLLISION_MSG_1_HEX / COLLISION_MSG_2_HEX are defined here (not down by the collision demo
+// panel's code, where they used to live) so the two collision-* PRESETS entries below can
+// reference them; the collision demo panel further down reuses these same two consts rather than
+// duplicating the hex strings.
+const COLLISION_MSG_1_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab58712467eab4004583eb8fb7f8955ad340609f4b30283e488832571415a085125e8f7cdc99fd91dbdf280373c5bd8823e3156348f5bae6dacd436c919c6dd53e2b487da03fd02396306d248cda0e99f33420f577ee8ce54b67080a80d1ec69821bcb6a8839396f9652b6ff72a70';
+const COLLISION_MSG_2_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab50712467eab4004583eb8fb7f8955ad340609f4b30283e4888325f1415a085125e8f7cdc99fd91dbd7280373c5bd8823e3156348f5bae6dacd436c919c6dd53e23487da03fd02396306d248cda0e99f33420f577ee8ce54b67080280d1ec69821bcb6a8839396f965ab6ff72a70';
+
 const PRESETS = [
   { id: 'custom', label: 'Custom', kind: 'custom' },
   { id: 'letter-a', label: 'Letter: a', kind: 'fixed', text: 'a' },
@@ -513,8 +522,8 @@ const PRESETS = [
     text: '  \t ​     \t​  ' },
   { id: 'pubtext', label: 'Public-domain text', kind: 'fetch', url: 'assets/pubtext.txt' },
   { id: 'cat', label: 'Cat photo', kind: 'fetch-binary', url: 'assets/cat-thumb.jpg' },
-  { id: 'collision', label: 'MD5 collision message', kind: 'fixed-hex',
-    hex: 'd131dd02c5e6eec4693d9a0698aff95c2fcab58712467eab4004583eb8fb7f8955ad340609f4b30283e488832571415a085125e8f7cdc99fd91dbdf280373c5bd8823e3156348f5bae6dacd436c919c6dd53e2b487da03fd02396306d248cda0e99f33420f577ee8ce54b67080a80d1ec69821bcb6a8839396f9652b6ff72a70' },
+  { id: 'collision-msg1', label: 'MD5 collision — message 1', kind: 'fixed-hex', hex: COLLISION_MSG_1_HEX },
+  { id: 'collision-msg2', label: 'MD5 collision — message 2', kind: 'fixed-hex', hex: COLLISION_MSG_2_HEX },
 ];
 
 let presetIndex = 0;
@@ -958,6 +967,7 @@ async function onHashClick() {
   // too — algo/label just need the same treatment for consistency).
   const algo = getAlgorithm();
   const label = inputLabel();
+  const presetId = PRESETS[presetIndex].id; // same synchronous-capture rule as algo/label above
   const myRunId = currentRunId;
   let bytes;
   try {
@@ -982,6 +992,7 @@ async function onHashClick() {
       addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '128-bit / 32 hex chars';
+      updateCollisionAnnotation(algo, presetId);
       document.getElementById('output-box').classList.add('active-flash');
       setTimeout(() => document.getElementById('output-box').classList.remove('active-flash'), 400);
     });
@@ -996,16 +1007,25 @@ async function onHashClick() {
       addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '256-bit / 64 hex chars';
+      updateCollisionAnnotation(algo, presetId);
       document.getElementById('output-box').classList.add('active-flash');
       setTimeout(() => document.getElementById('output-box').classList.remove('active-flash'), 400);
     });
   }
 }
+
+function updateCollisionAnnotation(algo, presetId) {
+  const el = document.getElementById('output-annotation');
+  if (algo === 'md5' && presetId === 'collision-msg1') { el.textContent = 'shares this digest with message 2'; return; }
+  if (algo === 'md5' && presetId === 'collision-msg2') { el.textContent = 'shares this digest with message 1'; return; }
+  el.textContent = '';
+}
+
 document.getElementById('hash-btn').onclick = onHashClick;
 
 // ---- collision demo panel ----
-const COLLISION_MSG_1_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab58712467eab4004583eb8fb7f8955ad340609f4b30283e488832571415a085125e8f7cdc99fd91dbdf280373c5bd8823e3156348f5bae6dacd436c919c6dd53e2b487da03fd02396306d248cda0e99f33420f577ee8ce54b67080a80d1ec69821bcb6a8839396f9652b6ff72a70';
-const COLLISION_MSG_2_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab50712467eab4004583eb8fb7f8955ad340609f4b30283e4888325f1415a085125e8f7cdc99fd91dbd7280373c5bd8823e3156348f5bae6dacd436c919c6dd53e23487da03fd02396306d248cda0e99f33420f577ee8ce54b67080280d1ec69821bcb6a8839396f965ab6ff72a70';
+// COLLISION_MSG_1_HEX / COLLISION_MSG_2_HEX now live earlier in the file, next to PRESETS
+// (public/crypto/hash/index.html, just above the PRESETS array) — reused here, not duplicated.
 
 document.getElementById('collision-run-btn').onclick = () => {
   const b1 = hexToBytes(COLLISION_MSG_1_HEX), b2 = hexToBytes(COLLISION_MSG_2_HEX);
