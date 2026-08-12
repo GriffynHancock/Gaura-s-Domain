@@ -66,6 +66,8 @@
   .preset-display{flex:1 1 auto; min-width:0; font-family:var(--mono); font-size:.86rem; color:var(--ink);
     background:var(--panel2); border:1px solid var(--edge); border-radius:5px; padding:12px 10px;
     text-align:center; word-break:break-word}
+  .preset-thumb{ max-width:80px; max-height:80px; border-radius:4px; display:block; margin:0 auto 6px; }
+  .preset-thumb-caption{ font-size:.72rem; color:var(--dim); text-align:center; }
 
   #algo-name{flex:1 1 auto; font-family:var(--disp); font-weight:600; font-size:1.15rem; text-align:center}
   #hash-btn{flex:0 0 100%; font-family:var(--mono); font-weight:700; font-size:.78rem; letter-spacing:.14em;
@@ -79,6 +81,7 @@
     border:1px solid #000; border-radius:5px; padding:12px 10px; word-break:break-all;
     box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset; min-height:1.6em}
   #output-bits{font-family:var(--mono); font-size:.68rem; color:var(--dim); letter-spacing:.06em}
+  .output-annotation{ font-family:var(--mono); font-size:.72rem; color:var(--accent); min-height:1.2em; }
 
   /* ---- animation / diagram box ---- */
   .animation-box{background:var(--panel); border:1px solid var(--edge); border-radius:10px;
@@ -110,53 +113,90 @@
   .flow-arrow.pulse{background:var(--gold); box-shadow:0 0 8px var(--gold);
     transition:background-color .06s ease-out, box-shadow .06s ease-out}
 
-  .block-chain{display:flex; align-items:flex-start; gap:22px; flex-wrap:wrap; justify-content:center}
-  .block-group{display:flex; flex-direction:column; align-items:center; gap:8px;
-    border:1px dashed var(--edge); border-radius:10px; padding:12px}
+  /* width:100% matters: .block-chain is a flex item of .diagram (align-items:center), and all of
+     its own children are position:absolute, so without it the container shrink-to-fits to 0 and
+     every .block-group inherits a 0-width containing block (which used to wrap .reg-row onto four
+     lines). renderMd5BlockChain measures and raises min-height for multi-block stacks. */
+  .block-chain{ position:relative; perspective:900px; display:flex; justify-content:center;
+    align-items:flex-start; width:100%; min-height:210px; padding-top:6px; }
+  .block-group{ position:absolute; top:0; left:50%; transform-style:preserve-3d;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    border:1px solid var(--edge); border-radius:10px; padding:12px 16px; background:var(--panel2);
+    box-shadow:0 10px 24px -18px #000; filter:brightness(1); transition:filter 1.2s ease-out; }
+  /* same top-up/decay convention as .stage-box/.lane/.cube elsewhere — pulses both the block that
+     just finished and the block it's handing state into, so the hand-off reads as "one running
+     state carried forward" rather than a labeled connector. */
+  .block-group.pulse{ filter:brightness(1.4); transition:filter .06s ease-out; }
   .block-label{font-family:var(--mono); font-size:.66rem; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
-  .round-row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
-  .round-box{min-width:110px; padding:10px 12px; position:relative}
-  .loop-dot{width:9px; height:9px; border-radius:50%; background:var(--edge); display:inline-block;
-    transition:background .2s, transform .2s, box-shadow 1.2s ease-out}
-  .loop-dot.spin{background:var(--gold); animation:loopSpin .5s linear infinite}
-  /* fast-in/slow-out "breathing" pulse, same top-up/decay convention as .stage-box/.cube/.chain-link:
-     .pulse gets a quick transition in, then two frames later JS removes the class and the base
-     .loop-dot rule above (1.2s ease-out) carries the glow back down instead of snapping it off. */
-  .loop-dot.pulse{background:var(--gold); box-shadow:0 0 6px var(--gold);
-    transition:background .06s ease-out, box-shadow .06s ease-out}
-  @keyframes loopSpin{ 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
-
-  .chain-link{display:none; align-items:center; justify-content:center; gap:6px;
-    font-family:var(--mono); font-size:.66rem; color:var(--dim); letter-spacing:.1em;
-    border:1px solid var(--edge); border-radius:20px; padding:4px 12px; background:var(--panel2);
-    /* box-shadow decays at the same 1.2s ease-out as .stage-box/.flow-arrow/.cube/.loop-dot, so
-       the length-extension callout — the spec's spotlight element — breathes with the same
-       fast-in/slow-out feel as everything else, not a flat symmetric .2s fade */
-    transition:border-color .2s, color .2s, box-shadow 1.2s ease-out}
-  .chain-link.shown{display:flex}
-  .chain-link.active{border-color:var(--gold); color:var(--gold)}
-  .chain-link.pulse{border-color:var(--accent); color:var(--accent); box-shadow:0 0 8px var(--accent);
-    transition:border-color .06s ease-out, color .06s ease-out, box-shadow .06s ease-out}
-
+  .stack-caption{ display:none; font-family:var(--mono); font-size:.66rem; color:var(--dim);
+    text-align:center; max-width:44ch; margin:6px auto 0; }
+  .stack-caption.shown{ display:block; }
+  /* nowrap is load-bearing: A/B/C/D must read as "four boxes side by side". With wrap they
+     collapsed into a vertical column (the absolutely-positioned .block-group had no width to
+     lay them out in), which tripled every card's height and buried the stacked cards' labels. */
+  .reg-row{ display:flex; gap:8px; flex-wrap:nowrap; justify-content:center; }
+  .reg-box{ min-width:90px; padding:8px 10px; }
+  .reg-val{ font-family:var(--mono); font-size:.8rem; color:var(--ink); }
+  .func-row{ display:flex; gap:8px; justify-content:center; font-family:var(--mono);
+    font-size:.72rem; margin-top:6px; }
+  .func-box{ padding:4px 10px; border:1px solid var(--edge); border-radius:6px; color:var(--dim);
+    transition:border-color .2s, color .2s, background-color .2s; }
+  .func-box.active{ border-color:var(--accent); color:var(--accent);
+    background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .step-detail{ display:flex; gap:14px; justify-content:center; font-family:var(--mono);
+    font-size:.7rem; color:var(--dim); margin-top:6px; }
+  .step-counter{ font-family:var(--mono); font-size:.68rem; color:var(--dim);
+    text-align:center; margin-top:4px; }
   .absorb-chain{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center}
 
   .cube-wrap{ perspective: 800px; display:flex; flex-direction:column; align-items:center; gap:8px; }
-  .cube{ width:90px; height:90px; position:relative; transform-style:preserve-3d;
-    transform: rotateX(-20deg) rotateY(30deg); cursor:grab; touch-action:none;
-    filter:brightness(1); transition:filter 1.2s ease-out; }
-  .cube:active{ cursor:grabbing; }
-  /* Task 7: whole-cube brightness pulse for Keccak's 24 internal rounds — same top-up/decay
-     convention as Task 6's .pulse variants, but on `filter` (not the box's border/shadow
-     properties) so it never touches the `transform` Task 5's drag handler writes inline. */
-  .cube.pulse{ filter:brightness(1.6); transition:filter .06s ease-out; }
-  .face{ position:absolute; width:90px; height:90px; border:1px solid var(--edge);
-    background:linear-gradient(135deg, var(--gold) 0 50%, var(--panel2) 50% 100%); opacity:.92; }
-  .face.front{ transform: translateZ(45px); }
-  .face.back{ transform: translateZ(-45px) rotateY(180deg); }
-  .face.left{ transform: translateX(-45px) rotateY(-90deg); }
-  .face.right{ transform: translateX(45px) rotateY(90deg); }
-  .face.top{ transform: translateY(-45px) rotateX(90deg); }
-  .face.bottom{ transform: translateY(45px) rotateX(-90deg); }
+  /* #lane-grid is a 1x1 point (every .lane is absolutely positioned around its centre), so it
+     contributes ~0 height to the flex column and the ~180px-tall painted grid would sit on top
+     of the legend and the round counter below it. The margin reserves the grid's real projected
+     footprint: lanes reach +/-(2*LANE_CELL + 13) = 81px from centre, ~92px once the
+     rotateX/rotateY projection and the perspective scale are counted. */
+  .lane-grid{ width:1px; height:1px; position:relative; transform-style:preserve-3d;
+    margin:92px 92px; transform: rotateX(-20deg) rotateY(30deg); cursor:grab; touch-action:none; }
+  .lane-grid:active{ cursor:grabbing; }
+  /* transform is transitioned from the stylesheet (NOT from an inline `transition:` shorthand in
+     JS — that would reset transition-property to `transform` alone and permanently kill the
+     filter decay below for every lane it touched). JS only ever writes `style.transform`;
+     --lane-tdur lets pi (.22s) and rho (.3s) use different durations without touching
+     transition-property. */
+  .lane{ position:absolute; top:-13px; left:-13px; width:26px; height:26px;
+    transform-style:preserve-3d; border:1px solid var(--edge); background:var(--gold);
+    opacity:.92; filter:brightness(1);
+    transition:filter 1.2s ease-out, transform var(--lane-tdur, .22s) ease-in-out; }
+  .lane.capacity{ background:var(--panel2); }
+  /* same top-up/decay pulse convention as .stage-box/.cube/.chain-link elsewhere in this file */
+  .lane.pulse{ filter:brightness(1.85); transition:filter .06s ease-out, transform var(--lane-tdur, .22s) ease-in-out; }
+  /* pseudo-3D block: the .lane div itself is the front face; ::before/::after are the top and
+     right-side faces, rotated into the XZ / YZ planes off the front face's own edges — same
+     rotateX/rotateY 3D-transform technique as the single cube this replaces, just sized down to
+     one lane instead of one 90px cube. */
+  .lane::before, .lane::after{ content:''; position:absolute; background:inherit; border:1px solid var(--edge); }
+  .lane::before{ width:26px; height:13px; top:-13px; left:0; filter:brightness(1.3);
+    transform:rotateX(90deg); transform-origin:bottom; }
+  .lane::after{ width:13px; height:26px; top:0; right:-13px; filter:brightness(.65);
+    transform:rotateY(90deg); transform-origin:left; }
+  .lane-tick{ position:absolute; left:50%; top:50%; width:2px; height:11px; background:var(--ink);
+    transform:translate(-50%,-100%) rotate(0deg); transform-origin:bottom center; opacity:.55;
+    transition:transform .3s ease-out, opacity .3s ease-out; }
+  .round-counter{ font-family:var(--mono); font-size:.7rem; color:var(--dim); }
+  /* rho ONLY. Deliberately not hung off the shared `.pulse` pathway (theta/pi/chi pulse too, and
+     .pulse is stripped after 2 rAFs — far too short for a .3s twist to be seen). The rho-twist
+     class is added only for step==='rho' events and held by a setTimeout, the same
+     hold-then-revert pattern pi uses. Each lane rotates by its OWN rho offset, so rho reads as
+     "25 lanes twisting by 25 different amounts" instead of another flash-everything. */
+  /* The twist lives on the TICK, not on the lane's own transform: pi writes style.transform on
+     every lane a few ms later, which would wipe a lane-level rotateZ long before it was visible.
+     --tick-deg is that lane's real rho offset expressed as a fraction of the 64-bit ring. */
+  .lane.rho-twist .lane-tick{ animation:rhoSwing .3s ease-out both;
+    opacity:1; height:13px; background:var(--accent); }
+  @keyframes rhoSwing{
+    0%{ transform:translate(-50%,-100%) rotate(0deg) }
+    100%{ transform:translate(-50%,-100%) rotate(var(--tick-deg, 0deg)) }
+  }
   .cube-legend{ font-family:var(--mono); font-size:.62rem; color:var(--dim); display:flex; gap:10px; }
   .legend-rate::before{ content:'■ '; color:var(--gold); }
   .legend-capacity::before{ content:'■ '; color:var(--dim); }
@@ -211,6 +251,7 @@
       <div class="box-title">Output</div>
       <div id="output-digest">&mdash;</div>
       <div id="output-bits"></div>
+      <div id="output-annotation" class="output-annotation"></div>
     </div>
   </div>
 
@@ -220,36 +261,8 @@
       <div class="flow-arrow"></div>
       <div class="stage-box" id="hash-box-split"><span class="box-title">Split into 512-bit blocks</span><span class="sample"></span></div>
       <div class="flow-arrow"></div>
-      <div class="block-chain" id="md5-block-chain">
-        <div class="block-group" id="block-group-0">
-          <div class="block-label">Block 0</div>
-          <div class="round-row">
-            <div class="stage-box round-box" id="hash-box-block-0-r1">
-              <span class="box-title">Round 1</span>
-              <span class="loop-dot" id="hash-box-block-0-r1-loop"></span>
-              <span class="sample"></span>
-            </div>
-            <div class="stage-box round-box" id="hash-box-block-0-r2">
-              <span class="box-title">Round 2</span>
-              <span class="loop-dot" id="hash-box-block-0-r2-loop"></span>
-              <span class="sample"></span>
-            </div>
-            <div class="stage-box round-box" id="hash-box-block-0-r3">
-              <span class="box-title">Round 3</span>
-              <span class="loop-dot" id="hash-box-block-0-r3-loop"></span>
-              <span class="sample"></span>
-            </div>
-            <div class="stage-box round-box" id="hash-box-block-0-r4">
-              <span class="box-title">Round 4</span>
-              <span class="loop-dot" id="hash-box-block-0-r4-loop"></span>
-              <span class="sample"></span>
-            </div>
-          </div>
-        </div>
-        <div class="chain-link" id="hash-box-chain-0" title="entire state passed in the clear — this hand-off is what a length-extension attack exploits"><span>chains into next block</span></div>
-        <!-- Task 6 adds/removes additional block-group / chain-link elements here for however many
-             real blocks the current input actually produces (block count varies by input length) -->
-      </div>
+      <div class="block-chain" id="md5-block-chain"></div>
+      <div class="stack-caption" id="stack-caption">state carries forward, card to card — this hand-off in the clear is what a length-extension attack exploits</div>
       <div class="flow-arrow"></div>
       <div class="stage-box" id="hash-box-output"><span class="box-title">Output state</span><span class="sample"></span></div>
     </div>
@@ -262,18 +275,12 @@
         <!-- Task 7 populates one absorb-flow arrow per real rate-block here -->
       </div>
       <div class="cube-wrap" id="cube-wrap">
-        <div class="cube" id="cube">
-          <div class="face front"></div>
-          <div class="face back"></div>
-          <div class="face left"></div>
-          <div class="face right"></div>
-          <div class="face top"></div>
-          <div class="face bottom"></div>
-        </div>
+        <div class="lane-grid" id="lane-grid"></div>
         <div class="cube-legend">
-          <span class="legend-rate">rate — exposed</span>
-          <span class="legend-capacity">capacity — hidden</span>
+          <span class="legend-rate">rate — exposed (17 lanes)</span>
+          <span class="legend-capacity">capacity — hidden (8 lanes)</span>
         </div>
+        <div class="round-counter" id="round-counter">round — / 24</div>
       </div>
       <div class="flow-arrow"></div>
       <div class="stage-box" id="hash-box-squeeze"><span class="box-title">Squeeze</span><span class="sample"></span></div>
@@ -333,15 +340,19 @@ function md5WithTrace(bytes) {
     for (let i = 0; i < 64; i++) {
       const round = Math.floor(i/16) + 1;
       if (i % 16 === 0) trace.push({ boxId:`block-${blk}-r${round}`, kind:'activate', sample:`round ${round}` });
-      let F, g;
-      if (i < 16) { F = (B & C) | (~B & D); g = i; }
-      else if (i < 32) { F = (D & B) | (~D & C); g = (5*i+1) % 16; }
-      else if (i < 48) { F = B ^ C ^ D; g = (3*i+5) % 16; }
-      else { F = C ^ (B | ~D); g = (7*i) % 16; }
+      let F, g, funcName;
+      if (i < 16) { F = (B & C) | (~B & D); g = i; funcName = 'F'; }
+      else if (i < 32) { F = (D & B) | (~D & C); g = (5*i+1) % 16; funcName = 'G'; }
+      else if (i < 48) { F = B ^ C ^ D; g = (3*i+5) % 16; funcName = 'H'; }
+      else { F = C ^ (B | ~D); g = (7*i) % 16; funcName = 'I'; }
       F = (F + A + K[i] + M[g]) >>> 0;
       A = D; D = C; C = B;
       B = (B + ((F << S[i]) | (F >>> (32 - S[i])))) >>> 0;
-      trace.push({ boxId:`block-${blk}-r${round}-loop`, kind:'activate', sample: toHex32(B) });
+      trace.push({
+        boxId:`block-${blk}-r${round}-loop`, kind:'activate', sample: toHex32(B),
+        step: i, round, func: funcName, mIndex: g, shift: S[i], k: toHex32(K[i]),
+        regs: { A: toHex32(A), B: toHex32(B), C: toHex32(C), D: toHex32(D) }
+      });
     }
     a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0;
   }
@@ -374,9 +385,60 @@ function keccakRoundConstants() {
 }
 const KECCAK_RC = keccakRoundConstants();
 const KECCAK_RHO_OFFSETS = [[0,36,3,41,18],[1,44,10,45,2],[62,6,43,15,61],[28,55,25,21,56],[27,20,39,8,14]];
+const KECCAK_PI_LANE_MAP = [];
+for (let x = 0; x < 5; x++) {
+  KECCAK_PI_LANE_MAP.push([]);
+  for (let y = 0; y < 5; y++) {
+    // matches the pi formula already computed inline inside keccakF1600WithTrace's B[nx][ny]
+    // assignment below — precomputed once here so the UI can look up a lane's target slot
+    // without re-deriving the formula.
+    KECCAK_PI_LANE_MAP[x].push([y, (2*x + 3*y) % 5]);
+  }
+}
+const ALL_25_LANES = [];
+for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) ALL_25_LANES.push([x, y]);
 const KECCAK_MASK64 = (1n << 64n) - 1n;
 function rol64(x, n) { n = BigInt(n % 64); return ((x << n) | (x >> (64n - n))) & KECCAK_MASK64; }
 function laneHex(x) { return x.toString(16).padStart(16,'0'); }
+
+const LANE_CELL = 34; // px between lane centers; keeps the 5x5 grid's footprint close to the old 90x90 cube
+const KECCAK_RATE_LANES = new Set();
+for (let i = 0; i < 17; i++) {
+  // mirrors the absorb-order logic already used in keccak256WithTrace's j-loop
+  // (x=(j/8)%5, y=Math.floor((j/8)/5)): the first 17 lanes visited for rateBytes=136 are
+  // exactly the rate lanes, the remaining 8 are the capacity lanes.
+  const x = i % 5, y = Math.floor(i / 5);
+  KECCAK_RATE_LANES.add(`${x},${y}`);
+}
+
+function buildLaneGrid() {
+  const grid = document.getElementById('lane-grid');
+  grid.innerHTML = '';
+  for (let y = 0; y < 5; y++) {
+    for (let x = 0; x < 5; x++) {
+      const lane = document.createElement('div');
+      lane.className = 'lane ' + (KECCAK_RATE_LANES.has(`${x},${y}`) ? 'rate' : 'capacity');
+      lane.id = `lane-${x}-${y}`;
+      lane.dataset.x = String(x);
+      lane.dataset.y = String(y);
+      const baseTransform = `translate3d(${(x - 2) * LANE_CELL}px, ${(y - 2) * LANE_CELL}px, 0)`;
+      lane.dataset.baseTransform = baseTransform;
+      lane.style.transform = baseTransform;
+      const tick = document.createElement('span');
+      tick.className = 'lane-tick';
+      lane.appendChild(tick);
+      grid.appendChild(lane);
+    }
+  }
+}
+// NOTE: the call to buildLaneGrid() is deliberately *not* here — this file's DOM-free
+// "algorithm core" is extracted by tools/extract_hash_core.mjs (bounded by the marker strings
+// it looks for near the top and bottom of this script block) and run in a Node vm context with
+// no `document` global for tools/test_md5_trace.mjs / tools/test_keccak_trace.mjs.
+// buildLaneGrid()'s definition can live here (function bodies aren't executed until called), but
+// invoking it eagerly at this point would throw ReferenceError: document is not defined under
+// that extraction. The actual call is below, alongside the other page-load DOM wiring
+// (renderAlgorithmBox() etc.) that already lives outside the extraction boundary.
 
 function keccakF1600WithTrace(state, trace) {
   for (let rnd = 0; rnd < 24; rnd++) {
@@ -385,16 +447,48 @@ function keccakF1600WithTrace(state, trace) {
     const D = [];
     for (let x = 0; x < 5; x++) D.push(C[(x+4)%5] ^ rol64(C[(x+1)%5], 1));
     for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) state[x][y] ^= D[x];
+    trace.push({
+      boxId:`lane-r${rnd}-theta`, kind:'activate',
+      sample: `D=[${D.map(v => laneHex(v).slice(0,4)).join(',')}]`,
+      lanes: ALL_25_LANES
+    });
+
     const B = [[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n]];
     for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
       const nx = y, ny = (2*x + 3*y) % 5;
       B[nx][ny] = rol64(state[x][y], KECCAK_RHO_OFFSETS[x][y]);
     }
+    trace.push({
+      boxId:`lane-r${rnd}-rho`, kind:'activate',
+      sample: 'each lane rotated by its own fixed offset',
+      lanes: ALL_25_LANES
+    });
+    trace.push({
+      boxId:`lane-r${rnd}-pi`, kind:'activate',
+      sample: 'lanes permuted via (x,y) -> (y, 2x+3y mod 5)',
+      lanes: ALL_25_LANES
+    });
+
     for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
       state[x][y] = (B[x][y] ^ ((~B[(x+1)%5][y]) & B[(x+2)%5][y])) & KECCAK_MASK64;
     }
+    // chi actually mixes every row (all x, for every y) every round via the state[x][y]
+    // assignment immediately above — that math is unchanged and still runs on the full state.
+    // Spotlighting only row y=0 here is a deliberate UI legibility simplification (25 lanes
+    // self-mixing at once reads as noise, not as "a row mixing") — it affects which lanes
+    // visually pulse, not the underlying computation.
+    trace.push({
+      boxId:`lane-r${rnd}-chi`, kind:'activate',
+      sample: 'row y=0 self-mixed (representative — chi runs on every row every round)',
+      lanes: [[0,0],[1,0],[2,0],[3,0],[4,0]]
+    });
+
     state[0][0] ^= KECCAK_RC[rnd];
-    trace.push({ boxId:`cube-r${rnd}`, kind:'activate', sample: laneHex(state[0][0]).slice(0,8) });
+    trace.push({
+      boxId:`lane-r${rnd}-iota`, kind:'activate',
+      sample: laneHex(KECCAK_RC[rnd]),
+      lanes: [[0,0]]
+    });
   }
   return state;
 }
@@ -443,6 +537,13 @@ function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32
   b.onclick=()=>{r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; localStorage.setItem('hash-theme',r.dataset.theme); sync();};})();
 
 // ---- presets ----
+// COLLISION_MSG_1_HEX / COLLISION_MSG_2_HEX are defined here (not down by the collision demo
+// panel's code, where they used to live) so the two collision-* PRESETS entries below can
+// reference them; the collision demo panel further down reuses these same two consts rather than
+// duplicating the hex strings.
+const COLLISION_MSG_1_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab58712467eab4004583eb8fb7f8955ad340609f4b30283e488832571415a085125e8f7cdc99fd91dbdf280373c5bd8823e3156348f5bae6dacd436c919c6dd53e2b487da03fd02396306d248cda0e99f33420f577ee8ce54b67080a80d1ec69821bcb6a8839396f9652b6ff72a70';
+const COLLISION_MSG_2_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab50712467eab4004583eb8fb7f8955ad340609f4b30283e4888325f1415a085125e8f7cdc99fd91dbd7280373c5bd8823e3156348f5bae6dacd436c919c6dd53e23487da03fd02396306d248cda0e99f33420f577ee8ce54b67080280d1ec69821bcb6a8839396f965ab6ff72a70';
+
 const PRESETS = [
   { id: 'custom', label: 'Custom', kind: 'custom' },
   { id: 'letter-a', label: 'Letter: a', kind: 'fixed', text: 'a' },
@@ -451,8 +552,8 @@ const PRESETS = [
     text: '  \t ​     \t​  ' },
   { id: 'pubtext', label: 'Public-domain text', kind: 'fetch', url: 'assets/pubtext.txt' },
   { id: 'cat', label: 'Cat photo', kind: 'fetch-binary', url: 'assets/cat-thumb.jpg' },
-  { id: 'collision', label: 'MD5 collision message', kind: 'fixed-hex',
-    hex: 'd131dd02c5e6eec4693d9a0698aff95c2fcab58712467eab4004583eb8fb7f8955ad340609f4b30283e488832571415a085125e8f7cdc99fd91dbdf280373c5bd8823e3156348f5bae6dacd436c919c6dd53e2b487da03fd02396306d248cda0e99f33420f577ee8ce54b67080a80d1ec69821bcb6a8839396f9652b6ff72a70' },
+  { id: 'collision-msg1', label: 'MD5 collision — message 1', kind: 'fixed-hex', hex: COLLISION_MSG_1_HEX },
+  { id: 'collision-msg2', label: 'MD5 collision — message 2', kind: 'fixed-hex', hex: COLLISION_MSG_2_HEX },
 ];
 
 let presetIndex = 0;
@@ -490,17 +591,76 @@ async function getActiveInputBytes() {
   return [];
 }
 
-function renderInputBox() {
+function visualizeWhitespace(str) {
+  return [...str].map(ch => {
+    if (ch === '\t') return '\\t';
+    if (ch === '\n') return '\\n';
+    if (ch === '\r') return '\\r';
+    if (ch === ' ') return '·'; // middle dot, stands in for a plain space
+    if (ch === '​') return '[ZWSP]'; // zero-width space
+    const cp = ch.codePointAt(0);
+    if (cp < 0x20 || cp === 0x7f) return `[U+${cp.toString(16).padStart(4, '0')}]`;
+    return ch;
+  }).join('');
+}
+
+// Shows the preset's actual resolved content (not its label). fetch/fetch-binary presets are
+// eagerly fetched here (reusing getActiveInputBytes's own cachedFetchedBytes cache, so this
+// doesn't duplicate the network cost of the later Hash click) and show a "loading…" state until
+// the fetch resolves.
+async function renderInputBox() {
   const p = PRESETS[presetIndex];
   const customEl = document.getElementById('input-custom');
   const displayEl = document.getElementById('input-preset-display');
   if (p.kind === 'custom') {
     customEl.style.display = '';
     displayEl.style.display = 'none';
-  } else {
-    customEl.style.display = 'none';
-    displayEl.style.display = '';
-    displayEl.textContent = p.label;
+    return;
+  }
+  customEl.style.display = 'none';
+  displayEl.style.display = '';
+  displayEl.innerHTML = '';
+
+  if (p.kind === 'fixed') {
+    displayEl.textContent = p.id === 'whitespace' ? visualizeWhitespace(p.text) : p.text;
+    return;
+  }
+  if (p.kind === 'fixed-hex') {
+    displayEl.textContent = p.hex;
+    return;
+  }
+  if (p.kind === 'fetch') {
+    displayEl.textContent = 'loading…';
+    const myPresetId = p.id;
+    try {
+      const bytes = await getActiveInputBytes();
+      if (PRESETS[presetIndex].id !== myPresetId) return; // preset changed while the fetch was in flight
+      const text = new TextDecoder().decode(new Uint8Array(bytes));
+      displayEl.textContent = text.length > 400 ? text.slice(0, 400) + '…' : text;
+    } catch (err) {
+      if (PRESETS[presetIndex].id === myPresetId) displayEl.textContent = "couldn't load preview";
+    }
+    return;
+  }
+  if (p.kind === 'fetch-binary') {
+    displayEl.textContent = 'loading…';
+    const myPresetId = p.id;
+    try {
+      const bytes = await getActiveInputBytes();
+      if (PRESETS[presetIndex].id !== myPresetId) return;
+      displayEl.innerHTML = '';
+      const img = document.createElement('img');
+      img.className = 'preset-thumb';
+      img.src = p.url;
+      img.alt = p.label;
+      const caption = document.createElement('div');
+      caption.className = 'preset-thumb-caption';
+      caption.textContent = `${bytes.length.toLocaleString()} bytes`;
+      displayEl.appendChild(img);
+      displayEl.appendChild(caption);
+    } catch (err) {
+      if (PRESETS[presetIndex].id === myPresetId) displayEl.textContent = "couldn't load preview";
+    }
   }
 }
 document.getElementById('input-prev').onclick = () => { presetIndex = (presetIndex - 1 + PRESETS.length) % PRESETS.length; renderInputBox(); };
@@ -581,21 +741,37 @@ function renderAlgorithmBox() {
 document.getElementById('algo-prev').onclick = document.getElementById('algo-next').onclick =
   () => setAlgorithm(currentAlgorithm === 'md5' ? 'sha3' : 'md5');
 renderAlgorithmBox();
+buildLaneGrid();
 
-(function setupCubeDrag() {
-  const cube = document.getElementById('cube');
+// Seeds each lane's --tick-deg with its own rho rotation offset (bits of a 64-bit ring -> degrees).
+// Only the .rho-twist class actually applies it, so the ticks sit at 0deg until rho fires.
+function applyRhoTicks() {
+  for (let x = 0; x < 5; x++) {
+    for (let y = 0; y < 5; y++) {
+      const el = document.getElementById(`lane-${x}-${y}`);
+      const tick = el && el.querySelector('.lane-tick');
+      if (!tick) continue;
+      const deg = (KECCAK_RHO_OFFSETS[x][y] % 64) * (360 / 64);
+      tick.style.setProperty('--tick-deg', deg + 'deg');
+    }
+  }
+}
+applyRhoTicks();
+
+(function setupLaneGridDrag() {
+  const grid = document.getElementById('lane-grid');
   let rotX = -20, rotY = 30, dragging = false, lastX = 0, lastY = 0;
-  function apply() { cube.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`; }
-  cube.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; cube.setPointerCapture(e.pointerId); });
-  cube.addEventListener('pointermove', e => {
+  function apply() { grid.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`; }
+  grid.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; grid.setPointerCapture(e.pointerId); });
+  grid.addEventListener('pointermove', e => {
     if (!dragging) return;
     const dx = e.clientX - lastX, dy = e.clientY - lastY;
     rotY += dx * 0.5; rotX -= dy * 0.5;
     lastX = e.clientX; lastY = e.clientY;
     apply();
   });
-  cube.addEventListener('pointerup', () => { dragging = false; });
-  cube.addEventListener('pointercancel', () => { dragging = false; });
+  grid.addEventListener('pointerup', () => { dragging = false; });
+  grid.addEventListener('pointercancel', () => { dragging = false; });
   apply();
 })();
 
@@ -647,48 +823,111 @@ function pulseBox(boxId, sample) {
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
 }
 
-// Build the MD5 block chain for the real number of 512-bit blocks the current input produces.
-//
-// Task 4 shipped #md5-block-chain pre-populated with a static block-group-0 (real
-// hash-box-block-0-r1..r4 / -r*-loop ids, round-box + loop-dot styling, plus a
-// hash-box-chain-0 connector hidden by default via .chain-link{display:none}) rather than an
-// empty container. For the overwhelmingly common 1-block case, we reuse that static markup
-// as-is — it's already the right ids, already styled, nothing to build. For numBlocks > 1 we
-// only need to add block-group-1.. dynamically (same round-box/loop-dot visual language as
-// block-group-0, so extra blocks don't look like a different feature) and reveal/add the
-// chain-link connectors between them. Every render first strips any previously-added dynamic
-// groups (marked with data-dynamic-block) so repeated Hash clicks with different block counts
-// don't leak stale DOM from an earlier run.
+// Consumes Task 1's per-step regs/func/mIndex/shift/k fields on block-{blk}-r{round}-loop
+// events and updates that block's live A/B/C/D register readout, active-function highlight,
+// M[g]/s[i]/K[i] display, and step counter. Task 6's renderMd5BlockChain generates the same
+// reg-{blk}-*/func-{blk}-*/mword-{blk}/shift-{blk}/kconst-{blk}/step-counter-{blk} ids for every
+// dynamically-created block, so this function works unmodified once Task 6 lands.
+function updateMd5RegisterView(ev) {
+  const m = /^block-(\d+)-r\d+-loop$/.exec(ev.boxId);
+  if (!m || !ev.regs) return;
+  const blk = m[1];
+  const root = document.getElementById('diagram-md5');
+  if (!root) return;
+  const setReg = (letter) => {
+    const el = root.querySelector(`#reg-${blk}-${letter}`);
+    if (!el) return;
+    const valEl = el.querySelector('.reg-val');
+    if (valEl) valEl.textContent = ev.regs[letter];
+    el.classList.add('pulse');
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
+  };
+  ['A', 'B', 'C', 'D'].forEach(setReg);
+  ['F', 'G', 'H', 'I'].forEach(fn => {
+    const el = root.querySelector(`#func-${blk}-${fn}`);
+    if (el) el.classList.toggle('active', fn === ev.func);
+  });
+  const mwordEl = root.querySelector(`#mword-${blk}`);
+  if (mwordEl) mwordEl.textContent = `M[${ev.mIndex}]`;
+  const shiftEl = root.querySelector(`#shift-${blk}`);
+  if (shiftEl) shiftEl.textContent = `s=${ev.shift}`;
+  const kEl = root.querySelector(`#kconst-${blk}`);
+  if (kEl) kEl.textContent = `K=${ev.k}`;
+  const stepEl = root.querySelector(`#step-counter-${blk}`);
+  if (stepEl) stepEl.textContent = `step ${ev.step + 1} / 64`;
+}
+
+// Stacks the real number of 512-bit blocks the current input produces along a Z-axis, like a
+// deck of cards receding into the screen — later blocks get more negative translateZ and sit
+// visually behind earlier ones. Every render clears and rebuilds #md5-block-chain from scratch
+// (no static block-group-0 to preserve anymore — Task 5's markup for block 0 is now generated
+// here too, identically to blocks 1+).
 function renderMd5BlockChain(numBlocks) {
   const chain = document.getElementById('md5-block-chain');
-  chain.querySelectorAll('[data-dynamic-block]').forEach(el => el.remove());
-
-  const chain0 = document.getElementById('hash-box-chain-0');
-  if (chain0) chain0.classList.toggle('shown', numBlocks > 1);
-
-  for (let b = 1; b < numBlocks; b++) {
+  chain.innerHTML = '';
+  chain.style.minHeight = ''; // reset to the CSS default before re-measuring below
+  const stackDepth = 60; // px of translateZ recession per block
+  // CSS perspective foreshortens each receding card (perspective:900px + translateZ(-60px) per
+  // block scales block 1 to ~94% of block 0's size). That shrink eats into any per-block vertical
+  // offset from directly underneath — a naive 16px step leaves only ~4px of a card's edge
+  // actually visible past the one in front (verified empirically), which does not read as a
+  // stack. 44px keeps a clearly visible sliver of every card behind the front one.
+  // ...and 44px was tuned when the cards were 369px tall with the label at the TOP. The label now
+  // sits at the BOTTOM edge (the only strip of an occluded card you can actually see), so the
+  // offset only has to clear the label + the card's bottom padding: 30px shows each card's
+  // "BLOCK n" cleanly without also exposing a half-clipped step counter above it.
+  const stackOffsetY = 30;
+  for (let b = 0; b < numBlocks; b++) {
     const group = document.createElement('div');
     group.className = 'block-group';
-    group.dataset.dynamicBlock = '1';
-    let rounds = '';
-    for (let r = 1; r <= 4; r++) {
-      rounds += `<div class="stage-box round-box" id="hash-box-block-${b}-r${r}">` +
-        `<span class="box-title">Round ${r}</span>` +
-        `<span class="loop-dot" id="hash-box-block-${b}-r${r}-loop"></span>` +
-        `<span class="sample"></span></div>`;
-    }
-    group.innerHTML = `<div class="block-label">Block ${b}</div><div class="round-row">${rounds}</div>`;
+    group.id = `block-group-${b}`;
+    group.style.transform = `translate(-50%, ${b * stackOffsetY}px) translateZ(${-b * stackDepth}px)`;
+    group.style.zIndex = String(1000 - b);
+    group.style.opacity = String(Math.max(0.55, 1 - b * 0.12));
+    // ONLY block 0 starts from MD5's initialisation vector. Every later block starts from the
+    // previous block's outgoing A/B/C/D — which isn't known yet at render time, so show a
+    // waiting placeholder and let the chain-{b-1} event (pulseBoxOrCube) fill in the real
+    // handed-off words. Printing the IV here taught the exact opposite of "one running state
+    // carried forward".
+    const iv = b === 0 ? ['67452301', 'efcdab89', '98badcfe', '10325476'] : ['————————', '————————', '————————', '————————'];
+    // NOTE: the BLOCK n label is rendered at the BOTTOM of the card, not the top. Cards recede
+    // downward (stackOffsetY, below), so the only strip of a card behind the front one that is
+    // ever visible is its bottom edge — a top-anchored label is occluded on every card except
+    // block 0, which defeats the whole point of the deck-of-cards stack.
+    group.innerHTML = `
+      <div class="reg-row" id="reg-row-${b}">
+        <div class="stage-box reg-box" id="reg-${b}-A"><span class="box-title">A</span><span class="reg-val">${iv[0]}</span></div>
+        <div class="stage-box reg-box" id="reg-${b}-B"><span class="box-title">B</span><span class="reg-val">${iv[1]}</span></div>
+        <div class="stage-box reg-box" id="reg-${b}-C"><span class="box-title">C</span><span class="reg-val">${iv[2]}</span></div>
+        <div class="stage-box reg-box" id="reg-${b}-D"><span class="box-title">D</span><span class="reg-val">${iv[3]}</span></div>
+      </div>
+      <div class="func-row" id="func-row-${b}">
+        <span class="func-box" id="func-${b}-F">F</span>
+        <span class="func-box" id="func-${b}-G">G</span>
+        <span class="func-box" id="func-${b}-H">H</span>
+        <span class="func-box" id="func-${b}-I">I</span>
+      </div>
+      <div class="step-detail" id="step-detail-${b}">
+        <span id="mword-${b}">M[—]</span><span id="shift-${b}">s=—</span><span id="kconst-${b}">K=—</span>
+      </div>
+      <div class="step-counter" id="step-counter-${b}">step — / 64</div>
+      <div class="block-label">Block ${b}</div>`;
     chain.appendChild(group);
-    if (b < numBlocks - 1) {
-      const link = document.createElement('div');
-      link.className = 'chain-link shown';
-      link.dataset.dynamicBlock = '1';
-      link.id = 'hash-box-chain-' + b;
-      link.title = 'entire state passed in the clear — this hand-off is what a length-extension attack exploits';
-      link.innerHTML = '<span>chains into next block</span>';
-      chain.appendChild(link);
-    }
   }
+  // .block-group is position:absolute (required so the cards can overlap in Z), so the cards
+  // don't contribute to #md5-block-chain's own layout height the way normal flow children would.
+  // Without this, a multi-block stack's lower/offset cards can poke out past the CSS min-height
+  // and overlap the flow-arrow + output box that follow in the diagram. Measure the real stack
+  // extent after layout and grow the container to fit it (only grows — never shrinks below the
+  // CSS min-height set for the single-block case).
+  const chainRect = chain.getBoundingClientRect();
+  let maxBottom = 0;
+  chain.querySelectorAll('.block-group').forEach(el => {
+    maxBottom = Math.max(maxBottom, el.getBoundingClientRect().bottom - chainRect.top);
+  });
+  chain.style.minHeight = Math.ceil(maxBottom + 12) + 'px';
+  const caption = document.getElementById('stack-caption');
+  caption.classList.toggle('shown', numBlocks > 1);
 }
 
 // Build one flow-arrow per real rate-block for the absorb phase. Unlike renderMd5BlockChain,
@@ -706,15 +945,83 @@ function renderSha3AbsorbChain(numBlocks) {
   }
 }
 
-// Every cube-rN event pulses the same #cube element — 24 real pulses, one shared box. A
-// physical cube has 6 faces, not 24 individually addressable round-boxes, so instead of trying
-// to build 24 DOM nodes we route all cube-r* boxIds to the one #cube element and let it pulse
-// 24 times in a row. Everything else falls through to pulseBox's normal scoped lookup.
+// Consumes Task 2's per-round theta/rho/pi/chi/iota trace events and pulses exactly the lanes
+// each event names. Returns false for any other boxId so the caller can fall through to the
+// generic pulseBoxOrCube handling (pad/absorb-split/squeeze/output boxes).
+function pulseLanesFor(ev) {
+  const m = /^lane-r(\d+)-(theta|rho|pi|chi|iota)$/.exec(ev.boxId);
+  if (!m) return false;
+  const rnd = Number(m[1]);
+  const step = m[2];
+  const lanes = ev.lanes || [];
+  const rhoLanes = [];
+  lanes.forEach(([x, y]) => {
+    const el = document.getElementById(`lane-${x}-${y}`);
+    if (!el) return;
+    // rho gets a twist instead of a flash: theta already owns the "everything lights up at once"
+    // look, and giving rho the same pulse made the two steps byte-identical on screen.
+    if (step !== 'rho') {
+      el.classList.add('pulse');
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
+    }
+    if (step === 'pi') {
+      const [nx, ny] = KECCAK_PI_LANE_MAP[x][y];
+      const tx = (nx - 2) * LANE_CELL, ty = (ny - 2) * LANE_CELL;
+      // NB: only style.transform is written — the transition lives in the stylesheet. Setting the
+      // `transition` shorthand here used to reset transition-property to `transform`, killing
+      // .lane / .lane.pulse's filter decay for that lane for the rest of the page's life.
+      el.style.setProperty('--lane-tdur', '.22s');
+      el.style.transform = `translate3d(${tx}px, ${ty}px, 12px)`;
+      setTimeout(() => { el.style.transform = el.dataset.baseTransform; }, 220);
+    }
+    if (step === 'rho') rhoLanes.push([el, x, y]);
+  });
+  if (rhoLanes.length) {
+    // Dedicated rho trigger — deliberately NOT the shared .pulse pathway (theta/pi/chi all use
+    // that, and .pulse is stripped after 2 rAFs / ~33ms, far too short for a .3s twist to land),
+    // and deliberately not a lane-level rotateZ either (pi overwrites style.transform on every
+    // lane a few ms later and would wipe it). The tick swings from 0 to that lane's OWN rho
+    // offset, held ~.3s by a timeout like pi's, so rho reads as 25 different rotations rather
+    // than a second flash-everything.
+    rhoLanes.forEach(([el]) => { el.classList.remove('rho-twist'); clearTimeout(el._rhoTimer); });
+    void document.getElementById('lane-grid').offsetWidth; // one reflow, so the swing restarts every round
+    rhoLanes.forEach(([el]) => {
+      el.classList.add('rho-twist');
+      el._rhoTimer = setTimeout(() => el.classList.remove('rho-twist'), 300);
+    });
+  }
+  if (step === 'iota') {
+    const counter = document.getElementById('round-counter');
+    if (counter) counter.textContent = `round ${rnd + 1} / 24`;
+  }
+  return true;
+}
+
 function pulseBoxOrCube(boxId, sample) {
-  if (boxId.startsWith('cube-r')) {
-    const cube = document.getElementById('cube');
-    cube.classList.add('pulse');
-    requestAnimationFrame(() => requestAnimationFrame(() => cube.classList.remove('pulse')));
+  // md5WithTrace already pushes a chain-{blk-1} 'flow' event carrying the outgoing A/B/C/D state
+  // whenever it moves to a new block (public/crypto/hash/index.html, unmodified by this
+  // plan). Instead of pulsing a labeled connector pill, pulse BOTH the finishing card and the
+  // next card together — the deck-of-cards visual is meant to read as one running state carried
+  // forward, not a separate hand-off element.
+  const chainMatch = /^chain-(\d+)$/.exec(boxId);
+  if (chainMatch && getAlgorithm() === 'md5') {
+    const n = Number(chainMatch[1]);
+    // The event's sample is block n's real outgoing state: four 8-char hex words (A|B|C|D)
+    // concatenated. Write them into block n+1's registers so the next card visibly *starts* from
+    // the handed-off state rather than from the MD5 IV.
+    if (typeof sample === 'string' && /^[0-9a-f]{32}$/.test(sample)) {
+      ['A', 'B', 'C', 'D'].forEach((letter, i) => {
+        const box = document.getElementById(`reg-${n + 1}-${letter}`);
+        const valEl = box && box.querySelector('.reg-val');
+        if (valEl) valEl.textContent = sample.slice(i * 8, i * 8 + 8);
+      });
+    }
+    [n, n + 1].forEach(b => {
+      const el = document.getElementById(`block-group-${b}`);
+      if (!el) return;
+      el.classList.add('pulse');
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
+    });
     return;
   }
   pulseBox(boxId, sample);
@@ -739,6 +1046,7 @@ async function onHashClick() {
   // too — algo/label just need the same treatment for consistency).
   const algo = getAlgorithm();
   const label = inputLabel();
+  const presetId = PRESETS[presetIndex].id; // same synchronous-capture rule as algo/label above
   const myRunId = currentRunId;
   let bytes;
   try {
@@ -759,10 +1067,11 @@ async function onHashClick() {
     const numBlocks = Number(trace.find(e => e.boxId === 'split').sample.split(' ')[0]);
     renderMd5BlockChain(numBlocks);
     showDiagramFor('md5');
-    playTrace(trace, getSpeedMs, (ev) => pulseBoxOrCube(ev.boxId, ev.sample), () => {
+    playTrace(trace, getSpeedMs, (ev) => { pulseBoxOrCube(ev.boxId, ev.sample); updateMd5RegisterView(ev); }, () => {
       addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '128-bit / 32 hex chars';
+      updateCollisionAnnotation(algo, presetId);
       document.getElementById('output-box').classList.add('active-flash');
       setTimeout(() => document.getElementById('output-box').classList.remove('active-flash'), 400);
     });
@@ -772,20 +1081,30 @@ async function onHashClick() {
     const numBlocks = Number(trace.find(e => e.boxId === 'absorb-split').sample.split(' ')[0]);
     renderSha3AbsorbChain(numBlocks);
     showDiagramFor('sha3');
-    playTrace(trace, getSpeedMs, (ev) => pulseBoxOrCube(ev.boxId, ev.sample), () => {
+    document.getElementById('round-counter').textContent = 'round 0 / 24';
+    playTrace(trace, getSpeedMs, (ev) => { if (!pulseLanesFor(ev)) pulseBoxOrCube(ev.boxId, ev.sample); }, () => {
       addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '256-bit / 64 hex chars';
+      updateCollisionAnnotation(algo, presetId);
       document.getElementById('output-box').classList.add('active-flash');
       setTimeout(() => document.getElementById('output-box').classList.remove('active-flash'), 400);
     });
   }
 }
+
+function updateCollisionAnnotation(algo, presetId) {
+  const el = document.getElementById('output-annotation');
+  if (algo === 'md5' && presetId === 'collision-msg1') { el.textContent = 'shares this digest with message 2'; return; }
+  if (algo === 'md5' && presetId === 'collision-msg2') { el.textContent = 'shares this digest with message 1'; return; }
+  el.textContent = '';
+}
+
 document.getElementById('hash-btn').onclick = onHashClick;
 
 // ---- collision demo panel ----
-const COLLISION_MSG_1_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab58712467eab4004583eb8fb7f8955ad340609f4b30283e488832571415a085125e8f7cdc99fd91dbdf280373c5bd8823e3156348f5bae6dacd436c919c6dd53e2b487da03fd02396306d248cda0e99f33420f577ee8ce54b67080a80d1ec69821bcb6a8839396f9652b6ff72a70';
-const COLLISION_MSG_2_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab50712467eab4004583eb8fb7f8955ad340609f4b30283e4888325f1415a085125e8f7cdc99fd91dbd7280373c5bd8823e3156348f5bae6dacd436c919c6dd53e23487da03fd02396306d248cda0e99f33420f577ee8ce54b67080280d1ec69821bcb6a8839396f965ab6ff72a70';
+// COLLISION_MSG_1_HEX / COLLISION_MSG_2_HEX now live earlier in the file, next to PRESETS
+// (public/crypto/hash/index.html, just above the PRESETS array) — reused here, not duplicated.
 
 document.getElementById('collision-run-btn').onclick = () => {
   const b1 = hexToBytes(COLLISION_MSG_1_HEX), b2 = hexToBytes(COLLISION_MSG_2_HEX);
