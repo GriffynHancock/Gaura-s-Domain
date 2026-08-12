@@ -135,8 +135,13 @@
 
   .cube-wrap{ perspective: 800px; display:flex; flex-direction:column; align-items:center; gap:8px; }
   .cube{ width:90px; height:90px; position:relative; transform-style:preserve-3d;
-    transform: rotateX(-20deg) rotateY(30deg); cursor:grab; touch-action:none; }
+    transform: rotateX(-20deg) rotateY(30deg); cursor:grab; touch-action:none;
+    filter:brightness(1); transition:filter 1.2s ease-out; }
   .cube:active{ cursor:grabbing; }
+  /* Task 7: whole-cube brightness pulse for Keccak's 24 internal rounds — same top-up/decay
+     convention as Task 6's .pulse variants, but on `filter` (not the box's border/shadow
+     properties) so it never touches the `transform` Task 5's drag handler writes inline. */
+  .cube.pulse{ filter:brightness(1.6); transition:filter .06s ease-out; }
   .face{ position:absolute; width:90px; height:90px; border:1px solid var(--edge);
     background:linear-gradient(135deg, var(--gold) 0 50%, var(--panel2) 50% 100%); opacity:.92; }
   .face.front{ transform: translateZ(45px); }
@@ -568,6 +573,35 @@ function renderMd5BlockChain(numBlocks) {
   }
 }
 
+// Build one flow-arrow per real rate-block for the absorb phase. Unlike renderMd5BlockChain,
+// #sha3-absorb-chain starts empty (no static block-0 markup to reuse) so every render just
+// wipes and rebuilds from scratch — no data-dynamic-block bookkeeping needed since there's no
+// static content to preserve alongside the dynamic part.
+function renderSha3AbsorbChain(numBlocks) {
+  const chain = document.getElementById('sha3-absorb-chain');
+  chain.innerHTML = '';
+  for (let b = 0; b < numBlocks; b++) {
+    const arrow = document.createElement('div');
+    arrow.className = 'flow-arrow';
+    arrow.id = 'hash-box-absorb-' + b;
+    chain.appendChild(arrow);
+  }
+}
+
+// Every cube-rN event pulses the same #cube element — 24 real pulses, one shared box. A
+// physical cube has 6 faces, not 24 individually addressable round-boxes, so instead of trying
+// to build 24 DOM nodes we route all cube-r* boxIds to the one #cube element and let it pulse
+// 24 times in a row. Everything else falls through to pulseBox's normal scoped lookup.
+function pulseBoxOrCube(boxId, sample) {
+  if (boxId.startsWith('cube-r')) {
+    const cube = document.getElementById('cube');
+    cube.classList.add('pulse');
+    requestAnimationFrame(() => requestAnimationFrame(() => cube.classList.remove('pulse')));
+    return;
+  }
+  pulseBox(boxId, sample);
+}
+
 function getSpeedMs() {
   // slider 1..100 maps to ~43.6ms (slow) .. ~4ms (fast) per event; the slider is read LIVE
   // each frame inside playTrace's loop (it calls this function every frame), so dragging it
@@ -587,14 +621,26 @@ async function onHashClick() {
     renderMd5BlockChain(numBlocks);
     document.getElementById('diagram-md5').style.display = '';
     document.getElementById('diagram-sha3').style.display = 'none';
-    playTrace(trace, getSpeedMs, (ev) => pulseBox(ev.boxId, ev.sample), () => {
+    playTrace(trace, getSpeedMs, (ev) => pulseBoxOrCube(ev.boxId, ev.sample), () => {
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '128-bit / 32 hex chars';
       document.getElementById('output-box').classList.add('active-flash');
       setTimeout(() => document.getElementById('output-box').classList.remove('active-flash'), 400);
     });
   }
-  // SHA-3 branch added in Task 7
+  if (algo === 'sha3') {
+    const { digest, trace } = keccak256WithTrace(bytes);
+    const numBlocks = Number(trace.find(e => e.boxId === 'absorb-split').sample.split(' ')[0]);
+    renderSha3AbsorbChain(numBlocks);
+    document.getElementById('diagram-md5').style.display = 'none';
+    document.getElementById('diagram-sha3').style.display = '';
+    playTrace(trace, getSpeedMs, (ev) => pulseBoxOrCube(ev.boxId, ev.sample), () => {
+      document.getElementById('output-digest').textContent = digest;
+      document.getElementById('output-bits').textContent = '256-bit / 64 hex chars';
+      document.getElementById('output-box').classList.add('active-flash');
+      setTimeout(() => document.getElementById('output-box').classList.remove('active-flash'), 400);
+    });
+  }
 }
 document.getElementById('hash-btn').onclick = onHashClick;
 </script>
