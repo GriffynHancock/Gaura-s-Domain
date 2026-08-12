@@ -1,0 +1,35 @@
+# Worst-case fallback
+
+Two independent fallback tiers, for if `ctf.sandhi.com.au` is unreachable on the day.
+
+## Tier 1 — `launch_offline.py`: re-run the site locally, no internet needed
+
+A single self-contained Python script (stdlib only — nothing to `pip install`, works with
+whatever `python3` a stock Kali box already has). Core modules (Caesar, Encoding, XOR, shared
+confetti engine, directory page — ~266 KB) are embedded directly in the file as base64, so
+getting the site running again is: copy-paste this one file onto the machine, run it.
+
+```
+python3 launch_offline.py                                   # Caesar + Encoding + XOR
+python3 launch_offline.py --src /path/to/full/ceasar-ctf    # + FNAC (photos too big to embed)
+python3 launch_offline.py --port 9000                        # custom port (default 8787)
+```
+
+FNAC's real cat photos push it to ~7 MB — too large to trust as a single terminal/clipboard
+paste in an actual emergency — so it's deliberately left out of the embedded bundle. `--src`
+pulls it in from any already-present full copy of this repo (a laptop, a USB stick, whatever's
+on hand).
+
+**Regenerating it**: `launch_offline.py` is a generated file — never hand-edit it directly.
+Edit `tools/build_offline_launcher.py` and rerun `.venv/bin/python tools/build_offline_launcher.py`.
+
+## Tier 2 — `text-challenges/`: paper/text fallback if nothing runs at all
+
+Every currently-built challenge (21 total across Caesar/Encoding/XOR/FNAC) as plain
+`challenge.yml` + `README.md` files, in the same folder format as this school's actual past
+PeCanCTF challenges (see `/Users/gaura/PCAN/2023/crypto/` and the
+[PeCanCTF-2025-Public](https://github.com/ECUComputingAndSecurity/PeCanCTF-2025-Public) repo).
+No web page, no server — read straight off a laptop or printed sheet if the whole stack is down.
+
+**Contains answers.** See `text-challenges/README.md` for details — presenter eyes only, don't
+hand this folder to students.
