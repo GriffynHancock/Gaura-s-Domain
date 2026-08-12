@@ -15,12 +15,14 @@ def build_cat_thumb():
     if not sources:
         raise SystemExit(f'no source photos found in {CATS_SRC}')
     img = Image.open(sources[0]).convert('RGB')
-    # downscale so the whole preset stays in the "handful of message blocks" range —
-    # no runtime block-count capping needed anywhere in the animation.
-    img.thumbnail((64, 64))
+    # 128px + quality 85 (was 64px/q60, which produced a ~1.1KB / 17-block image that was both
+    # too small to see in the preview and too visibly JPEG-mangled). Bigger bound and gentler
+    # compression give a noticeably longer block chain to animate through, which is the point of
+    # the preset — an image is the "look how much data goes in, same fixed digest out" example.
+    img.thumbnail((128, 128))
     OUT.mkdir(parents=True, exist_ok=True)
     out_path = OUT / 'cat-thumb.jpg'
-    img.save(out_path, 'JPEG', quality=60)
+    img.save(out_path, 'JPEG', quality=85)
     print(f'cat thumbnail: {out_path} ({out_path.stat().st_size} bytes)')
 
 

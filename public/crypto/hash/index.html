@@ -66,7 +66,11 @@
   .preset-display{flex:1 1 auto; min-width:0; font-family:var(--mono); font-size:.86rem; color:var(--ink);
     background:var(--panel2); border:1px solid var(--edge); border-radius:5px; padding:12px 10px;
     text-align:center; word-break:break-word}
-  .preset-thumb{ max-width:80px; max-height:80px; border-radius:4px; display:block; margin:0 auto 6px; }
+  /* image-rendering:pixelated + a display size well above the asset's own 128px so the JPEG's
+     blocking/pixel structure is actually visible — the point of the preset is "this is a pile of
+     bytes", so the bytes should look like bytes rather than a tidy little icon. */
+  .preset-thumb{ max-width:180px; max-height:180px; width:100%; height:auto; border-radius:4px;
+    display:block; margin:0 auto 6px; image-rendering:pixelated; }
   .preset-thumb-caption{ font-size:.72rem; color:var(--dim); text-align:center; }
 
   #algo-name{flex:1 1 auto; font-family:var(--disp); font-weight:600; font-size:1.15rem; text-align:center}
