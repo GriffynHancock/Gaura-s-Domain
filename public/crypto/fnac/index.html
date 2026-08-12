@@ -37,6 +37,10 @@
   .dropzone.over{border-color:var(--gold); color:var(--gold)}
   .hexdump{font-family:var(--mono); font-size:.72rem; line-height:1.5; color:var(--ink); background:#000;
     border:1px solid var(--edge); border-radius:5px; padding:12px; white-space:pre; overflow:auto; max-height:280px}
+  .meta-table{font-family:var(--mono); font-size:.76rem; color:var(--ink); background:#000;
+    border:1px solid var(--edge); border-radius:5px; width:100%; border-collapse:collapse}
+  .meta-table td{padding:6px 10px; border-bottom:1px solid var(--edge)}
+  .meta-table td:first-child{color:var(--gold)}
 </style>
 </head>
 <body>
@@ -139,6 +143,56 @@ function mountRawBytesViewer(container, onBytes){
     }catch(e){
       dump.style.display = 'block';
       dump.textContent = "couldn't read that file.";
+    }
+  }
+  zone.addEventListener('click', ()=>input.click());
+  input.addEventListener('change', ()=>handle(input.files[0]));
+  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
+  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); handle(e.dataTransfer.files[0]); });
+}
+
+// ---- Metadata Viewer widget (Task 7) ----
+function parsePngTextChunks(bytes){
+  const out = {};
+  const sig = [0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A];
+  for(let i=0;i<8;i++) if(bytes[i]!==sig[i]) return out; // not a PNG — return empty, never throw
+  let pos = 8;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  while(pos + 8 <= bytes.length){
+    const length = dv.getUint32(pos);
+    const type = toStr(bytes.slice(pos+4,pos+8));
+    const data = bytes.slice(pos+8, pos+8+length);
+    if(type === 'tEXt'){
+      const nul = data.indexOf(0);
+      if(nul >= 0) out[toStr(data.slice(0,nul))] = toStr(data.slice(nul+1));
+    }
+    pos += 12 + length;
+    if(type === 'IEND') break;
+  }
+  return out;
+}
+
+function mountMetadataViewer(container){
+  container.innerHTML = `<div class="dropzone">drop a file here (stands in for <b>exiftool</b>) — or click to choose</div><div></div>`;
+  const zone = container.querySelector('.dropzone');
+  const resultBox = container.querySelector('div:last-child');
+  const input = document.createElement('input'); input.type='file'; input.style.display='none';
+  container.appendChild(input);
+
+  async function handle(file){
+    if(!file) return;
+    try{
+      const bytes = await readFileAsBytes(file);
+      const fields = parsePngTextChunks(bytes);
+      const keys = Object.keys(fields);
+      if(!keys.length){ resultBox.textContent = 'no text metadata found.'; return; }
+      const table = document.createElement('table'); table.className='meta-table';
+      keys.forEach(k=>{ const tr=document.createElement('tr');
+        tr.innerHTML = `<td>${k}</td><td>${fields[k]}</td>`; table.appendChild(tr); });
+      resultBox.innerHTML = ''; resultBox.appendChild(table);
+    }catch(e){
+      resultBox.textContent = "couldn't read that file.";
     }
   }
   zone.addEventListener('click', ()=>input.click());
