@@ -681,8 +681,21 @@ function playTrace(trace, getSpeedMs, onEvent, onDone) {
 // later so the box's own slower base transition (defined in Task 4/5's CSS) carries it back
 // down — re-triggering mid-decay just restarts from wherever the brightness currently is,
 // because that's how CSS transitions naturally interpolate from current computed value.
+//
+// SCOPED, not global, lookup: MD5's and SHA-3's diagrams both use the shared boxId
+// convention (`pad`, `output`, etc. mean the same conceptual stage in either algorithm), so
+// both diagrams' markup uses id="hash-box-pad" / id="hash-box-output" — genuinely duplicate
+// DOM ids across the two diagrams (Task 4 built #diagram-md5, Task 5 built #diagram-sha3,
+// same convention, same literal ids). A bare `document.getElementById('hash-box-'+boxId)`
+// only ever resolves the FIRST matching element in document order (MD5's, since it comes
+// first) regardless of which diagram is actually active — SHA-3's own pad/output boxes would
+// then silently never update. `querySelector` scoped to whichever diagram element is
+// currently selected sidesteps this correctly (querySelector resolves ids within its scope
+// root even when the same id exists elsewhere in the document, unlike getElementById).
 function pulseBox(boxId, sample) {
-  const el = document.getElementById('hash-box-' + boxId);
+  const diagramId = getAlgorithm() === 'md5' ? 'diagram-md5' : 'diagram-sha3';
+  const root = document.getElementById(diagramId);
+  const el = root && root.querySelector('#hash-box-' + boxId);
   if (!el) return; // block-N-* elements only exist once renderMd5BlockChain has built them
   const sampleEl = el.querySelector('.sample');
   if (sampleEl && sample) sampleEl.textContent = sample;
