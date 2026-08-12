@@ -15,7 +15,31 @@ Spine: **recognise → identify → decode/crack → submit.**
 | 4 | XOR | 🚧 **in progress** (demo+C1–C3 done, C4 left, not deployed) | `public/crypto/xor/` → `/crypto/xor/` |
 | — | Live Kali demo (CyberChef + archive crack) | ⬜ presenter prep | n/a |
 
-## Module 3 — Hashing (live, `/crypto/hash`)
+## Module 3 — Hashing (live, `/crypto/hash`) — visualization redesign (2026-08-13)
+Rebuilt the SHA-3 and MD5 diagrams after user feedback that the original build (below) was
+functionally correct but visually thin — a flat rotating panel for SHA-3, plain stage-boxes for
+MD5. New build: SHA-3 renders as a real 5×5 grid of 25 lane cuboids (verified against FIPS 202 —
+Keccak-f[1600] state is 5×5×64 bits, not the "16×16×4" initially misremembered), rate/capacity
+shown as 17 gold/8 dark lanes at their real lane-aligned boundary (not a gradient approximation),
+θ/ρ/π/χ/ι each render as genuinely distinct sub-animations (θ flashes all 25, ρ twists each lane's
+own tick mark by its own real offset, π slides lanes to their real permuted grid slot, χ highlights
+one representative row, ι flashes lane (0,0) with the round constant), live "round N/24" counter.
+MD5 replaced its 4-round-box diagram with a live register view — A/B/C/D hex values, active F/G/H/I
+function highlighted, M[g]/s[i]/K[i] shown, step counter — and multi-block inputs now render as a
+Z-axis "deck of cards" stack with real state hand-off between blocks (not a hardcoded IV per card).
+Input box shows actual resolved content per preset (not just its label); the MD5 collision preset
+split into two selectable presets with a "shares this digest with message N" cross-reference.
+Built via subagent-driven-development, 9 tasks (`docs/superpowers/plans/2026-08-12-hash-visualization-redesign.md`,
+spec: `docs/superpowers/specs/2026-08-12-hash-visualization-redesign.md`). Final whole-branch review
+caught 1 Critical (θ and ρ were visually identical — the redesign's headline goal) + 5 Important bugs
+(a CSS `transition` shorthand silently killing the pulse-decay animation for the rest of the page's
+life once π ever fired; the lane grid occluding its own legend and round counter; blocks 1+ showing
+the raw MD5 IV instead of the real handed-off state; block labels occluded in the stack; A/B/C/D
+rendering as a broken vertical column) — all fixed and independently re-verified (fresh Playwright
+measurements, an independent MD5 reimplementation cross-checked against `node:crypto`, mutation-testing
+the two touched test files to confirm no assertion was weakened) before merge.
+
+## Module 3 — Hashing, original build (2026-08-12)
 Avalanche-effect + internals visualization, not a puzzle ramp — no scored challenges yet (one
 idea logged in `docs/ideas-backlog.md`). From-scratch, trace-instrumented MD5 and SHA3-256/Keccak
 (no native SubtleCrypto — it lacks both, and internal-round instrumentation needs a hand-rolled
