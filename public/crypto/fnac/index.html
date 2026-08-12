@@ -97,7 +97,12 @@ function renderStages(){
     } else {
       el.innerHTML = `<div class="lab">${s.id}</div><h2>${s.title}</h2><div class="body" style="font-family:var(--mono);font-size:.8rem;color:var(--dim)">not yet.</div>`;
     }
-    wrap.appendChild(el);
+    wrap.appendChild(el); // append BEFORE wiring — builders look up this element by id via getElementById
+    if(s.ready){
+      const body = el.querySelector('.body');
+      if(s.id === 'night1') buildNight1(body);
+      // night2 / night3 builders added in Tasks 10-11
+    }
   });
 }
 
@@ -254,6 +259,53 @@ function mountBitPlaneViewer(container){
   zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
   zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
   zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); handle(e.dataTransfer.files[0]); });
+}
+
+// ---- shared flag-check helper (Task 9), used by every night ----
+let storedFnacSolved = new Set();
+try{ storedFnacSolved = new Set(JSON.parse(localStorage.getItem('ctf-solved:v2:fnac') || '[]')); }catch(e){}
+
+function wireFlagCheck(bodyEl, stageId, answer){
+  const input = bodyEl.querySelector('.flag-input');
+  const verdict = bodyEl.querySelector('.verdict');
+  const stageEl = document.getElementById('stage-' + stageId);
+  function capture(){
+    stageEl.classList.add('solved');
+    verdict.textContent = 'correct — captured';
+    verdict.style.color = 'var(--ok)';
+    storedFnacSolved.add(stageId);
+    try{ localStorage.setItem('ctf-solved:v2:fnac', JSON.stringify([...storedFnacSolved])); }catch(e){}
+    if(window.fxSolved) window.fxSolved(stageId);
+  }
+  function check(){
+    const v = input.value.trim();
+    if(v.toLowerCase() === answer.toLowerCase()) capture();
+    else if(v){ verdict.textContent = 'not it.'; verdict.style.color = 'var(--accent)'; }
+  }
+  bodyEl.querySelector('.flag-check').onclick = check;
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter') check(); });
+  if(storedFnacSolved.has(stageId)) capture();
+}
+
+// ---- Night 1 wiring (Task 9) ----
+function buildNight1(bodyEl){
+  bodyEl.innerHTML = `
+    <p style="font-family:var(--mono);font-size:.82rem;color:var(--dim)">
+      Two files came off the same feed. Both look like dead air. Neither one is, quite.
+    </p>
+    <p><a href="assets/night1/file-a.png" download style="color:var(--gold)">↓ file-a.png</a>
+       &nbsp; <a href="assets/night1/file-b.png" download style="color:var(--gold)">↓ file-b.png</a></p>
+    <div class="tool-a" style="margin-top:10px"></div>
+    <div class="tool-b" style="margin-top:10px"></div>
+    <div class="submit" style="display:flex;gap:9px;margin-top:16px">
+      <input class="flag-input" placeholder="assemble the two halves — flag{...}" style="flex:1;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:10px">
+      <button class="flag-check" style="font-family:var(--mono);font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:0 16px">SUBMIT</button>
+    </div>
+    <div class="verdict" style="font-family:var(--mono);font-size:.76rem;margin-top:8px"></div>
+  `;
+  mountRawBytesViewer(bodyEl.querySelector('.tool-a'));
+  mountRawBytesViewer(bodyEl.querySelector('.tool-b'));
+  wireFlagCheck(bodyEl, 'night1', 'flag{tune_into_the_static}');
 }
 
 // ---- gate check (runs last, once everything above is defined) ----
