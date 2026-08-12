@@ -45,6 +45,10 @@ console.log('OK  SHA-3 lane grid has 25 elements, round counter reached 24/24');
 // ---- 4. lane grid is drag-rotatable ----
 const grid = page.locator('#lane-grid');
 const beforeTransform = await grid.evaluate(el => el.style.transform);
+// page.mouse coordinates are viewport-relative, and the grid now reserves its real ~180px
+// projected footprint (so it no longer paints over the legend / round counter), which can put it
+// below the fold — scroll it in first or the drag silently misses.
+await grid.scrollIntoViewIfNeeded();
 const box = await grid.boundingBox();
 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 await page.mouse.down();

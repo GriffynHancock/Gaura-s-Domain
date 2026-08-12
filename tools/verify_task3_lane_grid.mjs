@@ -27,6 +27,11 @@ await page.click('#algo-next'); // MD5 -> SHA-3 (only two algorithms, so one cli
 await page.waitForSelector('#lane-grid:visible', { timeout: 2000 }).catch(() => {});
 const grid = page.locator('#lane-grid');
 const before = await grid.evaluate(el => el.style.transform);
+// #lane-grid now reserves its real ~180px projected footprint (the legend and round counter used
+// to be painted over by the lanes), which pushes it below a default 720px-tall viewport. Scroll it
+// into view first — page.mouse coordinates are viewport-relative, so an off-screen drag silently
+// does nothing.
+await grid.scrollIntoViewIfNeeded();
 const box = await grid.boundingBox();
 if (!box) throw new Error('#lane-grid has no bounding box (not visible)');
 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

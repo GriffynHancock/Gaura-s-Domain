@@ -113,8 +113,12 @@
   .flow-arrow.pulse{background:var(--gold); box-shadow:0 0 8px var(--gold);
     transition:background-color .06s ease-out, box-shadow .06s ease-out}
 
+  /* width:100% matters: .block-chain is a flex item of .diagram (align-items:center), and all of
+     its own children are position:absolute, so without it the container shrink-to-fits to 0 and
+     every .block-group inherits a 0-width containing block (which used to wrap .reg-row onto four
+     lines). renderMd5BlockChain measures and raises min-height for multi-block stacks. */
   .block-chain{ position:relative; perspective:900px; display:flex; justify-content:center;
-    align-items:flex-start; min-height:400px; padding-top:6px; }
+    align-items:flex-start; width:100%; min-height:210px; padding-top:6px; }
   .block-group{ position:absolute; top:0; left:50%; transform-style:preserve-3d;
     display:flex; flex-direction:column; align-items:center; gap:6px;
     border:1px solid var(--edge); border-radius:10px; padding:12px 16px; background:var(--panel2);
@@ -127,7 +131,10 @@
   .stack-caption{ display:none; font-family:var(--mono); font-size:.66rem; color:var(--dim);
     text-align:center; max-width:44ch; margin:6px auto 0; }
   .stack-caption.shown{ display:block; }
-  .reg-row{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  /* nowrap is load-bearing: A/B/C/D must read as "four boxes side by side". With wrap they
+     collapsed into a vertical column (the absolutely-positioned .block-group had no width to
+     lay them out in), which tripled every card's height and buried the stacked cards' labels. */
+  .reg-row{ display:flex; gap:8px; flex-wrap:nowrap; justify-content:center; }
   .reg-box{ min-width:90px; padding:8px 10px; }
   .reg-val{ font-family:var(--mono); font-size:.8rem; color:var(--ink); }
   .func-row{ display:flex; gap:8px; justify-content:center; font-family:var(--mono);
@@ -143,16 +150,26 @@
   .absorb-chain{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center}
 
   .cube-wrap{ perspective: 800px; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  /* #lane-grid is a 1x1 point (every .lane is absolutely positioned around its centre), so it
+     contributes ~0 height to the flex column and the ~180px-tall painted grid would sit on top
+     of the legend and the round counter below it. The margin reserves the grid's real projected
+     footprint: lanes reach +/-(2*LANE_CELL + 13) = 81px from centre, ~92px once the
+     rotateX/rotateY projection and the perspective scale are counted. */
   .lane-grid{ width:1px; height:1px; position:relative; transform-style:preserve-3d;
-    transform: rotateX(-20deg) rotateY(30deg); cursor:grab; touch-action:none; }
+    margin:92px 92px; transform: rotateX(-20deg) rotateY(30deg); cursor:grab; touch-action:none; }
   .lane-grid:active{ cursor:grabbing; }
+  /* transform is transitioned from the stylesheet (NOT from an inline `transition:` shorthand in
+     JS — that would reset transition-property to `transform` alone and permanently kill the
+     filter decay below for every lane it touched). JS only ever writes `style.transform`;
+     --lane-tdur lets pi (.22s) and rho (.3s) use different durations without touching
+     transition-property. */
   .lane{ position:absolute; top:-13px; left:-13px; width:26px; height:26px;
     transform-style:preserve-3d; border:1px solid var(--edge); background:var(--gold);
     opacity:.92; filter:brightness(1);
-    transition:filter 1.2s ease-out; }
+    transition:filter 1.2s ease-out, transform var(--lane-tdur, .22s) ease-in-out; }
   .lane.capacity{ background:var(--panel2); }
   /* same top-up/decay pulse convention as .stage-box/.cube/.chain-link elsewhere in this file */
-  .lane.pulse{ filter:brightness(1.85); transition:filter .06s ease-out; }
+  .lane.pulse{ filter:brightness(1.85); transition:filter .06s ease-out, transform var(--lane-tdur, .22s) ease-in-out; }
   /* pseudo-3D block: the .lane div itself is the front face; ::before/::after are the top and
      right-side faces, rotated into the XZ / YZ planes off the front face's own edges — same
      rotateX/rotateY 3D-transform technique as the single cube this replaces, just sized down to
@@ -163,10 +180,23 @@
   .lane::after{ width:13px; height:26px; top:0; right:-13px; filter:brightness(.65);
     transform:rotateY(90deg); transform-origin:left; }
   .lane-tick{ position:absolute; left:50%; top:50%; width:2px; height:11px; background:var(--ink);
-    transform:translate(-50%,-100%) rotate(0deg); transform-origin:bottom center; opacity:.55; }
+    transform:translate(-50%,-100%) rotate(0deg); transform-origin:bottom center; opacity:.55;
+    transition:transform .3s ease-out, opacity .3s ease-out; }
   .round-counter{ font-family:var(--mono); font-size:.7rem; color:var(--dim); }
-  .lane.pulse .lane-tick{ transform:translate(-50%,-100%) rotate(var(--tick-deg, 0deg));
-    transition:transform .3s ease-out; }
+  /* rho ONLY. Deliberately not hung off the shared `.pulse` pathway (theta/pi/chi pulse too, and
+     .pulse is stripped after 2 rAFs — far too short for a .3s twist to be seen). The rho-twist
+     class is added only for step==='rho' events and held by a setTimeout, the same
+     hold-then-revert pattern pi uses. Each lane rotates by its OWN rho offset, so rho reads as
+     "25 lanes twisting by 25 different amounts" instead of another flash-everything. */
+  /* The twist lives on the TICK, not on the lane's own transform: pi writes style.transform on
+     every lane a few ms later, which would wipe a lane-level rotateZ long before it was visible.
+     --tick-deg is that lane's real rho offset expressed as a fraction of the 64-bit ring. */
+  .lane.rho-twist .lane-tick{ animation:rhoSwing .3s ease-out both;
+    opacity:1; height:13px; background:var(--accent); }
+  @keyframes rhoSwing{
+    0%{ transform:translate(-50%,-100%) rotate(0deg) }
+    100%{ transform:translate(-50%,-100%) rotate(var(--tick-deg, 0deg)) }
+  }
   .cube-legend{ font-family:var(--mono); font-size:.62rem; color:var(--dim); display:flex; gap:10px; }
   .legend-rate::before{ content:'■ '; color:var(--gold); }
   .legend-capacity::before{ content:'■ '; color:var(--dim); }
@@ -713,6 +743,8 @@ document.getElementById('algo-prev').onclick = document.getElementById('algo-nex
 renderAlgorithmBox();
 buildLaneGrid();
 
+// Seeds each lane's --tick-deg with its own rho rotation offset (bits of a 64-bit ring -> degrees).
+// Only the .rho-twist class actually applies it, so the ticks sit at 0deg until rho fires.
 function applyRhoTicks() {
   for (let x = 0; x < 5; x++) {
     for (let y = 0; y < 5; y++) {
@@ -840,7 +872,11 @@ function renderMd5BlockChain(numBlocks) {
   // offset from directly underneath — a naive 16px step leaves only ~4px of a card's edge
   // actually visible past the one in front (verified empirically), which does not read as a
   // stack. 44px keeps a clearly visible sliver of every card behind the front one.
-  const stackOffsetY = 44;
+  // ...and 44px was tuned when the cards were 369px tall with the label at the TOP. The label now
+  // sits at the BOTTOM edge (the only strip of an occluded card you can actually see), so the
+  // offset only has to clear the label + the card's bottom padding: 30px shows each card's
+  // "BLOCK n" cleanly without also exposing a half-clipped step counter above it.
+  const stackOffsetY = 30;
   for (let b = 0; b < numBlocks; b++) {
     const group = document.createElement('div');
     group.className = 'block-group';
@@ -848,13 +884,22 @@ function renderMd5BlockChain(numBlocks) {
     group.style.transform = `translate(-50%, ${b * stackOffsetY}px) translateZ(${-b * stackDepth}px)`;
     group.style.zIndex = String(1000 - b);
     group.style.opacity = String(Math.max(0.55, 1 - b * 0.12));
+    // ONLY block 0 starts from MD5's initialisation vector. Every later block starts from the
+    // previous block's outgoing A/B/C/D — which isn't known yet at render time, so show a
+    // waiting placeholder and let the chain-{b-1} event (pulseBoxOrCube) fill in the real
+    // handed-off words. Printing the IV here taught the exact opposite of "one running state
+    // carried forward".
+    const iv = b === 0 ? ['67452301', 'efcdab89', '98badcfe', '10325476'] : ['————————', '————————', '————————', '————————'];
+    // NOTE: the BLOCK n label is rendered at the BOTTOM of the card, not the top. Cards recede
+    // downward (stackOffsetY, below), so the only strip of a card behind the front one that is
+    // ever visible is its bottom edge — a top-anchored label is occluded on every card except
+    // block 0, which defeats the whole point of the deck-of-cards stack.
     group.innerHTML = `
-      <div class="block-label">Block ${b}</div>
       <div class="reg-row" id="reg-row-${b}">
-        <div class="stage-box reg-box" id="reg-${b}-A"><span class="box-title">A</span><span class="reg-val">67452301</span></div>
-        <div class="stage-box reg-box" id="reg-${b}-B"><span class="box-title">B</span><span class="reg-val">efcdab89</span></div>
-        <div class="stage-box reg-box" id="reg-${b}-C"><span class="box-title">C</span><span class="reg-val">98badcfe</span></div>
-        <div class="stage-box reg-box" id="reg-${b}-D"><span class="box-title">D</span><span class="reg-val">10325476</span></div>
+        <div class="stage-box reg-box" id="reg-${b}-A"><span class="box-title">A</span><span class="reg-val">${iv[0]}</span></div>
+        <div class="stage-box reg-box" id="reg-${b}-B"><span class="box-title">B</span><span class="reg-val">${iv[1]}</span></div>
+        <div class="stage-box reg-box" id="reg-${b}-C"><span class="box-title">C</span><span class="reg-val">${iv[2]}</span></div>
+        <div class="stage-box reg-box" id="reg-${b}-D"><span class="box-title">D</span><span class="reg-val">${iv[3]}</span></div>
       </div>
       <div class="func-row" id="func-row-${b}">
         <span class="func-box" id="func-${b}-F">F</span>
@@ -865,7 +910,8 @@ function renderMd5BlockChain(numBlocks) {
       <div class="step-detail" id="step-detail-${b}">
         <span id="mword-${b}">M[—]</span><span id="shift-${b}">s=—</span><span id="kconst-${b}">K=—</span>
       </div>
-      <div class="step-counter" id="step-counter-${b}">step — / 64</div>`;
+      <div class="step-counter" id="step-counter-${b}">step — / 64</div>
+      <div class="block-label">Block ${b}</div>`;
     chain.appendChild(group);
   }
   // .block-group is position:absolute (required so the cards can overlap in Z), so the cards
@@ -908,19 +954,42 @@ function pulseLanesFor(ev) {
   const rnd = Number(m[1]);
   const step = m[2];
   const lanes = ev.lanes || [];
+  const rhoLanes = [];
   lanes.forEach(([x, y]) => {
     const el = document.getElementById(`lane-${x}-${y}`);
     if (!el) return;
-    el.classList.add('pulse');
-    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
+    // rho gets a twist instead of a flash: theta already owns the "everything lights up at once"
+    // look, and giving rho the same pulse made the two steps byte-identical on screen.
+    if (step !== 'rho') {
+      el.classList.add('pulse');
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
+    }
     if (step === 'pi') {
       const [nx, ny] = KECCAK_PI_LANE_MAP[x][y];
       const tx = (nx - 2) * LANE_CELL, ty = (ny - 2) * LANE_CELL;
-      el.style.transition = 'transform .22s ease-in-out';
+      // NB: only style.transform is written — the transition lives in the stylesheet. Setting the
+      // `transition` shorthand here used to reset transition-property to `transform`, killing
+      // .lane / .lane.pulse's filter decay for that lane for the rest of the page's life.
+      el.style.setProperty('--lane-tdur', '.22s');
       el.style.transform = `translate3d(${tx}px, ${ty}px, 12px)`;
       setTimeout(() => { el.style.transform = el.dataset.baseTransform; }, 220);
     }
+    if (step === 'rho') rhoLanes.push([el, x, y]);
   });
+  if (rhoLanes.length) {
+    // Dedicated rho trigger — deliberately NOT the shared .pulse pathway (theta/pi/chi all use
+    // that, and .pulse is stripped after 2 rAFs / ~33ms, far too short for a .3s twist to land),
+    // and deliberately not a lane-level rotateZ either (pi overwrites style.transform on every
+    // lane a few ms later and would wipe it). The tick swings from 0 to that lane's OWN rho
+    // offset, held ~.3s by a timeout like pi's, so rho reads as 25 different rotations rather
+    // than a second flash-everything.
+    rhoLanes.forEach(([el]) => { el.classList.remove('rho-twist'); clearTimeout(el._rhoTimer); });
+    void document.getElementById('lane-grid').offsetWidth; // one reflow, so the swing restarts every round
+    rhoLanes.forEach(([el]) => {
+      el.classList.add('rho-twist');
+      el._rhoTimer = setTimeout(() => el.classList.remove('rho-twist'), 300);
+    });
+  }
   if (step === 'iota') {
     const counter = document.getElementById('round-counter');
     if (counter) counter.textContent = `round ${rnd + 1} / 24`;
@@ -937,6 +1006,16 @@ function pulseBoxOrCube(boxId, sample) {
   const chainMatch = /^chain-(\d+)$/.exec(boxId);
   if (chainMatch && getAlgorithm() === 'md5') {
     const n = Number(chainMatch[1]);
+    // The event's sample is block n's real outgoing state: four 8-char hex words (A|B|C|D)
+    // concatenated. Write them into block n+1's registers so the next card visibly *starts* from
+    // the handed-off state rather than from the MD5 IV.
+    if (typeof sample === 'string' && /^[0-9a-f]{32}$/.test(sample)) {
+      ['A', 'B', 'C', 'D'].forEach((letter, i) => {
+        const box = document.getElementById(`reg-${n + 1}-${letter}`);
+        const valEl = box && box.querySelector('.reg-val');
+        if (valEl) valEl.textContent = sample.slice(i * 8, i * 8 + 8);
+      });
+    }
     [n, n + 1].forEach(b => {
       const el = document.getElementById(`block-group-${b}`);
       if (!el) return;
