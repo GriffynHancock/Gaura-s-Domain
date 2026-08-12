@@ -78,7 +78,7 @@ function seededRotation(id){ return (fnv('rot:'+id) % 500) / 100 - 2.5; } // -2.
 const STAGES = [
   {id:'night1', title:'Night 1 · Static', ready:true},
   {id:'night2', title:"Night 2 · It's In The Metadata", ready:true},
-  {id:'night3', title:'Night 3 · 10,000 Cats', ready:true},
+  {id:'night3', title:'Night 3 · 10,000 Cats', ready:false}, // Task 11: flip to true once wired — assets already exist on master (commit 295defa), wiring is a separate task
   {id:'night4', title:'Night 4', ready:false},
   {id:'night5', title:'Night 5', ready:false},
   {id:'nightmare', title:'Nightmare', ready:false},
