@@ -87,20 +87,28 @@
 
   .stage-box{background:var(--panel2); border:1px solid var(--edge); border-radius:8px;
     padding:12px 18px; text-align:center; display:flex; flex-direction:column; align-items:center;
-    gap:4px; min-width:180px; transition:border-color .2s, box-shadow .2s}
+    gap:4px; min-width:180px; filter:brightness(1);
+    transition:border-color .2s, box-shadow .2s, filter 1.2s ease-out}
   .stage-box .sample{font-family:var(--mono); font-size:.72rem; color:var(--dim); min-height:1.2em; word-break:break-all}
   .stage-box.active{border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
     animation:hashPulse .6s ease-out}
+  /* "top up, don't reset" pulse (Task 6): add .pulse for a fast brightness spike, then remove it
+     two frames later so the box's own slower base transition above carries brightness back down —
+     re-triggering mid-decay just restarts the decay from wherever brightness currently is. */
+  .stage-box.pulse{filter:brightness(1.7); transition:filter .06s ease-out}
   @keyframes hashPulse{
     0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent)}
     100%{box-shadow:0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent)}
   }
 
-  .flow-arrow{width:2px; height:26px; background:var(--edge); position:relative; margin:2px 0}
+  .flow-arrow{width:2px; height:26px; background:var(--edge); position:relative; margin:2px 0;
+    transition:background-color 1.2s ease-out, box-shadow 1.2s ease-out}
   .flow-arrow::after{content:""; position:absolute; left:50%; bottom:-1px; transform:translateX(-50%);
     border:5px solid transparent; border-top-color:var(--edge)}
   .flow-arrow.active::after{border-top-color:var(--accent)}
   .flow-arrow.active{background:var(--accent)}
+  .flow-arrow.pulse{background:var(--gold); box-shadow:0 0 8px var(--gold);
+    transition:background-color .06s ease-out, box-shadow .06s ease-out}
 
   .block-chain{display:flex; align-items:flex-start; gap:22px; flex-wrap:wrap; justify-content:center}
   .block-group{display:flex; flex-direction:column; align-items:center; gap:8px;
@@ -111,13 +119,17 @@
   .loop-dot{width:9px; height:9px; border-radius:50%; background:var(--edge); display:inline-block;
     transition:background .2s, transform .2s}
   .loop-dot.spin{background:var(--gold); animation:loopSpin .5s linear infinite}
+  .loop-dot.pulse{background:var(--gold); box-shadow:0 0 6px var(--gold)}
   @keyframes loopSpin{ 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
 
   .chain-link{display:none; align-items:center; justify-content:center; gap:6px;
     font-family:var(--mono); font-size:.66rem; color:var(--dim); letter-spacing:.1em;
-    border:1px solid var(--edge); border-radius:20px; padding:4px 12px; background:var(--panel2)}
+    border:1px solid var(--edge); border-radius:20px; padding:4px 12px; background:var(--panel2);
+    transition:border-color .2s, color .2s, box-shadow .2s}
   .chain-link.shown{display:flex}
   .chain-link.active{border-color:var(--gold); color:var(--gold)}
+  .chain-link.pulse{border-color:var(--gold); color:var(--gold); box-shadow:0 0 8px var(--gold);
+    transition:border-color .06s ease-out, color .06s ease-out, box-shadow .06s ease-out}
 
   .absorb-chain{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center}
 
@@ -136,6 +148,10 @@
   .cube-legend{ font-family:var(--mono); font-size:.62rem; color:var(--dim); display:flex; gap:10px; }
   .legend-rate::before{ content:'■ '; color:var(--gold); }
   .legend-capacity::before{ content:'■ '; color:var(--panel2); }
+
+  /* Task 6: outer input/output box flash on Hash click, distinct from per-diagram-box pulses */
+  #input-box, #output-box{ transition: background-color .4s ease-out; }
+  #input-box.active-flash, #output-box.active-flash{ background-color: color-mix(in srgb, var(--gold) 25%, var(--panel)); transition: background-color .05s ease-out; }
 </style>
 </head>
 <body>
@@ -459,6 +475,128 @@ renderAlgorithmBox();
   cube.addEventListener('pointercancel', () => { dragging = false; });
   apply();
 })();
+
+// ---- Task 6: shared animation engine ----
+
+let currentRunId = 0;
+
+function playTrace(trace, getSpeedMs, onEvent, onDone) {
+  const myRunId = ++currentRunId;
+  let idx = 0;
+  let lastTime = performance.now();
+  function frame(now) {
+    if (myRunId !== currentRunId) return; // a newer run superseded this one — stop silently
+    const stepMs = getSpeedMs();
+    let elapsed = now - lastTime;
+    while (elapsed >= stepMs && idx < trace.length) {
+      onEvent(trace[idx]);
+      idx++;
+      elapsed -= stepMs;
+    }
+    lastTime = now - elapsed;
+    if (idx < trace.length) requestAnimationFrame(frame);
+    else onDone();
+  }
+  requestAnimationFrame(frame);
+}
+
+// "top up, don't reset" pulse: add .pulse (fast transition in), then remove it two frames
+// later so the box's own slower base transition (see the CSS above) carries it back down —
+// re-triggering mid-decay just restarts from wherever the brightness currently is, because
+// that's how CSS transitions naturally interpolate from current computed value.
+//
+// SCOPED, not global, lookup: MD5's and SHA-3's diagrams both use the shared boxId convention
+// (`pad`, `output`, etc mean the same conceptual stage in either algorithm), so both diagrams'
+// markup uses id="hash-box-pad" / id="hash-box-output" — genuinely duplicate DOM ids across the
+// two diagrams (#diagram-md5 and #diagram-sha3 both use it). A bare
+// `document.getElementById('hash-box-'+boxId)` only ever resolves the FIRST matching element in
+// document order (MD5's, since it comes first) regardless of which diagram is actually active —
+// SHA-3's own pad/output boxes would then silently never update. `querySelector` scoped to
+// whichever diagram element is currently selected sidesteps this correctly.
+function pulseBox(boxId, sample) {
+  const diagramId = getAlgorithm() === 'md5' ? 'diagram-md5' : 'diagram-sha3';
+  const root = document.getElementById(diagramId);
+  const el = root && root.querySelector('#hash-box-' + boxId);
+  if (!el) return; // block-N-* elements only exist once renderMd5BlockChain has built them
+  const sampleEl = el.querySelector('.sample');
+  if (sampleEl && sample) sampleEl.textContent = sample;
+  el.classList.add('pulse');
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
+}
+
+// Build the MD5 block chain for the real number of 512-bit blocks the current input produces.
+//
+// Task 4 shipped #md5-block-chain pre-populated with a static block-group-0 (real
+// hash-box-block-0-r1..r4 / -r*-loop ids, round-box + loop-dot styling, plus a
+// hash-box-chain-0 connector hidden by default via .chain-link{display:none}) rather than an
+// empty container. For the overwhelmingly common 1-block case, we reuse that static markup
+// as-is — it's already the right ids, already styled, nothing to build. For numBlocks > 1 we
+// only need to add block-group-1.. dynamically (same round-box/loop-dot visual language as
+// block-group-0, so extra blocks don't look like a different feature) and reveal/add the
+// chain-link connectors between them. Every render first strips any previously-added dynamic
+// groups (marked with data-dynamic-block) so repeated Hash clicks with different block counts
+// don't leak stale DOM from an earlier run.
+function renderMd5BlockChain(numBlocks) {
+  const chain = document.getElementById('md5-block-chain');
+  chain.querySelectorAll('[data-dynamic-block]').forEach(el => el.remove());
+
+  const chain0 = document.getElementById('hash-box-chain-0');
+  if (chain0) chain0.classList.toggle('shown', numBlocks > 1);
+
+  for (let b = 1; b < numBlocks; b++) {
+    const group = document.createElement('div');
+    group.className = 'block-group';
+    group.dataset.dynamicBlock = '1';
+    let rounds = '';
+    for (let r = 1; r <= 4; r++) {
+      rounds += `<div class="stage-box round-box" id="hash-box-block-${b}-r${r}">` +
+        `<span class="box-title">Round ${r}</span>` +
+        `<span class="loop-dot" id="hash-box-block-${b}-r${r}-loop"></span>` +
+        `<span class="sample"></span></div>`;
+    }
+    group.innerHTML = `<div class="block-label">Block ${b}</div><div class="round-row">${rounds}</div>`;
+    chain.appendChild(group);
+    if (b < numBlocks - 1) {
+      const link = document.createElement('div');
+      link.className = 'chain-link shown';
+      link.dataset.dynamicBlock = '1';
+      link.id = 'hash-box-chain-' + b;
+      link.title = 'entire state passed in the clear — this hand-off is what a length-extension attack exploits';
+      link.innerHTML = '<span>chains into next block</span>';
+      chain.appendChild(link);
+    }
+  }
+}
+
+function getSpeedMs() {
+  // slider 1..100 maps to ~43.6ms (slow) .. ~4ms (fast) per event; the slider is read LIVE
+  // each frame inside playTrace's loop (it calls this function every frame), so dragging it
+  // during playback changes pacing immediately.
+  const v = Number(document.getElementById('speed-slider').value);
+  return 4 + (100 - v) * 0.4;
+}
+
+async function onHashClick() {
+  const bytes = await getActiveInputBytes();
+  const algo = getAlgorithm();
+  document.getElementById('input-box').classList.add('active-flash');
+  setTimeout(() => document.getElementById('input-box').classList.remove('active-flash'), 400);
+  if (algo === 'md5') {
+    const { digest, trace } = md5WithTrace(bytes);
+    const numBlocks = Number(trace.find(e => e.boxId === 'split').sample.split(' ')[0]);
+    renderMd5BlockChain(numBlocks);
+    document.getElementById('diagram-md5').style.display = '';
+    document.getElementById('diagram-sha3').style.display = 'none';
+    playTrace(trace, getSpeedMs, (ev) => pulseBox(ev.boxId, ev.sample), () => {
+      document.getElementById('output-digest').textContent = digest;
+      document.getElementById('output-bits').textContent = '128-bit / 32 hex chars';
+      document.getElementById('output-box').classList.add('active-flash');
+      setTimeout(() => document.getElementById('output-box').classList.remove('active-flash'), 400);
+    });
+  }
+  // SHA-3 branch added in Task 7
+}
+document.getElementById('hash-btn').onclick = onHashClick;
 </script>
 </body>
 </html>
