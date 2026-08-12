@@ -33,3 +33,24 @@ No web page, no server — read straight off a laptop or printed sheet if the wh
 
 **Contains answers.** See `text-challenges/README.md` for details — presenter eyes only, don't
 hand this folder to students.
+
+## Tier 2b — `challenges-student-handout.md`: the actual paper-safe handout
+
+`text-challenges/*/challenge.yml` deliberately keeps a challenge's presented text and its
+flag in the *same* file (matching the real PeCanCTF schema, for the presenter's own
+grading/reference use). That makes those files unsafe to put in front of students or on a
+shared screen — the flag is sitting right there in the same document a student would be
+reading the puzzle from.
+
+`challenges-student-handout.md` is the student-safe extract: title + puzzle text only, for
+all 21 challenges, with zero flags/answers/solution hints (verified by grepping the file for
+`flag{`, `florg{`, `glaf{`, `glorf{` and friends). Reach for this specifically in the
+**pure-paper / screen-share sub-scenario** — nothing digital is running at all, so it's this
+markdown file, printed or displayed, plus a `challenge.yml`'s `flags:` field (or the matching
+`README.md`) open only on the presenter's own machine to check answers by hand.
+
+This is separate from `launch_offline.py` (Tier 1): that script re-serves the actual live
+site (Caesar/Encoding/XOR/FNAC as interactive pages), which never shows a flag value to the
+person using it in the first place — its own UI already handles the presenter/student
+boundary safely. The handout file exists only for the case where *that* also isn't an
+option and the fallback is genuinely pen-and-paper.
