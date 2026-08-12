@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Same Key Both Ways — Crypto 101 · XOR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#e7dec9; --panel:#efe7d3; --panel2:#e2d8be; --edge:#cdc09f;
+    --ink:#241f17; --dim:#7c7259;
+    --accent:#b23a26; --gold:#a9772a; --ok:#3f7d52;
+    --read-bg:#1a1812; --read-dim:#5e5a3a; --read-on:#f0bb4d;
+    --disp:"Fraunces",Georgia,serif; --ui:"Hanken Grotesk",system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  html[data-theme="dark"]{
+    --bg:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
+    --ink:#ece3cd; --dim:#9a8f72; --accent:#e0593d; --gold:#c79338; --ok:#62ab77; --read-bg:#14120c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg);
+    background-image:radial-gradient(circle at 20% 0%, #f1ead9 0, transparent 55%),
+                     radial-gradient(circle at 100% 100%, #ddd2b6 0, transparent 60%);
+    min-height:100vh; padding:40px 18px 90px;}
+  [data-theme="dark"] body{background-image:radial-gradient(circle at 20% 0%, #211d12 0, transparent 55%),
+                     radial-gradient(circle at 100% 100%, #0f0d08 0, transparent 60%);}
+  .wrap{max-width:780px; margin:0 auto}
+
+  header{border-bottom:2px solid var(--ink); padding-bottom:18px; margin-bottom:26px}
+  .kicker{font-family:var(--mono); font-size:.7rem; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--accent); display:flex; justify-content:space-between; align-items:center; margin-bottom:8px}
+  .theme-btn{font-family:var(--mono); font-size:.64rem; letter-spacing:.18em; cursor:pointer; color:var(--ink);
+    background:linear-gradient(#f4eedd,#ddd2b6); border:1px solid var(--edge); border-radius:4px; padding:5px 11px}
+  [data-theme="dark"] .theme-btn{background:linear-gradient(#322d1d,#211e14)}
+  h1{font-family:var(--disp); font-weight:900; font-size:clamp(2.1rem,6.5vw,3.3rem); line-height:.96; margin:0; letter-spacing:-.02em}
+  h1 em{font-style:italic; font-weight:400; color:var(--accent)}
+  header p{font-family:var(--disp); font-size:1.02rem; line-height:1.5; opacity:.82; margin:12px 0 0; max-width:56ch}
+
+  .note{font-family:var(--mono); font-size:.78rem; line-height:1.6; color:var(--ink); background:var(--panel2);
+    border:1px solid var(--edge); border-left:3px solid var(--gold); padding:12px 15px; border-radius:3px; margin:22px 0 30px}
+  .note b{color:var(--accent)} .note .vs{color:var(--gold)}
+
+  .card{background:var(--panel); border:1px solid var(--edge); border-radius:10px; margin-bottom:22px;
+    box-shadow:0 14px 30px -24px #000; overflow:hidden}
+  details.card{padding:0}
+  summary{cursor:pointer; list-style:none; display:flex; align-items:center; gap:13px; padding:18px 24px}
+  summary::-webkit-details-marker{display:none}
+  .card>.head{display:flex; align-items:center; gap:13px; padding:18px 24px}
+  .idx{font-family:var(--mono); font-weight:700; font-size:.72rem; letter-spacing:.16em; color:#fff;
+    background:var(--accent); padding:4px 8px; border-radius:3px; min-width:34px; text-align:center; transition:background .25s}
+  .idx.demo{background:var(--gold)}
+  details.solved .idx{background:var(--ok)}
+  .ttl{font-family:var(--disp); font-weight:600; font-size:1.28rem}
+  .done{font-family:var(--mono); font-size:.66rem; letter-spacing:.14em; color:var(--ok); border:1px solid var(--ok);
+    border-radius:20px; padding:2px 9px; opacity:0; transform:scale(.8); transition:.25s}
+  details.solved .done{opacity:1; transform:none}
+  .sub{font-family:var(--mono); font-size:.72rem; color:var(--dim); margin-left:auto; letter-spacing:.08em}
+  summary .sub::after{content:" \25B8"} details[open] summary .sub::after{content:" \25BE"}
+  .body{padding:2px 24px 26px}
+
+  .lab{font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--dim); margin:20px 0 8px}
+  .prose{font-family:var(--ui); font-size:.92rem; line-height:1.55; opacity:.9; margin:8px 0}
+  .prose code{font-family:var(--mono); background:var(--panel2); border:1px solid var(--edge); border-radius:4px; padding:1px 5px; font-size:.85em}
+  .blob{font-family:var(--mono); font-size:.86rem; line-height:1.5; color:#3a3322; background:var(--panel2);
+    border:1px solid var(--edge); border-radius:5px; padding:12px 14px; word-break:break-all;
+    min-height:46px; overflow:auto}
+  [data-theme="dark"] .blob{color:#cdbf9f}
+
+  /* --- bit gate (demo + expandable byte view) --- */
+  .gate{margin:14px 0 6px}
+  .brow{display:flex; align-items:center; gap:12px; margin:9px 0}
+  .blabel{font-family:var(--mono); font-size:.62rem; letter-spacing:.16em; text-transform:uppercase; color:var(--dim);
+    width:96px; flex:0 0 auto; text-align:right}
+  .bits{display:flex; gap:6px; flex-wrap:wrap}
+  .bit{font-family:var(--mono); font-weight:700; font-size:.82rem; width:30px; height:30px; border-radius:6px;
+    display:flex; align-items:center; justify-content:center; border:1px solid var(--edge); background:var(--panel2);
+    color:var(--dim); transition:background .15s,color .15s,box-shadow .15s; user-select:none}
+  .bit.on{background:var(--ink); color:var(--bg)}
+  .bit.key{cursor:pointer; box-shadow:0 2px 0 #b9ac8a}
+  [data-theme="dark"] .bit.key{box-shadow:0 2px 0 #000}
+  .bit.key.on{background:var(--accent); color:#fff; border-color:var(--accent)}
+  .bit.key:active{transform:translateY(2px); box-shadow:none}
+  .bit.bulb{background:#2a2620; color:#544f3a; border-color:#000}
+  .bit.bulb.on{background:radial-gradient(circle at 50% 40%, #ffd87a, #f0bb4d 60%, #a9772a);
+    color:#3a2a00; box-shadow:0 0 12px #f0bb4d99, 0 0 0 1px #000}
+  .chook{display:flex; gap:18px; flex-wrap:wrap; margin:14px 0 4px; align-items:baseline}
+  .chook .rd{font-family:var(--mono); font-size:.74rem; color:var(--dim)}
+  .chook .rd b{font-family:var(--mono); font-size:1.05rem; color:var(--ink); font-weight:700}
+  .chook .rd b.amber{color:var(--gold)}
+  .demo-char{font-family:var(--mono); font-size:.95rem; width:48px; text-align:center; color:var(--read-on);
+    background:var(--read-bg); border:1px solid #000; border-radius:5px; padding:6px; box-shadow:0 0 0 1px var(--edge)}
+  .mini{font-family:var(--mono); font-size:.66rem; letter-spacing:.12em; cursor:pointer; color:var(--dim);
+    background:none; border:1px solid var(--edge); border-radius:5px; padding:6px 10px}
+  .mini:hover{color:var(--ink); border-color:var(--dim)}
+
+  /* atomic XOR toy */
+  .xtoy{display:flex; align-items:center; gap:13px; flex-wrap:wrap; background:var(--panel2);
+    border:1px solid var(--edge); border-radius:9px; padding:14px 16px; margin:6px 0}
+  .xtoy .op{font-family:var(--mono); font-size:1.25rem; color:var(--dim)}
+  .xtoy .bit{width:40px; height:40px; font-size:1.05rem}
+  .truth{display:flex; gap:8px; margin-left:auto; flex-wrap:wrap}
+  .truth .tr{font-family:var(--mono); font-size:.72rem; color:var(--dim); padding:4px 8px; border-radius:5px;
+    border:1px solid transparent; transition:.15s}
+  .truth .tr.on{color:var(--ink); border-color:var(--gold); background:var(--panel)}
+  .prose.tiny{font-size:.82rem; opacity:.82; margin:6px 0 0}
+
+  /* staged byte rows */
+  .bit.slot{opacity:.28}
+  .bit.fill{animation:pop .22s ease}
+  @keyframes pop{from{transform:scale(.5); opacity:0} to{transform:none; opacity:1}}
+  .stagebtns{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:18px}
+  .go{font-family:var(--mono); font-weight:700; font-size:.8rem; letter-spacing:.08em; cursor:pointer; color:#fff;
+    background:var(--accent); border:none; border-radius:7px; padding:10px 16px}
+  .go:disabled{opacity:.38; cursor:not-allowed}
+  .go.ghost{background:var(--gold)}
+
+  /* two-column lock / unlock demo */
+  .twocol{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px}
+  @media(max-width:640px){ .twocol{grid-template-columns:1fr} }
+  .col{background:var(--panel2); border:1px solid var(--edge); border-radius:9px; padding:14px 15px}
+  .col .coltag{font-family:var(--mono); font-weight:700; font-size:.66rem; letter-spacing:.12em;
+    color:var(--accent); margin-bottom:12px}
+  .col .brow{gap:9px; margin:7px 0}
+  .col .blabel{width:70px; font-size:.56rem; letter-spacing:.1em}
+  .col .bits{flex-wrap:nowrap}
+  .col .bit{width:24px; height:24px; font-size:.72rem; border-radius:5px}
+  .rdiv{height:1px; background:var(--edge); margin:9px 0 9px 79px}
+  .col .go{margin-top:12px; width:100%}
+  .chook .rd.dim{font-size:.68rem; opacity:.7}
+
+  /* result readout on top, with TEXT|HEX toggle */
+  .result{display:flex; align-items:center; gap:10px; background:#070b10; border:1px solid #000;
+    border-radius:7px; padding:8px 11px; margin-bottom:13px; box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset}
+  .rlab{font-family:var(--mono); font-size:.58rem; letter-spacing:.16em; text-transform:uppercase; color:var(--read-dim)}
+  .rval{font-family:var(--mono); font-weight:700; font-size:1.02rem; color:var(--read-on); flex:1; letter-spacing:.06em}
+  .rval.dimv{color:var(--read-dim)}
+  .seg{display:inline-flex; border:1px solid #2c2a20; border-radius:6px; overflow:hidden}
+  .seg button{font-family:var(--mono); font-size:.58rem; letter-spacing:.1em; cursor:pointer; border:none;
+    padding:4px 8px; background:transparent; color:var(--read-dim)}
+  .seg button.on{background:var(--accent); color:#fff}
+
+  /* drop / flip / pipe animation */
+  .pipe-down{height:13px; margin:2px 0 2px 79px; border-left:2px dashed var(--edge)}
+  @keyframes drop{from{transform:translateY(-16px); opacity:0} to{transform:none; opacity:1}}
+  @keyframes flip{0%{transform:rotateX(0)} 45%{transform:rotateX(85deg); background:var(--accent); color:#fff} 100%{transform:rotateX(0)}}
+  .bit.drop{animation:drop .22s ease}
+  .bit.flip{animation:flip .3s ease}
+  .bit.key.pulse{animation:kpulse .3s ease}
+  @keyframes kpulse{0%,100%{transform:none} 50%{transform:translateY(3px) scale(1.12)}}
+  .pipe-across{font-family:var(--mono); font-size:.62rem; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--gold); text-align:center; margin:4px 0 0; opacity:0; transition:opacity .3s}
+  .pipe-across.show{opacity:1}
+
+  /* --- decode workspace --- */
+  .keyrow{display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin-top:8px}
+  .keyrow input{font-family:var(--mono); font-size:.92rem; color:var(--read-on); background:var(--read-bg);
+    border:1px solid #000; border-radius:6px; padding:10px 12px; box-shadow:0 0 0 1px var(--edge); min-width:120px}
+  .keyrow input:focus{outline:none; box-shadow:0 0 0 1px var(--accent)}
+  .keyrow input[readonly]{opacity:.85; cursor:default}
+  .keyhint{font-family:var(--mono); font-size:.7rem; color:var(--dim)}
+  .decout{font-family:var(--mono); font-size:.92rem; line-height:1.5; color:#9fb0a8; background:#070b10;
+    border:1px solid #000; border-radius:7px; padding:14px; margin-top:10px; min-height:48px; white-space:pre-wrap;
+    word-break:break-all; box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset}
+  .decout mark{background:none; color:var(--read-on); font-weight:700}
+
+  .brute{margin-top:16px}
+  .brutelist{font-family:var(--mono); font-size:.74rem; line-height:1.5; background:#070b10; color:#7f8c86;
+    border:1px solid #000; border-radius:7px; box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset;
+    max-height:220px; overflow:auto; padding:8px 10px; margin-top:8px}
+  .brutelist .r{white-space:pre; display:block}
+  .brutelist .r .k{color:var(--gold)}
+  .brutelist .r.hit{color:var(--read-on)} .brutelist .r.hit .k{color:var(--read-on)}
+  .brutelist .r.print{color:#bcd0c6}
+  .brutelist .brow-key{display:block; width:100%; text-align:left; font-family:var(--mono); font-size:.74rem;
+    background:none; border:none; color:#8f9c95; padding:3px 5px; cursor:pointer; white-space:pre; border-radius:4px}
+  .brutelist .brow-key:hover{background:#13202a; color:var(--read-on)}
+  .brutelist .brow-key .k{color:var(--gold)}
+  .xanim{display:flex; gap:5px; flex-wrap:wrap; margin:8px 0 4px; min-height:34px}
+  .xb{font-family:var(--mono); font-weight:700; font-size:.8rem; min-width:26px; text-align:center; padding:7px 4px;
+    border-radius:5px; background:var(--panel2); border:1px solid var(--edge); color:var(--dim); transition:.12s}
+  .xb.done{background:var(--read-bg); color:var(--read-on); border-color:#000}
+  .cribcalc{display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 4px}
+  .cc{font-family:var(--mono); text-align:center; border:1px solid var(--edge); border-radius:6px; overflow:hidden; min-width:38px}
+  .cc .h{font-size:.64rem; color:var(--dim); background:var(--panel2); padding:3px 4px}
+  .cc .m{font-size:.74rem; color:var(--ink); padding:3px 4px; border-top:1px solid var(--edge)}
+  .cc .k{font-size:.92rem; font-weight:700; color:#3a2a00; background:var(--read-on); padding:4px}
+  .hexdump{display:flex; gap:4px; flex-wrap:wrap; background:var(--panel2); border:1px solid var(--edge);
+    border-radius:6px; padding:10px 11px}
+  .hx{text-align:center; font-family:var(--mono); min-width:20px}
+  .hxh{font-size:.72rem; color:#3a3322}
+  [data-theme="dark"] .hxh{color:#cdbf9f}
+  .hxc{font-size:.72rem; color:var(--dim); border-top:1px solid var(--edge); margin-top:3px; padding-top:3px}
+  .cnote{font-family:var(--mono); font-size:.74rem; line-height:1.6; color:var(--ink); opacity:.9;
+    background:var(--panel2); border:1px solid var(--edge); border-left:3px solid var(--gold);
+    border-radius:5px; padding:11px 13px; margin-top:16px}
+  .cnote b{color:var(--accent)}
+  .dragrow{display:flex; gap:3px; flex-wrap:wrap; background:#070b10; border:1px solid #000; border-radius:7px;
+    padding:10px; box-shadow:0 0 0 1px var(--edge),0 3px 10px #0004 inset}
+  .dc{font-family:var(--mono); font-size:.8rem; min-width:17px; text-align:center; color:#3a3a30; padding:3px 2px; border-radius:3px; transition:.1s}
+  .dc.win{color:var(--read-on)}
+  .dc.hit{color:#bfe9cd; background:#3f7d5233}
+  .posr{width:100%; margin:10px 0 4px; accent-color:var(--accent)}
+
+  .submit{display:flex; gap:9px; margin-top:18px; flex-wrap:wrap; align-items:center}
+  .submit input{flex:1; min-width:150px; font-family:var(--mono); font-size:1rem; color:var(--read-on);
+    background:var(--read-bg); border:1px solid #000; border-radius:6px; padding:11px 13px; box-shadow:0 0 0 1px var(--edge)}
+  .submit input:focus{outline:none; box-shadow:0 0 0 1px var(--accent)}
+  .submit .check{font-family:var(--mono); font-weight:700; font-size:.86rem; cursor:pointer; color:#fff;
+    background:var(--accent); border:none; border-radius:6px; padding:0 18px}
+  .verdict{font-family:var(--mono); font-size:.76rem; margin-top:9px; min-height:1.1em; color:var(--dim)}
+  .verdict.ok{color:var(--ok)} .verdict.no{color:var(--accent)}
+
+  .cyber{font-family:var(--mono); font-size:.76rem; line-height:1.6; color:var(--ink); opacity:.9;
+    background:var(--panel2); border:1px solid var(--edge); border-radius:6px; padding:11px 13px; margin-top:18px}
+  .cyber b{color:var(--accent)}
+  .hide{display:none}
+
+  footer{text-align:center; font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; color:var(--dim); margin-top:42px; text-transform:uppercase}
+  .reset-row{display:flex; justify-content:center; margin:48px 0 36px}
+  .reset-btn{font-family:var(--mono); font-size:.66rem; letter-spacing:.16em; cursor:pointer; color:var(--dim);
+    background:none; border:1px solid var(--edge); border-radius:6px; padding:8px 14px; transition:.2s}
+  .reset-btn:hover{color:var(--ink); border-color:var(--dim)}
+  .reset-btn.armed{color:#fff; background:var(--accent); border-color:var(--accent); letter-spacing:.1em}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker"><span>Crypto 101 · Module 04 · XOR</span><button id="theme" class="theme-btn">DARK</button></div>
+    <h1>Same Key, <em>Both</em> Ways</h1>
+    <p>XOR is the atom of real crypto: a switch that flips a bit only when the key bit is on. Lock with
+       a key, unlock with the <em>same</em> key. And the crack: if you know a little of the message, you
+       can steal the key.</p>
+  </header>
+
+  <div class="note"><b>THE IDEA.</b> XOR (<span class="vs">⊕</span>) compares two bits and outputs
+    <b>1 only when they differ</b>. Do it with a key bit and you flip a bit or leave it &mdash; do it
+    <i>again</i> with the same key bit and it flips back. So <span class="vs">c = m ⊕ k</span> means
+    <b>m = c ⊕ k</b> (same key undoes it) <i>and</i> <b>k = c ⊕ m</b> (known message leaks the key).</div>
+
+  <!-- DEMO (unscored) -->
+  <div class="card" id="demo">
+    <div class="head"><span class="idx demo">DEMO</span><span class="ttl">Lock It, Unlock It</span>
+      <span class="sub">play · not scored</span></div>
+    <div class="body">
+      <p class="prose">XOR (<b>⊕</b>) takes two bits and lights the bulb only when they <b>differ</b>. Tap the two
+        switches and watch.</p>
+
+      <div class="lab">The gate &mdash; one bit ⊕ one bit</div>
+      <div class="xtoy">
+        <span class="bit key" id="ta">0</span>
+        <span class="op">⊕</span>
+        <span class="bit key" id="tb">0</span>
+        <span class="op">=</span>
+        <span class="bit bulb" id="tout">0</span>
+        <div class="truth" id="ttable"></div>
+      </div>
+      <p class="prose tiny">Where the key bit is <b>1</b> it flips; where it's <b>0</b> it leaves it. (Same thing
+        as: bulb on when the two differ.)</p>
+
+      <p class="prose">A letter is just <b>8 bits</b>. <b>Lock</b> it on the left; the scrambled result pipes to the
+        right, where the <b>same key unlocks</b> it &mdash; every bit returns. Pick a letter, tap the red key bits,
+        then press the buttons.</p>
+
+      <div class="chook">
+        <span class="rd">message&nbsp; <input class="demo-char" id="dchar" maxlength="1" value="H"></span>
+        <span class="rd">key&nbsp; <b class="amber" id="dkeyhex">0x3D</b></span>
+        <span class="rd dim">tip: tap the red key bits</span>
+      </div>
+
+      <div class="twocol">
+        <div class="col">
+          <div class="coltag">① LOCK &mdash; scramble</div>
+          <div class="result"><span class="rlab">encrypted</span><span class="rval dimv" id="r-enc">?</span>
+            <span class="seg" data-tog="enc"><button data-v="text" class="on">TEXT</button><button data-v="hex">HEX</button></span></div>
+          <div class="brow"><span class="blabel">key (tap)</span><span class="bits" id="e-key"></span></div>
+          <div class="brow"><span class="blabel">message</span><span class="bits" id="e-msg"></span></div>
+          <div class="pipe-down"></div>
+          <div class="brow"><span class="blabel">encrypted</span><span class="bits" id="e-out"></span></div>
+          <button class="go" id="dlock">LOCK IT ▸</button>
+        </div>
+        <div class="col">
+          <div class="coltag">② UNLOCK &mdash; same key</div>
+          <div class="result"><span class="rlab">decrypted</span><span class="rval dimv" id="r-dec">?</span>
+            <span class="seg" data-tog="dec"><button data-v="text" class="on">TEXT</button><button data-v="hex">HEX</button></span></div>
+          <div class="brow"><span class="blabel">key (same)</span><span class="bits" id="d-key"></span></div>
+          <div class="brow"><span class="blabel">encrypted</span><span class="bits" id="d-in"></span></div>
+          <div class="pipe-down"></div>
+          <div class="brow"><span class="blabel">decrypted</span><span class="bits" id="d-out"></span></div>
+          <button class="go ghost" id="dunlock" disabled>UNLOCK ▸</button>
+        </div>
+      </div>
+      <div class="pipe-across" id="pipe">▾ encrypted piped into ② ▾</div>
+      <div class="stagebtns">
+        <button class="mini" id="dreplay">↺ REPLAY</button>
+        <button class="mini" id="dreset">RESET KEY</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>ctf.sandhi.com.au · crypto · xor</footer>
+  <div class="reset-row"><button id="reset-mod" class="reset-btn">RESET MODULE</button></div>
+</div>
+
+<template id="mod">
+  <details class="card">
+    <summary><span class="idx"></span><span class="ttl"></span><span class="done">captured</span><span class="sub"></span></summary>
+    <div class="body">
+      <p class="prose intro"></p>
+      <div class="work"></div>
+      <div class="submit">
+        <input class="flagin" placeholder="type the flag you read, e.g. flag{...}" aria-label="flag"><button class="check">SUBMIT</button>
+      </div>
+      <div class="verdict"></div>
+      <div class="cyber hide"></div>
+    </div>
+  </details>
+</template>
+
+<script>
+const FLAG_RE_G = /(flag\{[^}]{0,40}\})/gi;
+const toBytes = s => { const u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i)&255; return u; };
+const toStr   = b => { let s=''; for(let i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return s; };
+const toHex   = b => Array.from(b,x=>x.toString(16).padStart(2,'0')).join(' ');
+const xorBytes = (b,key) => { const o=new Uint8Array(b.length); for(let i=0;i<b.length;i++) o[i]=b[i]^key[i%key.length]; return o; };
+const printable = s => s.replace(/[^\x20-\x7E]/g,'·');
+const bits8 = n => Array.from({length:8},(_,i)=>(n>>(7-i))&1);
+
+// parse a typed key: hex bytes ("5a", "0x5a", "5a 6b") OR plain text ("sun"). Empty -> null.
+function parseKey(str){
+  let t=str.trim(); if(!t) return null;
+  let h=t.replace(/^0x/i,'').replace(/\s+/g,'');
+  if(/^[0-9a-fA-F]+$/.test(h) && h.length%2===0 && h.length>=2){
+    const u=new Uint8Array(h.length/2); for(let i=0;i<u.length;i++) u[i]=parseInt(h.substr(i*2,2),16); return u;
+  }
+  return toBytes(t); // treat as ASCII text
+}
+
+// theme (shared key across modules)
+(function(){const r=document.documentElement, s=localStorage.getItem('caesar-theme'); if(s)r.dataset.theme=s;
+  const b=document.getElementById('theme'); const sync=()=>b.textContent=r.dataset.theme==='dark'?'LIGHT':'DARK'; sync();
+  b.onclick=()=>{r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; localStorage.setItem('caesar-theme',r.dataset.theme); sync();};})();
+
+/* ---------------- DEMO: atomic toy ---------------- */
+(function(){
+  let a=0,b=0;
+  const elA=document.getElementById('ta'), elB=document.getElementById('tb'),
+        elO=document.getElementById('tout'), tt=document.getElementById('ttable');
+  function render(){
+    elA.textContent=a; elA.classList.toggle('on',!!a);
+    elB.textContent=b; elB.classList.toggle('on',!!b);
+    const r=a^b; elO.textContent=r; elO.classList.toggle('on',!!r);
+    tt.innerHTML='';
+    [[0,0],[0,1],[1,0],[1,1]].forEach(([x,y])=>{ const s=document.createElement('span');
+      s.className='tr'+((x===a&&y===b)?' on':''); s.textContent=x+'⊕'+y+'='+(x^y); tt.appendChild(s); });
+  }
+  elA.onclick=()=>{a^=1;render();}; elB.onclick=()=>{b^=1;render();};
+  render();
+})();
+
+/* ---------------- DEMO: two-column lock / unlock (drop + flip + pipe) ---------------- */
+(function(){
+  const DEFAULT_KEY=0x3D;
+  let keyBits=bits8(DEFAULT_KEY);
+  let locked=false, busy=false;
+  let lastEnc=null, lastDec=null, encMode='text', decMode='text';
+  const charEl=document.getElementById('dchar');
+  const eMsg=document.getElementById('e-msg'), eKey=document.getElementById('e-key'), eOut=document.getElementById('e-out');
+  const dIn=document.getElementById('d-in'),  dKey=document.getElementById('d-key'), dOut=document.getElementById('d-out');
+  const btnLock=document.getElementById('dlock'), btnUnlock=document.getElementById('dunlock'),
+        btnReplay=document.getElementById('dreplay'), btnReset=document.getElementById('dreset');
+  const pipe=document.getElementById('pipe');
+  const rd={keyhex:document.getElementById('dkeyhex'), enc:document.getElementById('r-enc'), dec:document.getElementById('r-dec')};
+
+  const msgByte = () => (charEl.value||'H').charCodeAt(0)&255;
+
+  function paint(el,arr){ el.innerHTML=''; arr.forEach(b=>{ const d=document.createElement('span');
+    d.className='bit'+(b?' on':''); d.textContent=b; el.appendChild(d); }); }
+  function paintKey(el,arr,tap){ el.innerHTML=''; arr.forEach((b,i)=>{ const d=document.createElement('span');
+    d.className='bit key'+(b?' on':''); d.textContent=b;
+    if(tap) d.onclick=()=>{ if(busy) return; keyBits[i]^=1; reset(); }; el.appendChild(d); }); }
+  function slots(el){ el.innerHTML=''; for(let i=0;i<8;i++){ const d=document.createElement('span');
+    d.className='bit slot'; d.textContent='·'; el.appendChild(d); } }
+
+  // readout: show the byte as a letter (TEXT) or hex (HEX)
+  function showReadout(el,bits,mode){
+    if(!bits){ el.textContent='?'; el.classList.add('dimv'); return; }
+    el.classList.remove('dimv');
+    const n=parseInt(bits.join(''),2);
+    el.textContent = mode==='hex' ? '0x'+n.toString(16).padStart(2,'0')
+                                  : ((n>=32&&n<=126)? '“'+String.fromCharCode(n)+'”' : '·');
+  }
+
+  // drop message bit into the output cell, then if key bit is on, flip it
+  // two distinct passes: (1) drop every source bit in, (2) after a pause, flip the key-on bits one by one
+  function lockReveal(src,keyArr,outEl,done){
+    slots(outEl); const cells=[...outEl.children]; const STEP=150;
+    src.forEach((sb,i)=>setTimeout(()=>{               // pass 1 — write the bits
+      const d=cells[i]; d.classList.remove('slot'); d.classList.add('drop');
+      d.textContent=sb; d.classList.toggle('on',!!sb);
+    }, i*STEP));
+    const afterWrite = src.length*STEP + 550;          // pause so "written" reads as a finished state
+    const flips = keyArr.map((k,i)=>k?i:-1).filter(i=>i>=0);
+    flips.forEach((idx,j)=>setTimeout(()=>{             // pass 2 — flip where the key bit is 1
+      const d=cells[idx]; d.classList.remove('drop'); void d.offsetWidth; d.classList.add('flip');
+      eKeyPulse(outEl,idx); const v=src[idx]^1; d.textContent=v; d.classList.toggle('on',!!v);
+    }, afterWrite + j*STEP));
+    setTimeout(done, afterWrite + flips.length*STEP + 250);
+  }
+  function eKeyPulse(outEl,i){ const row = outEl===eOut ? eKey : dKey;
+    const c=row.children[i]; if(c){ c.classList.remove('pulse'); void c.offsetWidth; c.classList.add('pulse'); } }
+
+  // fill column ②'s encrypted row in one smooth staggered cascade (no flicker: cells are created
+  // already animating, via per-cell animation-delay, instead of toggling a class a frame later)
+  function fillPiped(el,bits){ el.innerHTML=''; bits.forEach((b,i)=>{ const d=document.createElement('span');
+    d.className='bit drop'+(b?' on':''); d.style.animationDelay=(i*60)+'ms'; d.textContent=b; el.appendChild(d); }); }
+
+  function reset(){
+    locked=false; busy=false; lastEnc=null; lastDec=null;
+    paint(eMsg, bits8(msgByte()));
+    paintKey(eKey, keyBits, true);
+    paintKey(dKey, keyBits, false);
+    slots(eOut); slots(dIn); slots(dOut);
+    rd.keyhex.textContent='0x'+parseInt(keyBits.join(''),2).toString(16).padStart(2,'0').toUpperCase();
+    showReadout(rd.enc,null,encMode); showReadout(rd.dec,null,decMode);
+    pipe.classList.remove('show');
+    btnLock.disabled=false; btnUnlock.disabled=true;
+  }
+
+  function lock(){
+    if(busy||locked) return; busy=true; btnLock.disabled=true;
+    const msg=bits8(msgByte()), enc=msg.map((b,i)=>b^keyBits[i]);
+    lockReveal(msg,keyBits,eOut,()=>{
+      lastEnc=enc; showReadout(rd.enc,enc,encMode);
+      pipe.classList.add('show');
+      setTimeout(()=>{ fillPiped(dIn,enc); locked=true; busy=false; btnUnlock.disabled=false; }, 1000); // let it land, then pipe over
+    });
+  }
+  function unlock(){
+    if(busy||!locked) return; busy=true; btnUnlock.disabled=true;
+    const enc=bits8(msgByte()).map((b,i)=>b^keyBits[i]);
+    lockReveal(enc,keyBits,dOut,()=>{
+      const dec=enc.map((b,i)=>b^keyBits[i]); lastDec=dec; showReadout(rd.dec,dec,decMode); busy=false;
+    });
+  }
+
+  // TEXT | HEX toggles
+  document.querySelectorAll('.seg[data-tog]').forEach(seg=>{
+    seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+      if(seg.dataset.tog==='enc'){ encMode=b.dataset.v; showReadout(rd.enc,lastEnc,encMode); }
+      else { decMode=b.dataset.v; showReadout(rd.dec,lastDec,decMode); }
+    });
+  });
+
+  charEl.addEventListener('input',()=>{ charEl.value=(charEl.value||'').slice(-1); reset(); });
+  btnLock.onclick=lock; btnUnlock.onclick=unlock; btnReplay.onclick=reset;
+  btnReset.onclick=()=>{ keyBits=bits8(DEFAULT_KEY); reset(); };
+  reset();
+})();
+
+/* ================= CHALLENGE FRAMEWORK ================= */
+// English-frequency readability score (cryptopals-style). Heavy penalty for non-printable.
+const FREQ={32:13,101:12.7,116:9,97:8,111:7.5,105:7,110:6.7,115:6.3,104:6,114:6,100:4.3,108:4,117:2.8,
+  99:2.7,109:2.4,119:2.4,102:2.2,103:2,121:2,112:1.9,98:1.5,118:1,107:0.8,106:0.15,120:0.15,113:0.1,122:0.07};
+function score(bytes){ let s=0; for(const x of bytes){ if(x<32||x>126){ s-=40; continue; }
+  const lc = x>=65&&x<=90 ? x+32 : x;
+  if(FREQ[lc]!==undefined) s+=FREQ[lc]; else if(x===123||x===125||x===95) s+=0.5; else s+=0.2; }
+  return s/Math.max(1,bytes.length); }
+
+function flagMark(txt){ const frag=document.createDocumentFragment();
+  printable(txt).split(FLAG_RE_G).forEach((part,j)=>{ if(!part) return;
+    if(j%2){ const m=document.createElement('mark'); m.textContent=part; frag.appendChild(m); }
+    else frag.appendChild(document.createTextNode(part)); }); return frag; }
+
+// IDs of the challenges that currently exist. Prune any stale solve-ids (old scheme / removed cards)
+// so the completion confetti can't fire on a ghost count. (Engine bakes the ':v2:' store version.)
+const VALID = new Set(['c1','c2','c3','c4']);
+const STORE = 'ctf-solved:v2:xor';
+try{ const cur=JSON.parse(localStorage.getItem(STORE)||'[]');
+  if(cur.some(id=>!VALID.has(id))) localStorage.setItem(STORE, JSON.stringify(cur.filter(id=>VALID.has(id)))); }catch(e){}
+let storedSolved=new Set(); try{ storedSolved=new Set(JSON.parse(localStorage.getItem(STORE)||'[]')); }catch(e){}
+
+window.FX_TOTAL = 4;                       // demo unscored; C1–C4 scored
+const tpl = document.getElementById('mod');
+const footer = document.querySelector('footer');
+let firstCard = true;
+
+// shared card shell: build(ctx) wires the bespoke body into ctx.work and returns the flag string
+function addCard({id,title,sub,intro,hint,build}){
+  const node = tpl.content.firstElementChild.cloneNode(true);
+  footer.parentNode.insertBefore(node, footer);
+  if(firstCard){ node.open=true; firstCard=false; }
+  node.querySelector('.idx').textContent = id.toUpperCase();
+  node.querySelector('.ttl').textContent = title;
+  node.querySelector('.sub').textContent = sub;
+  node.querySelector('.intro').innerHTML = intro;
+  const verdict = node.querySelector('.verdict');
+  const capture = ()=>{ node.classList.add('solved'); verdict.className='verdict ok';
+    verdict.textContent='correct — flag captured'; if(window.fxSolved) window.fxSolved(id); };
+  const answer = build({ node, work:node.querySelector('.work'), verdict, capture }) || '';
+  const flagin = node.querySelector('.flagin');
+  function check(){ const v=flagin.value.trim();
+    if(v && answer && v.toLowerCase()===answer.toLowerCase()) capture();
+    else if(v){ verdict.className='verdict no'; verdict.textContent='not it — keep going'; } }
+  node.querySelector('.check').onclick=check;
+  flagin.addEventListener('keydown',e=>{ if(e.key==='Enter') check(); });
+  if(hint){ const cy=node.querySelector('.cyber'); cy.classList.remove('hide'); cy.innerHTML='<b>HINT.</b> '+hint; }
+  if(storedSolved.has(id)){ node.classList.add('solved'); verdict.className='verdict ok'; verdict.textContent='correct — flag captured'; }
+}
+
+/* ================= C1 · BRUTE FORCE (single-byte) ================= */
+addCard({
+  id:'c1', title:'Brute Force', sub:'1-byte key, hidden',
+  intro:"One secret byte was XOR'd across the whole message. A single byte is only <b>256 possibilities</b> — so just try them <i>all</i> and find the one that reads as English. Nobody hands you the answer; you spot it.",
+  hint:"Run all 256 and scroll — they're in key order (0x00→0xFF), nothing pre-marked. Stuck scrolling? Filter by a word you expect, like <code>flag</code>. You'll find <b>two</b> word-like rows: one <code>flag{…}</code> (lower-case) and a twin <code>FLAG[…]</code> (UPPER-case) — two keys <code>0x20</code> apart just flip letter <b>case</b>. A real flag is lower-case <code>flag{…}</code>; that's your key.",
+  build(ctx){
+    const plain='flag{brute_force_me}', key=0x37;
+    const cipher = xorBytes(toBytes(plain), Uint8Array.of(key));
+    ctx.work.innerHTML =
+      '<div class="lab">The scrambled message — hex (top) and text (bottom)</div>'+
+      '<div class="hexdump"></div>'+
+      '<div class="lab">Try every 1-byte key — scroll and spot the one that reads as English</div>'+
+      '<button class="mini runbrute">RUN ALL 256 KEYS ▸</button>'+
+      '<div class="brutewrap hide">'+
+        '<div class="keyrow"><input class="cribfilter" spellcheck="false" autocomplete="off" placeholder="filter: a word you expect, e.g. flag"><span class="keyhint">256 is a lot — narrow it with a crib (a word you bet is in there)</span></div>'+
+        '<div class="brutelist"></div></div>'+
+      '<div class="lab">Apply a key — type the byte (0x37) or its character</div>'+
+      '<div class="keyrow"><input class="keyin" spellcheck="false" autocomplete="off" placeholder="key, e.g. 0x37 or a character"><span class="keyhint">click a row above, or type a key</span></div>'+
+      '<div class="decout">(pick or type a key)</div>';
+    const hd=ctx.work.querySelector('.hexdump');
+    [...cipher].forEach(b=>{ const c=document.createElement('div'); c.className='hx';
+      c.innerHTML='<div class="hxh">'+b.toString(16).padStart(2,'0')+'</div><div class="hxc">'+
+        (b>=32&&b<=126?String.fromCharCode(b):'·')+'</div>'; hd.appendChild(c); });
+    const wrap=ctx.work.querySelector('.brutewrap'), list=ctx.work.querySelector('.brutelist'),
+          filter=ctx.work.querySelector('.cribfilter'),
+          keyin=ctx.work.querySelector('.keyin'), decout=ctx.work.querySelector('.decout');
+
+    // decode under every key, in KEY ORDER (not sorted — spotting the readable one is the skill)
+    const decoded=[]; for(let k=0;k<256;k++) decoded.push(toStr(xorBytes(cipher,Uint8Array.of(k))));
+    function renderList(){
+      const q=filter.value.toLowerCase(); list.innerHTML='';
+      decoded.forEach((txt,k)=>{ if(q && !txt.toLowerCase().includes(q)) return;
+        const r=document.createElement('button'); r.className='brow-key';
+        r.innerHTML='<span class="k">0x'+k.toString(16).padStart(2,'0')+'</span> '+printable(txt).replace(/</g,'&lt;');
+        r.onclick=()=>{ keyin.value='0x'+k.toString(16).padStart(2,'0'); apply(k); };
+        list.appendChild(r); });
+      if(!list.children.length) list.innerHTML='<span class="keyhint">no key produces that text — try another guess</span>';
+    }
+    ctx.work.querySelector('.runbrute').onclick=()=>{ wrap.classList.toggle('hide');
+      if(!wrap.classList.contains('hide') && !list.children.length) renderList(); };
+    filter.addEventListener('input',renderList);
+    function apply(k){ const dec=xorBytes(cipher,Uint8Array.of(k));
+      decout.innerHTML=''; decout.appendChild(flagMark(toStr(dec))); }
+    keyin.addEventListener('input',()=>{ const kb=parseKey(keyin.value); if(kb&&kb.length===1) apply(kb[0]);
+      else { decout.textContent='(type one byte: 0x37 or a single character)'; } });
+    return plain;
+  }
+});
+
+/* ================= C2 · CRIB THE KEY (repeating, known plaintext) ================= */
+addCard({
+  id:'c2', title:'Crib the Key', sub:'repeating key, hidden',
+  intro:"A longer key now — a whole word that <b>repeats</b>. No brute this time (256×256×… is too many). But you know a secret: every flag starts with <code>flag{</code>. And <b>scrambled ⊕ message = key</b>. So lay <code>flag{</code> over the start and the key falls out — watch it <i>repeat</i>.",
+  hint:"The recovered row reads <code>c a t c a</code> — that's the word <b>cat</b> starting again. Type <code>cat</code> as the key and the whole message unscrambles. A known scrap of plaintext (a “crib”) hands you the key.",
+  build(ctx){
+    const plain='flag{repeating_xor_key}', key='cat';
+    const cipher = xorBytes(toBytes(plain), toBytes(key));
+    ctx.work.innerHTML =
+      '<div class="lab">The scrambled message — hex bytes</div>'+
+      '<div class="blob">'+toHex(cipher)+'</div>'+
+      '<div class="lab">The crib — type the start you can guess every flag has</div>'+
+      '<div class="keyrow"><input class="cribin" spellcheck="false" autocomplete="off" placeholder="what do all flags start with?"><span class="keyhint">5 characters</span></div>'+
+      '<div class="lab">key = scrambled ⊕ crib  (read it across — does it repeat?)</div>'+
+      '<div class="cribcalc"><span class="keyhint">↑ type a crib above to reveal the key bytes</span></div>'+
+      '<div class="lab">Type the repeating key you read off</div>'+
+      '<div class="keyrow"><input class="keyin" spellcheck="false" autocomplete="off" placeholder="the word that repeats"><span class="keyhint"></span></div>'+
+      '<div class="decout">(enter the key)</div>'+
+      '<div class="cnote"><b>Why crib, not brute?</b> A 1-byte key has 256 options — tools like CyberChef spray all 256 in a blink. But this key is 3 bytes, and its “XOR Brute Force” won’t search keys longer than a byte or two. Multi-byte repeating keys dodge the brute — so you lean on a known scrap of plaintext instead.</div>';
+    const cribin=ctx.work.querySelector('.cribin'), calc=ctx.work.querySelector('.cribcalc'),
+          keyin=ctx.work.querySelector('.keyin'), decout=ctx.work.querySelector('.decout');
+
+    function renderCrib(){
+      const crib=toBytes(cribin.value); calc.innerHTML='';
+      if(!crib.length){ calc.innerHTML='<span class="keyhint">↑ type a crib above to reveal the key bytes</span>'; return; }
+      for(let i=0;i<crib.length && i<cipher.length;i++){
+        const kb=cipher[i]^crib[i];
+        const cell=document.createElement('div'); cell.className='cc';
+        cell.innerHTML='<div class="h">'+cipher[i].toString(16).padStart(2,'0')+'</div>'+
+          '<div class="m">'+(crib[i]>=32&&crib[i]<=126?String.fromCharCode(crib[i]):'·')+'</div>'+
+          '<div class="k">'+(kb>=32&&kb<=126?String.fromCharCode(kb):'·')+'</div>';
+        calc.appendChild(cell);
+      }
+    }
+    function decode(){
+      const k=toBytes(keyin.value); if(!k.length){ decout.textContent='(enter the key)'; return; }
+      decout.innerHTML=''; decout.appendChild(flagMark(toStr(xorBytes(cipher,k))));
+    }
+    cribin.addEventListener('input',renderCrib);
+    keyin.addEventListener('input',decode);
+    renderCrib();
+    return plain;
+  }
+});
+
+/* ================= C3 · SAME KEY TWICE (keystream reuse — the boss) ================= */
+addCard({
+  id:'c3', title:'Same Key Twice', sub:'two messages, one key',
+  intro:"The big one. Two secret messages were scrambled with the <b>same key</b> — a lazy, fatal mistake. You don't get the key. But you don't need it: XOR the two scrambled messages together and the key <b>cancels</b>. What's left is <code>message1 ⊕ message2</code>. Then you <i>crib-drag</i> — slide a guessed word along until it reads — to peel both apart.",
+  hint:"Combine them, then crib-drag. Type <code>flag{</code> at position 0: the other message reads <code>meet&nbsp;</code> — so message 2 starts “meet …”. Guess the rest of that sentence (<code>meet me by the docks!</code>) and drag it from position 0 — message 1 falls out, and that's your flag.",
+  build(ctx){
+    const p1='flag{same_key_twice}', p2='meet me by the docks!';
+    const key=toBytes('PURPLEHAZE');
+    const c1=xorBytes(toBytes(p1),key), c2=xorBytes(toBytes(p2),key);
+    const L=Math.min(c1.length,c2.length);
+    const xored=new Uint8Array(L); for(let i=0;i<L;i++) xored[i]=c1[i]^c2[i];
+    ctx.work.innerHTML =
+      '<div class="lab">Message 1 — scrambled (hex)</div><div class="blob">'+toHex(c1)+'</div>'+
+      '<div class="lab">Message 2 — scrambled (hex) · same key, reused</div><div class="blob">'+toHex(c2)+'</div>'+
+      '<div class="cnote"><b>The mistake:</b> one key, used twice. XOR the two scrambled messages together and the key <b>cancels itself</b> — no key left, just <code>message1 ⊕ message2</code>.</div>'+
+      '<button class="mini combine">XOR THE TWO TOGETHER ▸</button>'+
+      '<div class="dragwrap hide">'+
+        '<div class="lab">message1 ⊕ message2  (the key is gone)</div><div class="blob xored"></div>'+
+        '<div class="lab">Crib-drag — slide a guess; where it reads English, you\'ve cracked the OTHER message there</div>'+
+        '<div class="keyrow"><input class="guess" spellcheck="false" autocomplete="off" placeholder="a word you bet is in a message, e.g. flag{"><span class="keyhint">position <b class="posv">0</b></span></div>'+
+        '<input class="posr" type="range" min="0" max="'+(L-1)+'" value="0">'+
+        '<div class="dragrow"></div>'+
+        '<div class="lab">What the other message says here</div><div class="decout">(type a guess above)</div>'+
+      '</div>';
+    const combine=ctx.work.querySelector('.combine'), wrap=ctx.work.querySelector('.dragwrap'),
+          guess=ctx.work.querySelector('.guess'), posr=ctx.work.querySelector('.posr'),
+          posv=ctx.work.querySelector('.posv'), dragrow=ctx.work.querySelector('.dragrow'),
+          decout=ctx.work.querySelector('.decout');
+    ctx.work.querySelector('.xored').textContent = toHex(xored);
+    combine.onclick=()=>{ wrap.classList.toggle('hide'); };
+
+    const isEng = rv => rv===32 || (rv>=65&&rv<=90) || (rv>=97&&rv<=122) || (rv>=48&&rv<=57) || '{}_!.,?'.includes(String.fromCharCode(rv));
+    function render(){
+      const g=toBytes(guess.value), pos=+posr.value; posv.textContent=pos;
+      dragrow.innerHTML='';
+      for(let i=0;i<L;i++){ const cell=document.createElement('span'); cell.className='dc'; let ch='·';
+        if(g.length && i>=pos && i<pos+g.length){ const rv=xored[i]^g[i-pos];
+          ch=(rv>=32&&rv<=126)?String.fromCharCode(rv):'·'; cell.classList.add(isEng(rv)?'hit':'win'); }
+        cell.textContent=ch; dragrow.appendChild(cell);
+      }
+      if(!g.length){ decout.textContent='(type a guess above)'; return; }
+      let s=''; for(let i=0;i<g.length && pos+i<L;i++){ const rv=xored[pos+i]^g[i]; s+=(rv>=32&&rv<=126)?String.fromCharCode(rv):'·'; }
+      decout.innerHTML=''; decout.appendChild(flagMark(s));
+    }
+    guess.addEventListener('input',render); posr.addEventListener('input',render);
+    render();
+    return p1;
+  }
+});
+
+// two-step reset
+(function(){
+  const btn=document.getElementById('reset-mod'); if(!btn) return;
+  let armed=false, t;
+  btn.addEventListener('click', ()=>{
+    if(!armed){ armed=true; btn.classList.add('armed'); btn.textContent='CONFIRM — ERASE PROGRESS?';
+      t=setTimeout(()=>{ armed=false; btn.classList.remove('armed'); btn.textContent='RESET MODULE'; }, 3500); }
+    else { clearTimeout(t); if(window.fxReset) window.fxReset(); try{ localStorage.removeItem('ctf-solved:v2:xor'); }catch(e){} location.reload(); }
+  });
+})();
+</script>
+
+<script src="../confetti/manifest.js"></script>
+<script>window.FX_MODULE='xor';</script>
+<script src="../confetti/engine.js"></script>
+</body>
+</html>

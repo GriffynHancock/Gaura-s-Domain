@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Five Nights at Crypto's — Crypto 101 Bonus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#000000; --panel:#0d0c0a; --panel2:#141210; --edge:#2a2620;
+    --ink:#e8e2d4; --dim:#7a7466;
+    --accent:#b23a26; --gold:#c79338; --ok:#62ab77;
+    --disp:"Fraunces",Georgia,serif; --ui:"Hanken Grotesk",system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg); min-height:100vh; padding:40px 18px 90px}
+  .wrap{max-width:780px; margin:0 auto}
+  header{border-bottom:2px solid var(--edge); padding-bottom:18px; margin-bottom:26px}
+  h1{font-family:var(--disp); font-weight:900; font-size:clamp(2.1rem,6.5vw,3.3rem); line-height:.96; margin:0; color:var(--ink)}
+  h1 em{font-style:italic; font-weight:400; color:var(--accent)}
+  header p{font-family:var(--disp); font-size:1.02rem; line-height:1.5; opacity:.8; margin:12px 0 0; max-width:56ch}
+
+  .locked{font-family:var(--mono); font-size:.9rem; color:var(--dim); text-align:center; padding:80px 20px}
+
+  .grid{display:grid; gap:18px}
+  .stage{background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:20px 22px}
+  .stage.placeholder{opacity:.45}
+  .stage .lab{font-family:var(--mono); font-size:.66rem; letter-spacing:.2em; text-transform:uppercase; color:var(--gold)}
+  .stage h2{font-family:var(--disp); font-size:1.4rem; margin:6px 0 10px}
+  .raw-html{font-family:serif; color:#000; background:#fff; padding:16px; border:none}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+function ctfUid(){
+  const m=document.cookie.match(/(?:^|; )ctf-uid=([^;]+)/); if(m) return m[1];
+  const v=Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+  document.cookie='ctf-uid='+v+';path=/;max-age=31536000;samesite=lax'; return v;
+}
+const fnv=s=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; };
+const UID=ctfUid();
+
+function unlocked(){ return document.cookie.match(/(?:^|; )ctf-fnac-unlocked=1(?:;|$)/); }
+
+const app = document.getElementById('app');
+if(!unlocked()){
+  app.innerHTML = '<div class="locked">nothing here yet.<br>finish <a href="../encoding/" style="color:var(--gold)">Module 2</a> first.</div>';
+} else {
+  renderModule();
+}
+
+function renderModule(){
+  app.innerHTML = `
+    <header>
+      <h1>Five Nights at <em>Crypto's</em></h1>
+      <p>You made it through. This part isn't graded like the rest — it's what's left running after
+         hours. Same tools, worse lighting.</p>
+    </header>
+    <div class="raw-html"><p>visitor log — do not remove<br>everything past this point is off the books.</p></div>
+    <div class="grid" id="stages"></div>
+  `;
+  renderStages();
+}
+
+// small deterministic rotation per stage id, stable across reloads — "slightly off," not jittery
+function seededRotation(id){ return (fnv('rot:'+id) % 500) / 100 - 2.5; } // -2.5deg .. +2.5deg
+
+const STAGES = [
+  {id:'night1', title:'Night 1 · Static', ready:true},
+  {id:'night2', title:"Night 2 · It's In The Metadata", ready:true},
+  {id:'night3', title:'Night 3 · 10,000 Cats', ready:true},
+  {id:'night4', title:'Night 4', ready:false},
+  {id:'night5', title:'Night 5', ready:false},
+  {id:'nightmare', title:'Nightmare', ready:false},
+  {id:'abyss', title:'Abyss', ready:false},
+];
+
+function renderStages(){
+  const wrap = document.getElementById('stages');
+  STAGES.forEach(s=>{
+    const el = document.createElement('div');
+    el.className = 'stage' + (s.ready ? '' : ' placeholder');
+    el.style.transform = `rotate(${seededRotation(s.id)}deg)`;
+    el.id = 'stage-' + s.id;
+    if(s.ready){
+      el.innerHTML = `<div class="lab">${s.id}</div><h2>${s.title}</h2><div class="body"></div>`;
+    } else {
+      el.innerHTML = `<div class="lab">${s.id}</div><h2>${s.title}</h2><div class="body" style="font-family:var(--mono);font-size:.8rem;color:var(--dim)">not yet.</div>`;
+    }
+    wrap.appendChild(el);
+  });
+}
+</script>
+</body>
+</html>

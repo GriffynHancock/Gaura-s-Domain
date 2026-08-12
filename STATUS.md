@@ -12,7 +12,7 @@ Spine: **recognise → identify → decode/crack → submit.**
 | 1 | ROT / Caesar (+ Vigenère + Affine) | ✅ **live** | `ctf.sandhi.com.au/crypto/ceasar` |
 | 2 | Encoding | ✅ **live** | `ctf.sandhi.com.au/crypto/encoding` |
 | 3 | Hashing | ⬜ planned | `public/crypto/hash/` (planned) |
-| 4 | XOR | ⬜ **next** | `public/crypto/xor/` (planned) |
+| 4 | XOR | 🚧 **in progress** (demo+C1–C3 done, C4 left, not deployed) | `public/crypto/xor/` → `/crypto/xor/` |
 | — | Live Kali demo (CyberChef + archive crack) | ⬜ presenter prep | n/a |
 
 ## Module 1 — Caesar set (live, `/crypto/ceasar`) — 6 puzzles
@@ -51,11 +51,33 @@ Each user gets ONE signature effect per module (cookie-seeded, unique per person
 **persists** in `localStorage` (`ctf-solved:v2:<module>`); **★ REPLAY** button appears beside the theme toggle on
 completion; two-step **RESET MODULE** button (below footer) clears a module's progress.
 
-## Next up — Module 4 · XOR (recommended, coordinator-confirmed)
-Bits-as-switches: message bit-row ⊕ key bit-row → output bulb (lights when exactly one input is on); flip output
-back to text; same key undoes it. Given short repeating key and/or single-byte brute (0–255). Dual view (letters +
-switches). Feeds the keystream-reuse boss flag. Then **Module 3 Hashing** (SHA-256 avalanche + crack weak MD5 via
-embedded table). Each: own spec → plan → build → verify (real clicks) → deploy.
+## Module 4 · XOR — IN PROGRESS (`public/crypto/xor/index.html`)
+**Full handoff + remaining work: `docs/2026-06-26-module4-xor-spec.md` (v2) — read it before touching this.**
+Rebuilt from a v1 that was "demos in costume". Frame: *the keystream is the weakness.* Plain language
+(encrypted/decrypted/lock/unlock, "scrambled message" — NOT cipher/plaintext). Local: `python3 -m http.server 8787`
+→ `http://localhost:8787/public/crypto/xor/` (append `?v=N` to bust cache). **Not deployed yet — deploy only on user go.**
+
+- **Demo** (unscored) — gate toy + two-column LOCK/UNLOCK. Key on top; result readout on top in plain text with
+  TEXT|HEX toggle. Animation = two passes: message bits **drop in**, pause, key-on bits **flip**; encrypted result
+  **pipes** to column ② after a 1 s beat; same key unlocks back. ✅ done+verified.
+- **C1 · Brute Force** — 1-byte key hidden; 256 decodes listed **in key order (NOT sorted — spotting is the skill)**
+  + a student-driven crib **filter**; hex+text dump; type key as char or hex. The `0x37`/`0x17` twin (XOR-by-`0x20`
+  = case flip) is the **decoy lesson** (pick lowercase `flag{`). ✅ done+verified.
+- **C2 · Crib the Key** — repeating key, hidden; student types the `flag{` crib, recovered bytes spell the repeat
+  (`c a t c a` → `cat`); CyberChef-can't-do->2-byte-keys note. ✅ done+verified.
+- **C3 · Same Key Twice** (boss) — two reused-key blobs; COMBINE cancels key → `m1⊕m2`; crib-drag slider reveals the
+  other message; full sentence drag peels the flag. ✅ done+verified.
+- **C4 · Long Key, Many Keys** — ⬜ **LAST TODO. Design decided: 3-byte LIVE TUNER** (three byte-knobs, whole
+  message re-renders live, tune until the full sentence reads — NOT per-column brute lists, which can't be eyeballed).
+  Content node-verified (see spec): plain `the long key is really many tiny keys flag{stacked}`, key `sun` (len 3,
+  given), flag `flag{stacked}`. Embodies the lesson: a long key = 3 single-byte knobs.
+
+**Engine wiring:** `FX_MODULE='xor'`, `FX_TOTAL=4`, `fxSolved(id)` per capture; engine bakes store key
+`ctf-solved:v2:xor`. Card framework = `addCard({id,title,sub,intro,hint,build})`; `build(ctx)` wires bespoke body
+into `ctx.work` and **returns the flag string**. IDs `c1`–`c4` in `const VALID`; stale ids are pruned on load
+(can't bump store to v3 without editing the shared engine). **Node-verify every attack before wiring UI.**
+
+Then **Module 3 Hashing** (SHA-256 avalanche + crack weak MD5 via embedded table).
 
 ## Conventions
 - One static HTML file per module under `public/crypto/<name>/`; all JS client-side; flat `warm-editorial-ui` skin.
@@ -67,5 +89,6 @@ embedded table). Each: own spec → plan → build → verify (real clicks) → 
 ## Open / todo
 - [ ] **User: visual pass** — remove redundant inline text boxes, insert real presenter copy across both modules.
 - [ ] **User: swap placeholder reward URLs** (rickrolls) in the Caesar `REWARDS` map for real meme links.
-- [ ] Build **Module 4 (XOR)** next: spec → plan → build → verify → deploy.
+- [ ] **Module 4 XOR: build C4** (last challenge — spec'd + content node-verified), then user playtest → deploy.
+- [ ] Module 4: optional — make C1 byte-decode show the `⊕ key` step explicitly (user flagged, left for now).
 - [ ] (Optional) richer trollface / tune the Two Faces polyglot target if desired.
