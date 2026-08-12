@@ -41,6 +41,7 @@
     border:1px solid var(--edge); border-radius:5px; width:100%; border-collapse:collapse}
   .meta-table td{padding:6px 10px; border-bottom:1px solid var(--edge)}
   .meta-table td:first-child{color:var(--gold)}
+  .bp-canvas{image-rendering:pixelated; max-width:100%; border:1px solid var(--edge); border-radius:4px}
 </style>
 </head>
 <body>
@@ -194,6 +195,59 @@ function mountMetadataViewer(container){
     }catch(e){
       resultBox.textContent = "couldn't read that file.";
     }
+  }
+  zone.addEventListener('click', ()=>input.click());
+  input.addEventListener('change', ()=>handle(input.files[0]));
+  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
+  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); handle(e.dataTransfer.files[0]); });
+}
+
+// ---- Bit-Plane / LSB Viewer widget (Task 8) ----
+function extractLsbMessage(imageData, maxLen=4096){
+  const d = imageData.data; // RGBA, one pixel = 4 bytes, R channel is index 0 of each pixel
+  const bit = i => d[i*4] & 1;
+  let lengthBits = '';
+  for(let i=0;i<32;i++) lengthBits += bit(i);
+  const length = Math.min(parseInt(lengthBits,2) || 0, maxLen);
+  const bytes = new Uint8Array(length);
+  for(let by=0; by<length; by++){
+    let byteBits = '';
+    for(let bi=0; bi<8; bi++) byteBits += bit(32 + by*8 + bi);
+    bytes[by] = parseInt(byteBits,2);
+  }
+  return bytes;
+}
+
+function mountBitPlaneViewer(container){
+  container.innerHTML = `<div class="dropzone">drop an image here (stands in for <b>zsteg</b>) — or click to choose</div>
+    <canvas class="bp-canvas" style="display:none"></canvas><div class="hexdump" style="display:none"></div>`;
+  const zone = container.querySelector('.dropzone');
+  const canvas = container.querySelector('canvas');
+  const dump = container.querySelector('.hexdump');
+  const input = document.createElement('input'); input.type='file'; input.style.display='none';
+  container.appendChild(input);
+
+  function handle(file){
+    if(!file) return;
+    const img = new Image();
+    img.onload = ()=>{
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img,0,0);
+      canvas.style.display = 'block';
+      try{
+        const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+        const bytes = extractLsbMessage(imageData);
+        dump.style.display = 'block';
+        dump.textContent = 'R-channel LSB, first bits: ' + printable(toStr(bytes));
+      }catch(e){
+        dump.style.display = 'block';
+        dump.textContent = "couldn't read that image.";
+      }
+    };
+    img.onerror = ()=>{ dump.style.display='block'; dump.textContent = "couldn't read that as an image."; };
+    img.src = URL.createObjectURL(file);
   }
   zone.addEventListener('click', ()=>input.click());
   input.addEventListener('change', ()=>handle(input.files[0]));
