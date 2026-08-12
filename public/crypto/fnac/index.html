@@ -31,6 +31,17 @@
   .stage .lab{font-family:var(--mono); font-size:.66rem; letter-spacing:.2em; text-transform:uppercase; color:var(--gold)}
   .stage h2{font-family:var(--disp); font-size:1.4rem; margin:6px 0 10px}
   .raw-html{font-family:serif; color:#000; background:#fff; padding:16px; border:none}
+
+  .dropzone{font-family:var(--mono); font-size:.78rem; color:var(--dim); border:1px dashed var(--edge);
+    border-radius:6px; padding:20px; text-align:center; cursor:pointer}
+  .dropzone.over{border-color:var(--gold); color:var(--gold)}
+  .hexdump{font-family:var(--mono); font-size:.72rem; line-height:1.5; color:var(--ink); background:#000;
+    border:1px solid var(--edge); border-radius:5px; padding:12px; white-space:pre; overflow:auto; max-height:280px}
+  .meta-table{font-family:var(--mono); font-size:.76rem; color:var(--ink); background:#000;
+    border:1px solid var(--edge); border-radius:5px; width:100%; border-collapse:collapse}
+  .meta-table td{padding:6px 10px; border-bottom:1px solid var(--edge)}
+  .meta-table td:first-child{color:var(--gold)}
+  .bp-canvas{image-rendering:pixelated; max-width:100%; border:1px solid var(--edge); border-radius:4px}
 </style>
 </head>
 <body>
@@ -47,11 +58,6 @@ const UID=ctfUid();
 function unlocked(){ return document.cookie.match(/(?:^|; )ctf-fnac-unlocked=1(?:;|$)/); }
 
 const app = document.getElementById('app');
-if(!unlocked()){
-  app.innerHTML = '<div class="locked">nothing here yet.<br>finish <a href="../encoding/" style="color:var(--gold)">Module 2</a> first.</div>';
-} else {
-  renderModule();
-}
 
 function renderModule(){
   app.innerHTML = `
@@ -72,7 +78,7 @@ function seededRotation(id){ return (fnv('rot:'+id) % 500) / 100 - 2.5; } // -2.
 const STAGES = [
   {id:'night1', title:'Night 1 · Static', ready:true},
   {id:'night2', title:"Night 2 · It's In The Metadata", ready:true},
-  {id:'night3', title:'Night 3 · 10,000 Cats', ready:true},
+  {id:'night3', title:'Night 3 · 10,000 Cats', ready:false}, // Task 11: flip to true once wired — assets already exist on master (commit 295defa), wiring is a separate task
   {id:'night4', title:'Night 4', ready:false},
   {id:'night5', title:'Night 5', ready:false},
   {id:'nightmare', title:'Nightmare', ready:false},
@@ -91,8 +97,245 @@ function renderStages(){
     } else {
       el.innerHTML = `<div class="lab">${s.id}</div><h2>${s.title}</h2><div class="body" style="font-family:var(--mono);font-size:.8rem;color:var(--dim)">not yet.</div>`;
     }
-    wrap.appendChild(el);
+    wrap.appendChild(el); // append BEFORE wiring — builders look up this element by id via getElementById
+    if(s.ready){
+      const body = el.querySelector('.body');
+      if(s.id === 'night1') buildNight1(body);
+      if(s.id === 'night2') buildNight2(body);
+      // night3 builder added in Task 11
+    }
   });
+}
+
+// ---- shared decode helpers (Task 6) ----
+const toBytes = s => { const u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i)&255; return u; };
+const toStr = b => { let s=''; for(let i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return s; };
+const printable = s => s.replace(/[^\x20-\x7E\n]/g,'·');
+
+function readFileAsBytes(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(new Uint8Array(r.result));
+    r.onerror = ()=>reject(r.error);
+    r.readAsArrayBuffer(file);
+  });
+}
+
+function bytesToHexDump(bytes, bytesPerRow=16){
+  let out = '';
+  for(let row=0; row*bytesPerRow < bytes.length; row++){
+    const start = row*bytesPerRow;
+    const chunk = bytes.slice(start, start+bytesPerRow);
+    const hex = Array.from(chunk).map(b=>b.toString(16).padStart(2,'0')).join(' ').padEnd(bytesPerRow*3-1,' ');
+    const ascii = printable(toStr(chunk));
+    out += start.toString(16).padStart(6,'0') + '  ' + hex + '  ' + ascii + '\n';
+  }
+  return out;
+}
+
+function mountRawBytesViewer(container, onBytes){
+  container.innerHTML = `<div class="dropzone">drop a file here (stands in for <b>xxd</b>) — or click to choose</div><div class="hexdump" style="display:none"></div>`;
+  const zone = container.querySelector('.dropzone');
+  const dump = container.querySelector('.hexdump');
+  const input = document.createElement('input'); input.type='file'; input.style.display='none';
+  container.appendChild(input);
+
+  async function handle(file){
+    if(!file) return;
+    try{
+      const bytes = await readFileAsBytes(file);
+      dump.style.display = 'block';
+      dump.textContent = bytesToHexDump(bytes);
+      if(onBytes) onBytes(bytes);
+    }catch(e){
+      dump.style.display = 'block';
+      dump.textContent = "couldn't read that file.";
+    }
+  }
+  zone.addEventListener('click', ()=>input.click());
+  input.addEventListener('change', ()=>handle(input.files[0]));
+  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
+  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); handle(e.dataTransfer.files[0]); });
+}
+
+// ---- Metadata Viewer widget (Task 7) ----
+function parsePngTextChunks(bytes){
+  const out = {};
+  const sig = [0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A];
+  for(let i=0;i<8;i++) if(bytes[i]!==sig[i]) return out; // not a PNG — return empty, never throw
+  let pos = 8;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  while(pos + 8 <= bytes.length){
+    const length = dv.getUint32(pos);
+    const type = toStr(bytes.slice(pos+4,pos+8));
+    const data = bytes.slice(pos+8, pos+8+length);
+    if(type === 'tEXt'){
+      const nul = data.indexOf(0);
+      if(nul >= 0) out[toStr(data.slice(0,nul))] = toStr(data.slice(nul+1));
+    }
+    pos += 12 + length;
+    if(type === 'IEND') break;
+  }
+  return out;
+}
+
+function mountMetadataViewer(container){
+  container.innerHTML = `<div class="dropzone">drop a file here (stands in for <b>exiftool</b>) — or click to choose</div><div></div>`;
+  const zone = container.querySelector('.dropzone');
+  const resultBox = container.querySelector('div:last-child');
+  const input = document.createElement('input'); input.type='file'; input.style.display='none';
+  container.appendChild(input);
+
+  async function handle(file){
+    if(!file) return;
+    try{
+      const bytes = await readFileAsBytes(file);
+      const fields = parsePngTextChunks(bytes);
+      const keys = Object.keys(fields);
+      if(!keys.length){ resultBox.textContent = 'no text metadata found.'; return; }
+      const table = document.createElement('table'); table.className='meta-table';
+      keys.forEach(k=>{ const tr=document.createElement('tr');
+        tr.innerHTML = `<td>${k}</td><td>${fields[k]}</td>`; table.appendChild(tr); });
+      resultBox.innerHTML = ''; resultBox.appendChild(table);
+    }catch(e){
+      resultBox.textContent = "couldn't read that file.";
+    }
+  }
+  zone.addEventListener('click', ()=>input.click());
+  input.addEventListener('change', ()=>handle(input.files[0]));
+  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
+  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); handle(e.dataTransfer.files[0]); });
+}
+
+// ---- Bit-Plane / LSB Viewer widget (Task 8) ----
+function extractLsbMessage(imageData, maxLen=4096){
+  const d = imageData.data; // RGBA, one pixel = 4 bytes, R channel is index 0 of each pixel
+  const bit = i => d[i*4] & 1;
+  let lengthBits = '';
+  for(let i=0;i<32;i++) lengthBits += bit(i);
+  const length = Math.min(parseInt(lengthBits,2) || 0, maxLen);
+  const bytes = new Uint8Array(length);
+  for(let by=0; by<length; by++){
+    let byteBits = '';
+    for(let bi=0; bi<8; bi++) byteBits += bit(32 + by*8 + bi);
+    bytes[by] = parseInt(byteBits,2);
+  }
+  return bytes;
+}
+
+function mountBitPlaneViewer(container){
+  container.innerHTML = `<div class="dropzone">drop an image here (stands in for <b>zsteg</b>) — or click to choose</div>
+    <canvas class="bp-canvas" style="display:none"></canvas><div class="hexdump" style="display:none"></div>`;
+  const zone = container.querySelector('.dropzone');
+  const canvas = container.querySelector('canvas');
+  const dump = container.querySelector('.hexdump');
+  const input = document.createElement('input'); input.type='file'; input.style.display='none';
+  container.appendChild(input);
+
+  function handle(file){
+    if(!file) return;
+    const img = new Image();
+    img.onload = ()=>{
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img,0,0);
+      canvas.style.display = 'block';
+      try{
+        const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+        const bytes = extractLsbMessage(imageData);
+        dump.style.display = 'block';
+        dump.textContent = 'R-channel LSB, first bits: ' + printable(toStr(bytes));
+      }catch(e){
+        dump.style.display = 'block';
+        dump.textContent = "couldn't read that image.";
+      }
+    };
+    img.onerror = ()=>{ dump.style.display='block'; dump.textContent = "couldn't read that as an image."; };
+    img.src = URL.createObjectURL(file);
+  }
+  zone.addEventListener('click', ()=>input.click());
+  input.addEventListener('change', ()=>handle(input.files[0]));
+  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
+  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); handle(e.dataTransfer.files[0]); });
+}
+
+// ---- shared flag-check helper (Task 9), used by every night ----
+let storedFnacSolved = new Set();
+try{ storedFnacSolved = new Set(JSON.parse(localStorage.getItem('ctf-solved:v2:fnac') || '[]')); }catch(e){}
+
+function wireFlagCheck(bodyEl, stageId, answer){
+  const input = bodyEl.querySelector('.flag-input');
+  const verdict = bodyEl.querySelector('.verdict');
+  const stageEl = document.getElementById('stage-' + stageId);
+  function capture(){
+    stageEl.classList.add('solved');
+    verdict.textContent = 'correct — captured';
+    verdict.style.color = 'var(--ok)';
+    storedFnacSolved.add(stageId);
+    try{ localStorage.setItem('ctf-solved:v2:fnac', JSON.stringify([...storedFnacSolved])); }catch(e){}
+    if(window.fxSolved) window.fxSolved(stageId);
+  }
+  function check(){
+    const v = input.value.trim();
+    if(v.toLowerCase() === answer.toLowerCase()) capture();
+    else if(v){ verdict.textContent = 'not it.'; verdict.style.color = 'var(--accent)'; }
+  }
+  bodyEl.querySelector('.flag-check').onclick = check;
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter') check(); });
+  if(storedFnacSolved.has(stageId)) capture();
+}
+
+// ---- Night 1 wiring (Task 9) ----
+function buildNight1(bodyEl){
+  bodyEl.innerHTML = `
+    <p style="font-family:var(--mono);font-size:.82rem;color:var(--dim)">
+      Two files came off the same feed. Both look like dead air. Neither one is, quite.
+    </p>
+    <p><a href="assets/night1/file-a.png" download style="color:var(--gold)">↓ file-a.png</a>
+       &nbsp; <a href="assets/night1/file-b.png" download style="color:var(--gold)">↓ file-b.png</a></p>
+    <div class="tool-a" style="margin-top:10px"></div>
+    <div class="tool-b" style="margin-top:10px"></div>
+    <div class="submit" style="display:flex;gap:9px;margin-top:16px">
+      <input class="flag-input" placeholder="assemble the two halves — flag{...}" style="flex:1;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:10px">
+      <button class="flag-check" style="font-family:var(--mono);font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:0 16px">SUBMIT</button>
+    </div>
+    <div class="verdict" style="font-family:var(--mono);font-size:.76rem;margin-top:8px"></div>
+  `;
+  mountRawBytesViewer(bodyEl.querySelector('.tool-a'));
+  mountRawBytesViewer(bodyEl.querySelector('.tool-b'));
+  wireFlagCheck(bodyEl, 'night1', 'flag{tune_into_the_static}');
+}
+
+// ---- Night 2 wiring (Task 10) ----
+function buildNight2(bodyEl){
+  bodyEl.innerHTML = `
+    <p style="font-family:var(--mono);font-size:.82rem;color:var(--dim)">
+      Four more files. Same static. You already know how to read the bytes — try it, see what you get.
+    </p>
+    <p>${[1,2,3,4].map(i=>`<a href="assets/night2/file-${i}.png" download style="color:var(--gold);margin-right:10px">↓ file-${i}.png</a>`).join('')}</p>
+    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">RAW BYTES (the old way)</div>
+    <div class="tool-raw"></div>
+    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">METADATA (try this instead)</div>
+    <div class="tool-meta"></div>
+    <div class="submit" style="display:flex;gap:9px;margin-top:16px">
+      <input class="flag-input" placeholder="flag{...}" style="flex:1;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:10px">
+      <button class="flag-check" style="font-family:var(--mono);font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:0 16px">SUBMIT</button>
+    </div>
+    <div class="verdict" style="font-family:var(--mono);font-size:.76rem;margin-top:8px"></div>
+  `;
+  mountRawBytesViewer(bodyEl.querySelector('.tool-raw'));
+  mountMetadataViewer(bodyEl.querySelector('.tool-meta'));
+  wireFlagCheck(bodyEl, 'night2', 'flag{its_in_the_metadata}');
+}
+
+// ---- gate check (runs last, once everything above is defined) ----
+if(!unlocked()){
+  app.innerHTML = '<div class="locked">nothing here yet.<br>finish <a href="../encoding/" style="color:var(--gold)">Module 2</a> first.</div>';
+} else {
+  renderModule();
 }
 </script>
 </body>
