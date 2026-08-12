@@ -372,6 +372,28 @@ if(!unlocked()){
 } else {
   renderModule();
 }
+
+// ---- konami code easter egg (unlocks the same way the cookie gate does) ----
+(function(){
+  const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+  let idx = 0;
+  document.addEventListener('keydown', e=>{
+    const expected = KONAMI[idx];
+    const key = expected.length === 1 ? e.key.toLowerCase() : e.key;
+    if(key === expected){
+      idx++;
+      if(idx === KONAMI.length){
+        idx = 0;
+        if(!unlocked()){
+          document.cookie = 'ctf-fnac-unlocked=1;path=/;max-age=31536000;samesite=lax';
+          renderModule();
+        }
+      }
+    } else {
+      idx = (key === KONAMI[0]) ? 1 : 0;
+    }
+  });
+})();
 </script>
 <script src="../confetti/manifest.js"></script>
 <script>window.FX_MODULE='fnac';</script>
