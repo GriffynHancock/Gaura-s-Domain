@@ -18,11 +18,16 @@ if (letterAText.trim() !== 'a') throw new Error(`expected input box to show "a",
 // two more clicks: letter-a -> letter-cyrillic-a -> whitespace
 await page.click('#input-next');
 await page.click('#input-next');
-const wsText = await page.locator('#input-preset-display').innerText();
-if (!wsText.includes('\\t') && !wsText.includes('·')) {
-  throw new Error(`expected whitespace preset to show visible glyphs (\\t or ·), got "${wsText}"`);
-}
-if (wsText.trim().length === 0) throw new Error('whitespace preset display is empty — raw whitespace is invisible');
+// Fix 2: whitespace preset now renders as individual chip elements (one per character), not a
+// run-on string — assert the real chip DOM structure, not just visible text.
+const chipTexts = await page.locator('#input-preset-display .ws-chip').allInnerTexts();
+if (chipTexts.length === 0) throw new Error('expected whitespace preset to render individual .ws-chip elements');
+if (!chipTexts.some(t => t === 'SP')) throw new Error(`expected an "SP" chip among whitespace chips, got [${chipTexts.join(', ')}]`);
+if (!chipTexts.some(t => t === 'TAB')) throw new Error(`expected a "TAB" chip among whitespace chips, got [${chipTexts.join(', ')}]`);
+if (!chipTexts.some(t => t === 'ZWSP')) throw new Error(`expected a "ZWSP" chip among whitespace chips, got [${chipTexts.join(', ')}]`);
+const wsCaption = await page.locator('#input-preset-display .ws-caption').innerText();
+if (!/\d+ invisible characters?/.test(wsCaption)) throw new Error(`expected whitespace caption to state a character count, got "${wsCaption}"`);
+const wsText = chipTexts.join(' ');
 
 if (consoleErrors.length) throw new Error('console errors: ' + consoleErrors.join(' | '));
 

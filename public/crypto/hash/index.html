@@ -45,13 +45,24 @@
   .hash-row{display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:16px; margin-bottom:22px}
   @media (max-width:720px){ .hash-row{grid-template-columns:1fr} }
   .box{background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px 18px;
-    box-shadow:0 14px 30px -24px #000; display:flex; flex-direction:column; gap:10px; position:relative}
+    box-shadow:0 14px 30px -24px #000; display:flex; flex-direction:column; gap:10px; position:relative;
+    /* min-width:0 overrides the grid item's implicit auto minimum (content max-content size),
+     which otherwise blows out the grid track — and every sibling column with it — when a child
+     (the resizable #input-custom textarea) is dragged wider than the column. */
+    min-width:0}
   .box-title{font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--dim)}
   .stage-box .box-title, .round-box .box-title{margin:0}
 
-  #input-box, #algo-box{flex-direction:row; flex-wrap:wrap; align-items:center}
-  #input-box .box-title, #algo-box .box-title{flex:0 0 100%}
+  #algo-box{flex-direction:row; flex-wrap:wrap; align-items:center}
+  #algo-box .box-title{flex:0 0 100%}
   #output-box{gap:8px}
+
+  /* #input-box: the prev/next arrows are absolutely positioned to the box's own edges (NOT flex
+     siblings of the content) so resizing #input-custom can never rearrange them — see the fix
+     note on .arrow-btn below. #input-box needs position:relative for that, already inherited from
+     the shared .box rule above. */
+  #input-box{ padding-left:48px; padding-right:48px; }
+  #input-box .box-title{ position:absolute; top:16px; left:18px; right:18px; }
 
   .arrow-btn{font-family:var(--mono); font-size:.9rem; cursor:pointer; color:var(--ink);
     background:linear-gradient(#f4eedd,#ddd2b6); border:1px solid var(--edge); border-radius:6px;
@@ -59,19 +70,46 @@
   [data-theme="dark"] .arrow-btn{background:linear-gradient(#322d1d,#211e14)}
   .arrow-btn:hover{border-color:var(--accent)}
   .arrow-btn:active{transform:translateY(1px)}
+  /* Fix 1: float the input-box arrows — pin them to the left/right edges, vertically centred,
+     independent of the content's own layout/size. A resizable textarea inside a flex row used to
+     make these reflow/rewrap on every resize; absolute positioning removes them from that flow
+     entirely, so resizing #input-custom (below) never moves them again. */
+  #input-prev, #input-next{ position:absolute; top:50%; transform:translateY(-50%); z-index:2; }
+  #input-prev{ left:10px; }
+  #input-next{ right:10px; }
+  #input-prev:active, #input-next:active{ transform:translateY(-50%) translateY(1px); }
 
-  #input-custom{flex:1 1 auto; min-width:0; font-family:var(--mono); font-size:.82rem; color:var(--ink);
+  /* resize:both (not resize:vertical) and no max-height cap: the user wants to be able to make
+     this genuinely big. Horizontal resize is safe now the arrows are absolutely positioned above
+     (padding-left/right on #input-box keeps them clear of the textarea's own content either way). */
+  /* max-width:100% caps horizontal drag-resize at the box's own content width (the browser clamps
+     the resize handle to it) so widening the textarea can't force the parent grid column to grow
+     and shove the Algorithm/Output boxes over — vertical growth (the main ask: "make it big") is
+     uncapped via the removed max-height. */
+  #input-custom{width:100%; max-width:100%; font-family:var(--mono); font-size:.82rem; color:var(--ink);
     background:var(--panel2); border:1px solid var(--edge); border-radius:5px; padding:8px 10px;
-    resize:vertical; min-height:44px; max-height:120px}
-  .preset-display{flex:1 1 auto; min-width:0; font-family:var(--mono); font-size:.86rem; color:var(--ink);
+    resize:both; min-height:44px; margin-top:22px}
+  .preset-display{width:100%; font-family:var(--mono); font-size:.86rem; color:var(--ink);
     background:var(--panel2); border:1px solid var(--edge); border-radius:5px; padding:12px 10px;
-    text-align:center; word-break:break-word}
+    text-align:center; word-break:break-word; margin-top:22px}
   /* image-rendering:pixelated + a display size well above the asset's own 128px so the JPEG's
      blocking/pixel structure is actually visible — the point of the preset is "this is a pile of
      bytes", so the bytes should look like bytes rather than a tidy little icon. */
   .preset-thumb{ max-width:180px; max-height:180px; width:100%; height:auto; border-radius:4px;
     display:block; margin:0 auto 6px; image-rendering:pixelated; }
   .preset-thumb-caption{ font-size:.72rem; color:var(--dim); text-align:center; }
+
+  /* Fix 2: whitespace preset renders as individually-legible chips, not a run-on string of
+     ·/\t/[ZWSP] tokens. Each invisible char gets its own small bordered pill so you can count
+     them and tell the types apart at a glance. Reuses existing CSS vars only. */
+  .ws-chip-row{ display:flex; flex-wrap:wrap; gap:5px; justify-content:center; }
+  .ws-chip{ font-family:var(--mono); font-size:.64rem; letter-spacing:.06em; padding:3px 7px;
+    border-radius:4px; border:1px solid var(--edge); background:var(--panel2); color:var(--dim); }
+  .ws-chip.ws-space{ color:var(--dim); }
+  .ws-chip.ws-tab{ color:var(--gold); border-color:var(--gold); }
+  .ws-chip.ws-zwsp{ color:var(--accent); border-color:var(--accent); }
+  .ws-caption{ font-family:var(--mono); font-size:.68rem; color:var(--dim); text-align:center;
+    margin-top:8px; }
 
   #algo-name{flex:1 1 auto; font-family:var(--disp); font-weight:600; font-size:1.15rem; text-align:center}
   #hash-btn{flex:0 0 100%; font-family:var(--mono); font-weight:700; font-size:.78rem; letter-spacing:.14em;
@@ -267,6 +305,14 @@
   /* Task 6: outer input/output box flash on Hash click, distinct from per-diagram-box pulses */
   #input-box, #output-box{ transition: background-color .4s ease-out; }
   #input-box.active-flash, #output-box.active-flash{ background-color: color-mix(in srgb, var(--gold) 25%, var(--panel)); transition: background-color .05s ease-out; }
+  /* Fix 3b: a SEPARATE red flash for #input-box, distinct from the gold active-flash above —
+     fires only when the hash that just completed collided with an earlier history entry, using
+     --accent (the project's oxblood/red) instead of --gold. Higher specificity than .active-flash
+     via later source order + being applied after it, and it wins outright since both are the
+     same property (last one applied last on the classList paints; in practice the two rarely
+     overlap because the gold flash starts at click time and has usually faded before the hash
+     completes and this one is added). */
+  #input-box.collision-flash{ background-color: color-mix(in srgb, var(--accent) 35%, var(--panel)); transition: background-color .05s ease-out; }
 
   #history-list{ display:flex; flex-direction:column; gap:6px; margin-top:14px; }
   .history-row{ font-family:var(--mono); font-size:.7rem; display:flex; gap:10px; align-items:center;
@@ -275,7 +321,21 @@
   .h-algo{ color:var(--gold); font-weight:700; min-width:34px; }
   .h-label{ color:var(--dim); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .h-digest{ color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
-  .h-flag{ color:var(--accent); font-weight:700; }
+  /* Fix 3c: the flag is a real <button>, not a styled span — clicking it (or Enter/Space via
+     keyboard focus) smooth-scrolls to the history list so the collision is visible. */
+  .h-flag{ color:var(--accent); font-weight:700; font-family:var(--mono); font-size:.7rem;
+    background:none; border:1px solid var(--accent); border-radius:4px; padding:2px 7px; cursor:pointer; }
+  .h-flag:hover{ background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  /* Fix 3a: a labeled divider inserted BETWEEN two history rows that are a mutually-colliding
+     pair AND happen to be immediately adjacent (the common case — hashing both collision presets
+     back-to-back). History stays honestly chronological (never reordered); this divider is what
+     keeps the collision from reading as "two rows that happen to be neighbours" — it visually
+     separates them with a labeled connector instead of leaving them touching. */
+  .collision-divider{ display:block; width:100%; font-family:var(--mono); font-size:.64rem;
+    color:var(--accent); text-align:center; cursor:pointer; background:none;
+    border:none; border-top:1px dashed var(--accent); border-bottom:1px dashed var(--accent);
+    padding:4px 0; margin:2px 0; }
+  .collision-divider:hover{ background: color-mix(in srgb, var(--accent) 10%, transparent); }
 
   .collision-panel{ margin-top:24px; border:1px solid var(--edge); border-radius:8px; padding:14px 18px; background:var(--panel); }
   .collision-panel summary{ cursor:pointer; font-family:var(--mono); font-size:.8rem; color:var(--gold); }
@@ -386,9 +446,18 @@ function md5WithTrace(bytes) {
   const trace = [];
   const origLenBits = BigInt(bytes.length) * 8n;
   const msg = [...bytes, 0x80];
-  trace.push({ boxId:'pad', kind:'activate', sample: '+0x80, +len' });
   while (msg.length % 64 !== 56) msg.push(0);
   for (let i = 0; i < 8; i++) msg.push(Number((origLenBits >> BigInt(8*i)) & 0xffn));
+  // Fix 4: MD5 (Merkle–Damgård) ALWAYS pads — 0x80 + zero-fill + an 8-byte length field, even for
+  // an input that lands exactly on a block boundary (which gets an entire extra 64-byte block of
+  // pure padding). The Pad stage box must never claim padding was skipped; instead it shows the
+  // REAL byte count added for this input, derived from bytes.length vs the now-known padded
+  // msg.length — small ("+1 byte") for a well-aligned input, up to "+64 bytes" for one that just
+  // crossed a boundary. padBytesAdded is pushed onto the trace event here (after msg.length is
+  // known) rather than computed by the UI, so the UI never re-derives padding math of its own.
+  const padBytesAdded = msg.length - bytes.length;
+  const padSample = `+${padBytesAdded} byte${padBytesAdded === 1 ? '' : 's'}` + (padBytesAdded === 64 ? ' (whole extra block)' : '');
+  trace.push({ boxId:'pad', kind:'activate', sample: padSample, padBytesAdded });
   const numBlocks = msg.length / 64;
   trace.push({ boxId:'split', kind:'activate', sample: `${numBlocks} block(s) x 512 bits` });
   for (let blk = 0; blk < numBlocks; blk++) {
@@ -662,17 +731,40 @@ async function getActiveInputBytes() {
   return [];
 }
 
+// Fix 2: was a run-on "··\t·[ZWSP]·····\t[ZWSP]··" string, unreadable as concatenated text — you
+// couldn't count the characters or tell the types apart. Now builds one small chip/badge element
+// per character instead, plus a caption stating what's actually there. Returns a DOM fragment
+// (container div), NOT a string — this does NOT change what actually gets hashed (the preset's
+// real `text` is untouched; getActiveInputBytes() still hashes p.text verbatim), only how it's
+// displayed.
 function visualizeWhitespace(str) {
-  return [...str].map(ch => {
-    if (ch === '\t') return '\\t';
-    if (ch === '\n') return '\\n';
-    if (ch === '\r') return '\\r';
-    if (ch === ' ') return '·'; // middle dot, stands in for a plain space
-    if (ch === '​') return '[ZWSP]'; // zero-width space
-    const cp = ch.codePointAt(0);
-    if (cp < 0x20 || cp === 0x7f) return `[U+${cp.toString(16).padStart(4, '0')}]`;
-    return ch;
-  }).join('');
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  row.className = 'ws-chip-row';
+  let counts = { space: 0, tab: 0, zwsp: 0, other: 0 };
+  [...str].forEach(ch => {
+    const chip = document.createElement('span');
+    chip.className = 'ws-chip';
+    if (ch === ' ') { chip.classList.add('ws-space'); chip.textContent = 'SP'; counts.space++; }
+    else if (ch === '\t') { chip.classList.add('ws-tab'); chip.textContent = 'TAB'; counts.tab++; }
+    else if (ch === '​') { chip.classList.add('ws-zwsp'); chip.textContent = 'ZWSP'; counts.zwsp++; } // zero-width space
+    else if (ch === '\n') { chip.textContent = 'NL'; counts.other++; }
+    else if (ch === '\r') { chip.textContent = 'CR'; counts.other++; }
+    else {
+      const cp = ch.codePointAt(0);
+      if (cp < 0x20 || cp === 0x7f) { chip.textContent = `U+${cp.toString(16).padStart(4, '0')}`; counts.other++; }
+      else { chip.textContent = ch; counts.other++; }
+    }
+    row.appendChild(chip);
+  });
+  wrap.appendChild(row);
+  const caption = document.createElement('div');
+  caption.className = 'ws-caption';
+  const total = [...str].length;
+  caption.textContent = `looks blank, but it's ${total} invisible character${total === 1 ? '' : 's'} `
+    + `(${counts.space} space, ${counts.tab} tab, ${counts.zwsp} zero-width) — and they still completely change the hash.`;
+  wrap.appendChild(caption);
+  return wrap;
 }
 
 // Shows the preset's actual resolved content (not its label). fetch/fetch-binary presets are
@@ -693,7 +785,8 @@ async function renderInputBox() {
   displayEl.innerHTML = '';
 
   if (p.kind === 'fixed') {
-    displayEl.textContent = p.id === 'whitespace' ? visualizeWhitespace(p.text) : p.text;
+    if (p.id === 'whitespace') displayEl.appendChild(visualizeWhitespace(p.text));
+    else displayEl.textContent = p.text;
     return;
   }
   if (p.kind === 'fixed-hex') {
@@ -767,14 +860,29 @@ function addHistoryEntry(algo, digest, inputBytes, label) {
   renderHistory();
 }
 
+// Returns the index of the entry a given history entry collides with (same algo+digest, different
+// actual input), or -1. Shared by renderHistory (for the flag/divider) and entryIsCollision (Fix
+// 3b's red-flash trigger).
+function collisionPartnerIndex(entry, ownIndex) {
+  return historyLog.findIndex((other, j) => j !== ownIndex &&
+    other.algo === entry.algo && other.digest === entry.digest && other.id !== entry.id);
+}
+function entryIsCollision(entry, ownIndex) {
+  return collisionPartnerIndex(entry, ownIndex) !== -1;
+}
+
+function scrollToHistory() {
+  document.getElementById('history-list').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function renderHistory() {
   const el = document.getElementById('history-list');
   el.innerHTML = '';
+  // a real collision: same algo, same digest, but a DIFFERENT id (different actual input) —
+  // re-hashing the identical input (same id) must NOT be flagged, that's expected/boring.
+  const partnerOf = historyLog.map((entry, i) => collisionPartnerIndex(entry, i));
   historyLog.forEach((entry, i) => {
-    // a real collision: same algo, same digest, but a DIFFERENT id (different actual input) —
-    // re-hashing the identical input (same id) must NOT be flagged, that's expected/boring.
-    const isCollision = historyLog.some((other, j) => j !== i &&
-      other.algo === entry.algo && other.digest === entry.digest && other.id !== entry.id);
+    const isCollision = partnerOf[i] !== -1;
     const row = document.createElement('div');
     row.className = 'history-row' + (isCollision ? ' collision' : '');
     const algoEl = document.createElement('span');
@@ -788,12 +896,30 @@ function renderHistory() {
     digestEl.textContent = entry.digest;
     row.append(algoEl, labelEl, digestEl);
     if (isCollision) {
-      const flagEl = document.createElement('span');
+      // Fix 3c: a real <button>, keyboard-accessible by default, that smooth-scrolls the page to
+      // the history list when clicked/activated — "the collision detected notification, when
+      // clicked, scrolls down to show the collisions".
+      const flagEl = document.createElement('button');
+      flagEl.type = 'button';
       flagEl.className = 'h-flag';
       flagEl.textContent = '⚑ COLLISION';
+      flagEl.setAttribute('aria-label', 'Collision detected — click to view both matching entries in the history list');
+      flagEl.onclick = scrollToHistory;
       row.appendChild(flagEl);
     }
     el.appendChild(row);
+    // Fix 3a: history stays honestly chronological (never reordered) — but when this entry's
+    // collision partner is the VERY NEXT row (the common case: hashing both collision presets
+    // back-to-back), insert a labeled divider between them so the pair reads as "two separate
+    // things that unexpectedly match", not "two rows that happen to be neighbours".
+    if (isCollision && partnerOf[i] === i + 1) {
+      const divider = document.createElement('button');
+      divider.type = 'button';
+      divider.className = 'collision-divider';
+      divider.textContent = '⚡ same digest above and below — different inputs, collided';
+      divider.onclick = scrollToHistory;
+      el.appendChild(divider);
+    }
   });
 }
 
@@ -1233,6 +1359,7 @@ async function onHashClick() {
       updateCollisionAnnotation(algo, presetId);
       document.getElementById('output-box').classList.add('active-flash');
       setTimeout(() => document.getElementById('output-box').classList.remove('active-flash'), 400);
+      flashCollisionIfAny();
     });
   }
   if (algo === 'sha3') {
@@ -1248,8 +1375,20 @@ async function onHashClick() {
       updateCollisionAnnotation(algo, presetId);
       document.getElementById('output-box').classList.add('active-flash');
       setTimeout(() => document.getElementById('output-box').classList.remove('active-flash'), 400);
+      flashCollisionIfAny();
     });
   }
+}
+
+// Fix 3b: fires the RED input-box flash (distinct from the gold active-flash that fires on every
+// hash) only when the hash that just completed created a collision — i.e. the just-added history
+// entry (historyLog[0], addHistoryEntry unshifts) now has a partner in the log.
+function flashCollisionIfAny() {
+  if (!historyLog.length) return;
+  if (!entryIsCollision(historyLog[0], 0)) return;
+  const inputBox = document.getElementById('input-box');
+  inputBox.classList.add('collision-flash');
+  setTimeout(() => inputBox.classList.remove('collision-flash'), 500);
 }
 
 function updateCollisionAnnotation(algo, presetId) {
@@ -1279,6 +1418,7 @@ document.getElementById('collision-run-btn').onclick = () => {
   // fixed collision-panel messages, not from whatever the main Input box currently has selected.
   addHistoryEntry('md5', r1.digest, b1, 'Collision message 1');
   addHistoryEntry('md5', r2.digest, b2, 'Collision message 2');
+  flashCollisionIfAny();
 };
 </script>
 </body>
