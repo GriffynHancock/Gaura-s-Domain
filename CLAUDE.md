@@ -39,6 +39,11 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   bone/oxblood/amber, light+dark. The Caesar module also has an analog-instrument skin; new modules
   should use the *flat* version of the system unless a skin genuinely fits the content.
 - **Verify interactive UI with real pointer clicks** (Chrome MCP / Playwright), not synthetic events.
+  **Prefer Chrome MCP first**; if no browser extension is connected (common in background/subagent
+  sessions), fall back to **Playwright — already installed as a project devDependency**
+  (`npm install` in the repo root, `npx playwright install chromium` if browsers aren't present).
+  Don't `npm install` it ad hoc into `$HOME` or elsewhere outside the repo — it's meant to stay
+  installed here for every future agent to reuse, not be installed-then-uninstalled per session.
 - **Python: always use the project venv** (`/Users/gaura/PCAN/ceasar-ctf/.venv/bin/python`). Global python on
   this Mac is broken (PEP-668, pending system reset) — do NOT `pip install` globally or `--break-system-packages`.
   Deps in `requirements.txt`. Asset build scripts live in `tools/` (e.g. `tools/build_base64_assets.py`).

@@ -1,0 +1,21 @@
+{
+  "name": "ceasar-crypto-ctf",
+  "version": "1.0.0",
+  "description": "Crypto 101 CTF prep — dev tooling",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "private": "true",
+  "devDependencies": {
+    "playwright": "^1.62.1",
+    "wrangler": "^4.121.0"
+  }
+}
