@@ -101,7 +101,8 @@ function renderStages(){
     if(s.ready){
       const body = el.querySelector('.body');
       if(s.id === 'night1') buildNight1(body);
-      // night2 / night3 builders added in Tasks 10-11
+      if(s.id === 'night2') buildNight2(body);
+      // night3 builder added in Task 11
     }
   });
 }
@@ -306,6 +307,28 @@ function buildNight1(bodyEl){
   mountRawBytesViewer(bodyEl.querySelector('.tool-a'));
   mountRawBytesViewer(bodyEl.querySelector('.tool-b'));
   wireFlagCheck(bodyEl, 'night1', 'flag{tune_into_the_static}');
+}
+
+// ---- Night 2 wiring (Task 10) ----
+function buildNight2(bodyEl){
+  bodyEl.innerHTML = `
+    <p style="font-family:var(--mono);font-size:.82rem;color:var(--dim)">
+      Four more files. Same static. You already know how to read the bytes — try it, see what you get.
+    </p>
+    <p>${[1,2,3,4].map(i=>`<a href="assets/night2/file-${i}.png" download style="color:var(--gold);margin-right:10px">↓ file-${i}.png</a>`).join('')}</p>
+    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">RAW BYTES (the old way)</div>
+    <div class="tool-raw"></div>
+    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">METADATA (try this instead)</div>
+    <div class="tool-meta"></div>
+    <div class="submit" style="display:flex;gap:9px;margin-top:16px">
+      <input class="flag-input" placeholder="flag{...}" style="flex:1;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:10px">
+      <button class="flag-check" style="font-family:var(--mono);font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:0 16px">SUBMIT</button>
+    </div>
+    <div class="verdict" style="font-family:var(--mono);font-size:.76rem;margin-top:8px"></div>
+  `;
+  mountRawBytesViewer(bodyEl.querySelector('.tool-raw'));
+  mountMetadataViewer(bodyEl.querySelector('.tool-meta'));
+  wireFlagCheck(bodyEl, 'night2', 'flag{its_in_the_metadata}');
 }
 
 // ---- gate check (runs last, once everything above is defined) ----
