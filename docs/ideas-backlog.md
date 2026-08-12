@@ -33,3 +33,20 @@ crack-a-weak-hash angle the avalanche/MD5-vs-SHA3 visualization page already cov
 
 Raised 2026-08-12 while brainstorming the Module 3 Hashing visualization design — deliberately
 not folded into that spec, since it's a scored-challenge idea, not a teaching-visual one.
+
+## SHA-3 ρ-rotation as a colour gradient (Module 3 · Hashing)
+Instead of (or alongside) the per-lane tick-mark twist that currently represents ρ's rotation
+offset, use a 2-5 colour gradient per lane to indicate rotation amount/direction — e.g. a hue
+sweep proportional to each lane's real `KECCAK_RHO_OFFSETS[x][y]` value, so the amount of twist
+reads as a colour shift rather than (or in addition to) a moving tick mark.
+
+- User's own idea, explicitly deferred: "don't have to implement that this round just an idea."
+- Natural companion to a separate, larger gap the advisor identified in the same conversation:
+  the lane grid's rate/capacity tint is static (correctly — it's a structural fact, not
+  something that changes), but nothing currently shows each lane's actual *content* changing
+  round to round, which is the real, currently-missing signal. If that gets built (extending
+  `keccakF1600WithTrace`'s per-round events to sample every lane's live value, not just the
+  ι lane), a rotation-amount gradient would have a natural home layered on top of it —
+  brightness/hue driven by real content, twist/gradient driven by real rotation offset.
+
+Raised 2026-08-13 during hash-viz post-deploy feedback (SHA-3 animation pacing/legibility pass).
