@@ -1,0 +1,26 @@
+name: Crib the Key
+author: Crypto 101
+category: crypto
+description: |
+  This time the key is a whole word that repeats — too many combinations to brute.
+  But every flag starts with `flag{`. Lay that known text over the start of the
+  scrambled message: `scrambled ⊕ known-text = key`. Watch the key repeat.
+
+  ```
+  cipher (hex) = 050d15041a0606111102151d0d062b1b0e063c0a111a1c
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{repeating_xor_key}
+
+version: '0.1'

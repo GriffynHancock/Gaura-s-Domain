@@ -1,0 +1,28 @@
+name: It's In The Metadata
+author: Crypto 101
+category: crypto
+description: |
+  Four more files. Same static as before. You already know how to read the raw
+  bytes — try it, see what you get. Then try the file's metadata instead.
+
+files:
+  - ../../../../public/crypto/fnac/assets/night2/file-1.png
+  - ../../../../public/crypto/fnac/assets/night2/file-2.png
+  - ../../../../public/crypto/fnac/assets/night2/file-3.png
+  - ../../../../public/crypto/fnac/assets/night2/file-4.png
+
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{its_in_the_metadata}
+
+version: '0.1'

@@ -1,0 +1,27 @@
+name: Multiply and Slide
+author: Crypto 101
+category: crypto
+description: |
+  Each letter was multiplied, then shifted: `y = (a·x + b) mod 26`, where `x` is a
+  letter's position in the alphabet (a=0..z=25). Find the multiplier `a` and the
+  slide `b`. Not every `a` works — only values coprime with 26 give a clean,
+  reversible mapping.
+
+  ```
+  cipher = hlim{ihhwvc_saxc}
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{affine_code}
+
+version: '0.1'

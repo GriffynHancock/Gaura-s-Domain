@@ -1,0 +1,26 @@
+name: Read the Room
+author: Crypto 101
+category: crypto
+description: |
+  Decode `blob.txt` as base64 first, then read carefully — the flag-shaped things
+  you see aren't all the real flag, and the payload itself is one more step away
+  from plain.
+
+files:
+  - blob.txt
+
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{read_every_line_first}
+
+version: '0.1'

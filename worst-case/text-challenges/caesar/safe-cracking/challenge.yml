@@ -1,0 +1,25 @@
+name: Safe Cracking
+author: Crypto 101
+category: crypto
+description: |
+  Locked text, one dial. Same fixed-shift idea as the earlier signals — find the shift
+  and the tumblers align.
+
+  ```
+  cipher = mshn{Zhml_Jyhjrly}
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{Safe_Cracker}
+
+version: '0.1'

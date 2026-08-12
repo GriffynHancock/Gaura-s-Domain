@@ -1,0 +1,25 @@
+name: Percent Sign
+author: Crypto 101
+category: crypto
+description: |
+  A wall of `%XX`. This is what URL-encoding looks like when every byte gets the
+  percent treatment.
+
+  ```
+  %66%6c%61%67%7b%70%65%72%63%65%6e%74%5f%65%6e%63%6f%64%65%64%7d
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{percent_encoded}
+
+version: '0.1'

@@ -1,0 +1,29 @@
+name: Same Key Twice
+author: Crypto 101
+category: crypto
+description: |
+  Two secret messages were scrambled with the SAME key — a lazy, fatal mistake.
+  You don't get the key. XOR the two scrambled messages together and the key
+  cancels itself, leaving `message1 ⊕ message2`. Slide a guessed word along that
+  result; where it reads as English, you've cracked a slice of the OTHER message.
+  Extend outward from there to recover both messages — the flag is in message 1.
+
+  ```
+  message1 (hex) = 363933373736292c3f1a3b302b0f383221223f38
+  message2 (hex) = 3d3037246c282d61383c70213a356c212722313671
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{same_key_twice}
+
+version: '0.1'

@@ -1,0 +1,25 @@
+name: Decode the Signal
+author: Crypto 101
+category: crypto
+description: |
+  Encoding isn't a lock, it's a costume — reversible, no key needed. Recognise the
+  disguise and take it off.
+
+  ```
+  ZmxhZ3tiYXNlNjRfaXNfbm90X3NlY3JldH0=
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{base64_is_not_secret}
+
+version: '0.1'

@@ -1,0 +1,25 @@
+name: Bee Line
+author: Crypto 101
+category: crypto
+description: |
+  Another scrambled note, another fixed shift. Same idea as before — find the amount
+  every letter was slid by.
+
+  ```
+  cipher = cixd{Ybb}
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{Bee}
+
+version: '0.1'

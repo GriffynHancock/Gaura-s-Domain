@@ -1,0 +1,25 @@
+name: Order Matters
+author: Crypto 101
+category: crypto
+description: |
+  Two layers, stacked. Base64 uses `A-Z a-z 0-9 + /` and often ends in `=`; hex is
+  only `0-9 a-f`. Peel them in the right order — the wrong order gives nonsense.
+
+  ```
+  NjY2YzYxNjc3YjcwNjU2NTZjNWY3NDY4NjU1ZjZjNjE3OTY1NzI3Mzdk
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{peel_the_layers}
+
+version: '0.1'

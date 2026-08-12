@@ -1,0 +1,26 @@
+name: Three Deep
+author: Crypto 101
+category: crypto
+description: |
+  Three layers this time: base64, then a punctuation-heavy scramble, then hex.
+  Automated "magic" decoders often stall on the middle layer — you may need to peel
+  it by hand.
+
+  ```
+  ZWVlNGVgZWZmM2ZjZWdmYWVkZWRkN2U0ZWBmaGVkZmFmYmQ3ZWNlZGVkZl9mNQ==
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{three_layers_deep}
+
+version: '0.1'

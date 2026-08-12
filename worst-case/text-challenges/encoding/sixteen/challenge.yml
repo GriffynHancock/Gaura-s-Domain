@@ -1,0 +1,24 @@
+name: Sixteen
+author: Crypto 101
+category: crypto
+description: |
+  Only 16 symbols this time: `0-9 a-f`, always an even number of them. That's your tell.
+
+  ```
+  666c61677b6865785f696e5f706c61696e5f73696768747d
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{hex_in_plain_sight}
+
+version: '0.1'

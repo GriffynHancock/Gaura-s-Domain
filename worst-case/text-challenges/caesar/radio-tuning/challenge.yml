@@ -1,0 +1,25 @@
+name: Radio Tuning
+author: Crypto 101
+category: crypto
+description: |
+  An intercepted signal, shifted by a fixed amount across every letter. Tune it until
+  it resolves into language.
+
+  ```
+  cipher = synt{Pnrfne_Fnynq}
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{Caesar_Salad}
+
+version: '0.1'

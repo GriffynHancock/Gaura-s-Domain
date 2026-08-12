@@ -1,0 +1,25 @@
+name: Test Signal
+author: Crypto 101
+category: crypto
+description: |
+  A scrambled signal came through. Every letter has been slid forward by the same fixed
+  amount — figure out the shift and the static resolves into language.
+
+  ```
+  cipher = yetz{Z}
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{G}
+
+version: '0.1'

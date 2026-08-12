@@ -1,0 +1,26 @@
+name: Two Tones
+author: Crypto 101
+category: crypto
+description: |
+  One shift isn't enough this time. Two alternating shifts were used across the
+  message: shift A on the 1st, 3rd, 5th... *letter*, shift B on the 2nd, 4th, 6th...
+  *letter* (counting letters only — punctuation like `{`, `}`, `_` doesn't take a turn).
+
+  ```
+  cipher = bawv{plk_ikcah}
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{two_tones}
+
+version: '0.1'

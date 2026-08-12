@@ -1,0 +1,25 @@
+name: Brute Force
+author: Crypto 101
+category: crypto
+description: |
+  A single secret byte was XOR'd across the whole message. A single byte is only
+  256 possibilities — try them all and find the one that reads as English.
+
+  ```
+  cipher (hex) = 515b56504c5545424352685158455452685a524a
+  ```
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{brute_force_me}
+
+version: '0.1'

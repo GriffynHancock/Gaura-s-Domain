@@ -1,0 +1,28 @@
+name: Two Faces
+author: Crypto 101
+category: crypto
+description: |
+  One blob, `blob.txt`, decodes two different ways to two different pictures — both
+  real, both precomputed. Decode it as **hex** for one face; decode it as **base64**
+  and view the raw bytes as a picture for the other. The string is a hex dump with
+  junk letters wedged in: hex throws the junk letters away (they aren't `0-9a-f`),
+  base64 keeps them.
+
+files:
+  - blob.txt
+
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{two_faces}
+
+version: '0.1'

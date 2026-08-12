@@ -1,0 +1,26 @@
+name: Picture This
+author: Crypto 101
+category: crypto
+description: |
+  Bytes can be worn as text, or as a picture. Decode `blob.txt` as base64, save the
+  raw output as a `.png` file, and open it in any image viewer — the flag is written
+  directly on the image.
+
+files:
+  - blob.txt
+
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{wow!}
+
+version: '0.1'

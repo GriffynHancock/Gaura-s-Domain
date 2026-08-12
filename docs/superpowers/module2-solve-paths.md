@@ -37,7 +37,7 @@ screams its method). V–IX mix layers and start baiting with decoys.
 | VI | Order Matters | `base64` → `hex` | `flag{peel_the_layers}` |
 | VII | Three Deep | `base64` → `rot47` → `hex` | `flag{three_layers_deep}` |
 | VIII | Two Faces | `hex` → flag / `base64` → troll | `flag{two_faces}` |
-| IX | Read the Room | `base64`, ignore decoys | `flag{read_to_the_very_end}` |
+| IX | Read the Room | `base64`→`atbash`, ignore decoys | `flag{read_every_line_first}` |
 
 ---
 
@@ -112,14 +112,18 @@ screams its method). V–IX mix layers and start baiting with decoys.
 - **Red herrings:** the whole puzzle *is* the red herring — the "obvious" base64 gives a
   joke image, the less-obvious hex gives the flag.
 
-### IX — Read the Room · `base64`, mind the decoys
-- **Blob:** `base64` of a short capture dump containing, in order, an **unlabelled**:
-  1. `florg{that-isnt-a-flag}` — looks flag-ish but is NOT the `flag{...}` format,
-  2. a hex-looking `trace=666c61677b6e6f7d` (decodes to `flag{no}` if you bite),
-  3. a url-looking `ref=%66%6c%61%67` (url-decodes to `flag`, a fragment),
-  4. the real `flag{read_every_line_first}` under `payload:`.
-- **Tell:** one base64 layer is enough; the trap is *reading*, not crypto. Nothing in the
-  text labels the decoys — earlier versions did, which gave the game away.
+### IX — Read the Room · `base64` → `atbash`, mind the decoys
+- **Blob:** `base64` of a short "capture" dump containing, in order, an **unlabelled**:
+  1. `auth_token: florg{nice-try}` — flag-shaped but NOT the `flag{...}` format,
+  2. a hex-looking `trace=676c61667b6e6f742d69747d` (decodes to `glaf{not-it}` — another
+     format decoy, not `flag{no}`),
+  3. a url-looking `ref=%67%6c%6f%72%66%7b%6e%6f%70%65%7d` (url-decodes to `glorf{nope}`),
+  4. the real payload under `payload:` — `uozt{ivzw_vevib_orxo_uroto}`-shaped text that is
+     itself **Atbash-shifted**, decoding to `flag{read_every_line_first}`.
+- **Tell:** one base64 layer surfaces everything, but the real payload needs one more
+  step (Atbash) — the trap is *reading carefully AND finishing the decode*, not just
+  spotting the right line. Nothing in the text labels the decoys — earlier versions did,
+  which gave the game away.
 - **Why florg, not a fake `flag{...}`:** a second real-format `flag{...}` is unfair (no way
   to disambiguate) and the preview highlights every `flag{...}`. `florg{...}` teaches the
   **format** instead — only `flag{...}` highlights, so a careful student isn't misled, and a

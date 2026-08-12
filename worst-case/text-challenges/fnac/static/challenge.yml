@@ -1,0 +1,27 @@
+name: Static
+author: Crypto 101
+category: crypto
+description: |
+  Two files came off the same feed. Both look like dead air. Neither one is, quite.
+  Attach `file-a.png` and `file-b.png` — dump the raw bytes of each and look past the
+  end of the image data.
+
+files:
+  - ../../../../public/crypto/fnac/assets/night1/file-a.png
+  - ../../../../public/crypto/fnac/assets/night1/file-b.png
+
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{tune_into_the_static}
+
+version: '0.1'

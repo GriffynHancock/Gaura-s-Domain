@@ -1,0 +1,26 @@
+name: Among the Bytes
+author: Crypto 101
+category: crypto
+description: |
+  Decode `blob.txt` as base64 and save the raw output as a `.png` — it renders as a
+  small sprite. The sprite is the misdirection: keep reading the decoded bytes past
+  the end of the image and there's more.
+
+files:
+  - blob.txt
+
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{hidden_in_the_bytes}
+
+version: '0.1'
