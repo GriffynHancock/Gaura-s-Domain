@@ -59,6 +59,12 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   computed style of an animating element. (This cost two phantom-bug hunts.)
 - **Deploy quirk:** first `wrangler deploy` of a new worker can throw `code 10007` on the workers.dev subdomain
   step. Already mitigated by `"workers_dev": false` in `wrangler.jsonc` (we use a custom domain, not workers.dev).
+- **Worker script + static assets, together:** once `wrangler.jsonc` has both a `main` script (`src/index.js`)
+  and an `assets` block, requests that match an existing static file **bypass the Worker's `fetch` handler by
+  default** — they're served directly, your code never runs. Need `assets.run_worker_first: true` to make every
+  request (including ones that resolve to a real file) go through the Worker first — required if you want to
+  mutate/inspect responses for existing pages (e.g. stamping a header on every page), not just for routes with
+  no matching asset (e.g. a bare `/` redirect, which works either way since nothing there 404s into the worker).
 - **Module 2 (Encoding) lives at `public/crypto/encoding/` → served at `/crypto/encoding/`**.
   Module 1 (Caesar) is `public/crypto/ceasar/` → `/crypto/ceasar/`.
 - **`public/crypto/encoding/assets.js` is GENERATED** by `tools/build_base64_assets.py` — edit the script, not the
