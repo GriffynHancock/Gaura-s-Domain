@@ -1,7 +1,7 @@
 # PCAN2026 Student Prep
 
 Interactive **Crypto 101** teaching modules for Victorian TAFE students preparing for a
-national CTF. Hosted at `ctf.sandhi.com.au/crypto/*`.
+national CTF. Educational material for **PeCan+ 2026**. Hosted at `ctf.sandhi.com.au/crypto/*`.
 
 **→ [ctf.sandhi.com.au/crypto/](https://ctf.sandhi.com.au/crypto/)** — module directory, links to everything live below.
 
