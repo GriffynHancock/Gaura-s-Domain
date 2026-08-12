@@ -66,6 +66,8 @@
   .preset-display{flex:1 1 auto; min-width:0; font-family:var(--mono); font-size:.86rem; color:var(--ink);
     background:var(--panel2); border:1px solid var(--edge); border-radius:5px; padding:12px 10px;
     text-align:center; word-break:break-word}
+  .preset-thumb{ max-width:80px; max-height:80px; border-radius:4px; display:block; margin:0 auto 6px; }
+  .preset-thumb-caption{ font-size:.72rem; color:var(--dim); text-align:center; }
 
   #algo-name{flex:1 1 auto; font-family:var(--disp); font-weight:600; font-size:1.15rem; text-align:center}
   #hash-btn{flex:0 0 100%; font-family:var(--mono); font-weight:700; font-size:.78rem; letter-spacing:.14em;
@@ -550,17 +552,76 @@ async function getActiveInputBytes() {
   return [];
 }
 
-function renderInputBox() {
+function visualizeWhitespace(str) {
+  return [...str].map(ch => {
+    if (ch === '\t') return '\\t';
+    if (ch === '\n') return '\\n';
+    if (ch === '\r') return '\\r';
+    if (ch === ' ') return '·'; // middle dot, stands in for a plain space
+    if (ch === '​') return '[ZWSP]'; // zero-width space
+    const cp = ch.codePointAt(0);
+    if (cp < 0x20 || cp === 0x7f) return `[U+${cp.toString(16).padStart(4, '0')}]`;
+    return ch;
+  }).join('');
+}
+
+// Shows the preset's actual resolved content (not its label). fetch/fetch-binary presets are
+// eagerly fetched here (reusing getActiveInputBytes's own cachedFetchedBytes cache, so this
+// doesn't duplicate the network cost of the later Hash click) and show a "loading…" state until
+// the fetch resolves.
+async function renderInputBox() {
   const p = PRESETS[presetIndex];
   const customEl = document.getElementById('input-custom');
   const displayEl = document.getElementById('input-preset-display');
   if (p.kind === 'custom') {
     customEl.style.display = '';
     displayEl.style.display = 'none';
-  } else {
-    customEl.style.display = 'none';
-    displayEl.style.display = '';
-    displayEl.textContent = p.label;
+    return;
+  }
+  customEl.style.display = 'none';
+  displayEl.style.display = '';
+  displayEl.innerHTML = '';
+
+  if (p.kind === 'fixed') {
+    displayEl.textContent = p.id === 'whitespace' ? visualizeWhitespace(p.text) : p.text;
+    return;
+  }
+  if (p.kind === 'fixed-hex') {
+    displayEl.textContent = p.hex;
+    return;
+  }
+  if (p.kind === 'fetch') {
+    displayEl.textContent = 'loading…';
+    const myPresetId = p.id;
+    try {
+      const bytes = await getActiveInputBytes();
+      if (PRESETS[presetIndex].id !== myPresetId) return; // preset changed while the fetch was in flight
+      const text = new TextDecoder().decode(new Uint8Array(bytes));
+      displayEl.textContent = text.length > 400 ? text.slice(0, 400) + '…' : text;
+    } catch (err) {
+      if (PRESETS[presetIndex].id === myPresetId) displayEl.textContent = "couldn't load preview";
+    }
+    return;
+  }
+  if (p.kind === 'fetch-binary') {
+    displayEl.textContent = 'loading…';
+    const myPresetId = p.id;
+    try {
+      const bytes = await getActiveInputBytes();
+      if (PRESETS[presetIndex].id !== myPresetId) return;
+      displayEl.innerHTML = '';
+      const img = document.createElement('img');
+      img.className = 'preset-thumb';
+      img.src = p.url;
+      img.alt = p.label;
+      const caption = document.createElement('div');
+      caption.className = 'preset-thumb-caption';
+      caption.textContent = `${bytes.length.toLocaleString()} bytes`;
+      displayEl.appendChild(img);
+      displayEl.appendChild(caption);
+    } catch (err) {
+      if (PRESETS[presetIndex].id === myPresetId) displayEl.textContent = "couldn't load preview";
+    }
   }
 }
 document.getElementById('input-prev').onclick = () => { presetIndex = (presetIndex - 1 + PRESETS.length) % PRESETS.length; renderInputBox(); };
