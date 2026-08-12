@@ -378,6 +378,18 @@ function keccakRoundConstants() {
 }
 const KECCAK_RC = keccakRoundConstants();
 const KECCAK_RHO_OFFSETS = [[0,36,3,41,18],[1,44,10,45,2],[62,6,43,15,61],[28,55,25,21,56],[27,20,39,8,14]];
+const KECCAK_PI_LANE_MAP = [];
+for (let x = 0; x < 5; x++) {
+  KECCAK_PI_LANE_MAP.push([]);
+  for (let y = 0; y < 5; y++) {
+    // matches the pi formula already computed inline inside keccakF1600WithTrace's B[nx][ny]
+    // assignment below — precomputed once here so the UI can look up a lane's target slot
+    // without re-deriving the formula.
+    KECCAK_PI_LANE_MAP[x].push([y, (2*x + 3*y) % 5]);
+  }
+}
+const ALL_25_LANES = [];
+for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) ALL_25_LANES.push([x, y]);
 const KECCAK_MASK64 = (1n << 64n) - 1n;
 function rol64(x, n) { n = BigInt(n % 64); return ((x << n) | (x >> (64n - n))) & KECCAK_MASK64; }
 function laneHex(x) { return x.toString(16).padStart(16,'0'); }
@@ -389,16 +401,48 @@ function keccakF1600WithTrace(state, trace) {
     const D = [];
     for (let x = 0; x < 5; x++) D.push(C[(x+4)%5] ^ rol64(C[(x+1)%5], 1));
     for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) state[x][y] ^= D[x];
+    trace.push({
+      boxId:`lane-r${rnd}-theta`, kind:'activate',
+      sample: `D=[${D.map(v => laneHex(v).slice(0,4)).join(',')}]`,
+      lanes: ALL_25_LANES
+    });
+
     const B = [[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n]];
     for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
       const nx = y, ny = (2*x + 3*y) % 5;
       B[nx][ny] = rol64(state[x][y], KECCAK_RHO_OFFSETS[x][y]);
     }
+    trace.push({
+      boxId:`lane-r${rnd}-rho`, kind:'activate',
+      sample: 'each lane rotated by its own fixed offset',
+      lanes: ALL_25_LANES
+    });
+    trace.push({
+      boxId:`lane-r${rnd}-pi`, kind:'activate',
+      sample: 'lanes permuted via (x,y) -> (y, 2x+3y mod 5)',
+      lanes: ALL_25_LANES
+    });
+
     for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
       state[x][y] = (B[x][y] ^ ((~B[(x+1)%5][y]) & B[(x+2)%5][y])) & KECCAK_MASK64;
     }
+    // chi actually mixes every row (all x, for every y) every round via the state[x][y]
+    // assignment immediately above — that math is unchanged and still runs on the full state.
+    // Spotlighting only row y=0 here is a deliberate UI legibility simplification (25 lanes
+    // self-mixing at once reads as noise, not as "a row mixing") — it affects which lanes
+    // visually pulse, not the underlying computation.
+    trace.push({
+      boxId:`lane-r${rnd}-chi`, kind:'activate',
+      sample: 'row y=0 self-mixed (representative — chi runs on every row every round)',
+      lanes: [[0,0],[1,0],[2,0],[3,0],[4,0]]
+    });
+
     state[0][0] ^= KECCAK_RC[rnd];
-    trace.push({ boxId:`cube-r${rnd}`, kind:'activate', sample: laneHex(state[0][0]).slice(0,8) });
+    trace.push({
+      boxId:`lane-r${rnd}-iota`, kind:'activate',
+      sample: laneHex(KECCAK_RC[rnd]),
+      lanes: [[0,0]]
+    });
   }
   return state;
 }

@@ -22,5 +22,18 @@ export function loadHashCore(htmlPathUrl) {
   const sandbox = { TextEncoder, TextDecoder, BigInt, console };
   vm.createContext(sandbox);
   vm.runInContext(code, sandbox, { filename: 'hash-core.js' });
+  // Top-level `const`/`let` bindings don't attach to the context's global object (same as in a real
+  // browser <script>), so they're invisible on `sandbox` even though `function` declarations and `var`
+  // are not. Re-evaluating each such top-level identifier by name in the same vm context reads it out
+  // of that context's shared global lexical environment and copies it onto `sandbox` for callers to use
+  // — this reflects values only, it does not re-run or alter any code.
+  const topLevelNames = new Set();
+  for (const line of code.split('\n')) {
+    const m = /^(?:const|let)\s+([A-Za-z_$][\w$]*)/.exec(line);
+    if (m) topLevelNames.add(m[1]);
+  }
+  for (const name of topLevelNames) {
+    sandbox[name] = vm.runInContext(name, sandbox, { filename: 'hash-core.js' });
+  }
   return sandbox;
 }
