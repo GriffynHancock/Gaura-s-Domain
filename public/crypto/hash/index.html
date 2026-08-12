@@ -137,6 +137,14 @@
   .reg-row{ display:flex; gap:8px; flex-wrap:nowrap; justify-content:center; }
   .reg-box{ min-width:90px; padding:8px 10px; }
   .reg-val{ font-family:var(--mono); font-size:.8rem; color:var(--ink); }
+  /* narrow phones (<=480px): shrink instead of wrap, so all four boxes still read as one row
+     rather than reverting to the vertical-column layout .reg-row{flex-wrap:nowrap} above exists
+     to prevent. .animation-box{overflow-x:auto} is still the fallback below this breakpoint. */
+  @media (max-width:480px){
+    .reg-row{ gap:5px; }
+    .reg-box{ min-width:64px; padding:6px 6px; }
+    .reg-val{ font-size:.68rem; }
+  }
   .func-row{ display:flex; gap:8px; justify-content:center; font-family:var(--mono);
     font-size:.72rem; margin-top:6px; }
   .func-box{ padding:4px 10px; border:1px solid var(--edge); border-radius:6px; color:var(--dim);
@@ -161,8 +169,9 @@
   /* transform is transitioned from the stylesheet (NOT from an inline `transition:` shorthand in
      JS — that would reset transition-property to `transform` alone and permanently kill the
      filter decay below for every lane it touched). JS only ever writes `style.transform`;
-     --lane-tdur lets pi (.22s) and rho (.3s) use different durations without touching
-     transition-property. */
+     --lane-tdur is pi's own slide duration (.22s), set once per pi event so its transition
+     doesn't fight the stylesheet default. rho's twist is a separate mechanism entirely — it
+     animates .lane-tick via the .rho-twist/@keyframes rhoSwing rule below, not this transition. */
   .lane{ position:absolute; top:-13px; left:-13px; width:26px; height:26px;
     transform-style:preserve-3d; border:1px solid var(--edge); background:var(--gold);
     opacity:.92; filter:brightness(1);
@@ -889,7 +898,11 @@ function renderMd5BlockChain(numBlocks) {
     // waiting placeholder and let the chain-{b-1} event (pulseBoxOrCube) fill in the real
     // handed-off words. Printing the IV here taught the exact opposite of "one running state
     // carried forward".
-    const iv = b === 0 ? ['67452301', 'efcdab89', '98badcfe', '10325476'] : ['————————', '————————', '————————', '————————'];
+    // block 0's IV is toHex32(0x67452301|0xefcdab89|0x98badcfe|0x10325476) — same little-endian
+    // byte order every running register value on this card uses, not the big-endian textbook
+    // form (0x67452301 etc). Written literally here rather than calling toHex32 at build time
+    // since the four words never change.
+    const iv = b === 0 ? ['01234567', '89abcdef', 'fedcba98', '76543210'] : ['————————', '————————', '————————', '————————'];
     // NOTE: the BLOCK n label is rendered at the BOTTOM of the card, not the top. Cards recede
     // downward (stackOffsetY, below), so the only strip of a card behind the front one that is
     // ever visible is its bottom edge — a top-anchored label is occluded on every card except
