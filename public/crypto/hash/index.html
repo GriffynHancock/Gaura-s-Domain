@@ -117,15 +117,22 @@
   .round-row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
   .round-box{min-width:110px; padding:10px 12px; position:relative}
   .loop-dot{width:9px; height:9px; border-radius:50%; background:var(--edge); display:inline-block;
-    transition:background .2s, transform .2s}
+    transition:background .2s, transform .2s, box-shadow 1.2s ease-out}
   .loop-dot.spin{background:var(--gold); animation:loopSpin .5s linear infinite}
-  .loop-dot.pulse{background:var(--gold); box-shadow:0 0 6px var(--gold)}
+  /* fast-in/slow-out "breathing" pulse, same top-up/decay convention as .stage-box/.cube/.chain-link:
+     .pulse gets a quick transition in, then two frames later JS removes the class and the base
+     .loop-dot rule above (1.2s ease-out) carries the glow back down instead of snapping it off. */
+  .loop-dot.pulse{background:var(--gold); box-shadow:0 0 6px var(--gold);
+    transition:background .06s ease-out, box-shadow .06s ease-out}
   @keyframes loopSpin{ 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
 
   .chain-link{display:none; align-items:center; justify-content:center; gap:6px;
     font-family:var(--mono); font-size:.66rem; color:var(--dim); letter-spacing:.1em;
     border:1px solid var(--edge); border-radius:20px; padding:4px 12px; background:var(--panel2);
-    transition:border-color .2s, color .2s, box-shadow .2s}
+    /* box-shadow decays at the same 1.2s ease-out as .stage-box/.flow-arrow/.cube/.loop-dot, so
+       the length-extension callout — the spec's spotlight element — breathes with the same
+       fast-in/slow-out feel as everything else, not a flat symmetric .2s fade */
+    transition:border-color .2s, color .2s, box-shadow 1.2s ease-out}
   .chain-link.shown{display:flex}
   .chain-link.active{border-color:var(--gold); color:var(--gold)}
   .chain-link.pulse{border-color:var(--gold); color:var(--gold); box-shadow:0 0 8px var(--gold);
@@ -454,7 +461,17 @@ let customText = '';
 let cachedFetchedBytes = {}; // presetId -> number[]
 
 function getAlgorithm() { return currentAlgorithm; }
-function setAlgorithm(name) { currentAlgorithm = name; renderAlgorithmBox(); }
+function setAlgorithm(name) {
+  currentAlgorithm = name;
+  // Switching algorithm mid-animation now also swaps the visible diagram immediately (see
+  // showDiagramFor in renderAlgorithmBox below) — so an in-flight trace from the OTHER algorithm
+  // must be cancelled here too, the same "hard-reset, no queueing" rule a Hash re-click follows
+  // (playTrace's frame loop checks myRunId !== currentRunId and stops silently otherwise).
+  // Without this, a stale MD5 trace could keep pulsing boxes that are shared-by-id with the
+  // now-visible SHA-3 diagram (both diagrams reuse ids like hash-box-pad/hash-box-output).
+  currentRunId++;
+  renderAlgorithmBox();
+}
 
 async function getActiveInputBytes() {
   const p = PRESETS[presetIndex];
@@ -505,8 +522,14 @@ function inputLabel() {
   return p.label;
 }
 
-function addHistoryEntry(algo, digest, inputBytes) {
-  const entry = { algo, digest, id: fnvId(inputBytes), label: inputLabel() };
+function addHistoryEntry(algo, digest, inputBytes, label) {
+  // `label` is captured by the caller at the moment it read the input (click time, or an
+  // explicit override like the collision panel's) — NOT re-derived here at completion time.
+  // Re-deriving it here would read whatever preset/custom-text happens to be selected when the
+  // animation finishes, which can differ from what was actually hashed if the user changes the
+  // input box while a previous animation is still playing (the digest itself is unaffected —
+  // it was already computed from bytes captured up front — only this display label would drift).
+  const entry = { algo, digest, id: fnvId(inputBytes), label: label !== undefined ? label : inputLabel() };
   historyLog.unshift(entry);
   historyLog = historyLog.slice(0, 5);
   renderHistory();
@@ -530,8 +553,17 @@ function renderHistory() {
   });
 }
 
+// The animation box is never empty — it always shows the CURRENTLY SELECTED algorithm's idle
+// diagram, not just whichever one was last actually hashed. Switching the Algorithm arrows must
+// swap the visible diagram immediately, even before Hash is ever clicked.
+function showDiagramFor(algo) {
+  document.getElementById('diagram-md5').style.display = algo === 'md5' ? '' : 'none';
+  document.getElementById('diagram-sha3').style.display = algo === 'sha3' ? '' : 'none';
+}
+
 function renderAlgorithmBox() {
   document.getElementById('algo-name').textContent = currentAlgorithm === 'md5' ? 'MD5' : 'SHA-3';
+  showDiagramFor(currentAlgorithm);
 }
 document.getElementById('algo-prev').onclick = document.getElementById('algo-next').onclick =
   () => setAlgorithm(currentAlgorithm === 'md5' ? 'sha3' : 'md5');
@@ -686,16 +718,16 @@ function getSpeedMs() {
 async function onHashClick() {
   const bytes = await getActiveInputBytes();
   const algo = getAlgorithm();
+  const label = inputLabel(); // captured now (click time), not re-read when the animation finishes
   document.getElementById('input-box').classList.add('active-flash');
   setTimeout(() => document.getElementById('input-box').classList.remove('active-flash'), 400);
   if (algo === 'md5') {
     const { digest, trace } = md5WithTrace(bytes);
     const numBlocks = Number(trace.find(e => e.boxId === 'split').sample.split(' ')[0]);
     renderMd5BlockChain(numBlocks);
-    document.getElementById('diagram-md5').style.display = '';
-    document.getElementById('diagram-sha3').style.display = 'none';
+    showDiagramFor('md5');
     playTrace(trace, getSpeedMs, (ev) => pulseBoxOrCube(ev.boxId, ev.sample), () => {
-      addHistoryEntry(algo, digest, bytes);
+      addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '128-bit / 32 hex chars';
       document.getElementById('output-box').classList.add('active-flash');
@@ -706,10 +738,9 @@ async function onHashClick() {
     const { digest, trace } = keccak256WithTrace(bytes);
     const numBlocks = Number(trace.find(e => e.boxId === 'absorb-split').sample.split(' ')[0]);
     renderSha3AbsorbChain(numBlocks);
-    document.getElementById('diagram-md5').style.display = 'none';
-    document.getElementById('diagram-sha3').style.display = '';
+    showDiagramFor('sha3');
     playTrace(trace, getSpeedMs, (ev) => pulseBoxOrCube(ev.boxId, ev.sample), () => {
-      addHistoryEntry(algo, digest, bytes);
+      addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '256-bit / 64 hex chars';
       document.getElementById('output-box').classList.add('active-flash');
@@ -733,8 +764,10 @@ document.getElementById('collision-run-btn').onclick = () => {
     ? 'Identical. Two different real messages, the exact same MD5 output.'
     : 'unexpected mismatch — this should never happen with these two fixed messages';
   verdict.className = r1.digest === r2.digest ? 'verdict ok' : 'verdict no';
-  addHistoryEntry('md5', r1.digest, b1);
-  addHistoryEntry('md5', r2.digest, b2);
+  // Explicit labels here, not the default inputLabel() fallback — these two entries come from the
+  // fixed collision-panel messages, not from whatever the main Input box currently has selected.
+  addHistoryEntry('md5', r1.digest, b1, 'Collision message 1');
+  addHistoryEntry('md5', r2.digest, b2, 'Collision message 2');
 };
 </script>
 </body>
