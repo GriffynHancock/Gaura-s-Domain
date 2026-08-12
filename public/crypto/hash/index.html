@@ -162,6 +162,9 @@
     transform:rotateY(90deg); transform-origin:left; }
   .lane-tick{ position:absolute; left:50%; top:50%; width:2px; height:11px; background:var(--ink);
     transform:translate(-50%,-100%) rotate(0deg); transform-origin:bottom center; opacity:.55; }
+  .round-counter{ font-family:var(--mono); font-size:.7rem; color:var(--dim); }
+  .lane.pulse .lane-tick{ transform:translate(-50%,-100%) rotate(var(--tick-deg, 0deg));
+    transition:transform .3s ease-out; }
   .cube-legend{ font-family:var(--mono); font-size:.62rem; color:var(--dim); display:flex; gap:10px; }
   .legend-rate::before{ content:'■ '; color:var(--gold); }
   .legend-capacity::before{ content:'■ '; color:var(--dim); }
@@ -272,6 +275,7 @@
           <span class="legend-rate">rate — exposed (17 lanes)</span>
           <span class="legend-capacity">capacity — hidden (8 lanes)</span>
         </div>
+        <div class="round-counter" id="round-counter">round — / 24</div>
       </div>
       <div class="flow-arrow"></div>
       <div class="stage-box" id="hash-box-squeeze"><span class="box-title">Squeeze</span><span class="sample"></span></div>
@@ -668,6 +672,19 @@ document.getElementById('algo-prev').onclick = document.getElementById('algo-nex
 renderAlgorithmBox();
 buildLaneGrid();
 
+function applyRhoTicks() {
+  for (let x = 0; x < 5; x++) {
+    for (let y = 0; y < 5; y++) {
+      const el = document.getElementById(`lane-${x}-${y}`);
+      const tick = el && el.querySelector('.lane-tick');
+      if (!tick) continue;
+      const deg = (KECCAK_RHO_OFFSETS[x][y] % 64) * (360 / 64);
+      tick.style.setProperty('--tick-deg', deg + 'deg');
+    }
+  }
+}
+applyRhoTicks();
+
 (function setupLaneGridDrag() {
   const grid = document.getElementById('lane-grid');
   let rotX = -20, rotY = 30, dragging = false, lastX = 0, lastY = 0;
@@ -792,17 +809,36 @@ function renderSha3AbsorbChain(numBlocks) {
   }
 }
 
-// Every cube-rN event pulses the same #cube element — 24 real pulses, one shared box. A
-// physical cube has 6 faces, not 24 individually addressable round-boxes, so instead of trying
-// to build 24 DOM nodes we route all cube-r* boxIds to the one #cube element and let it pulse
-// 24 times in a row. Everything else falls through to pulseBox's normal scoped lookup.
-function pulseBoxOrCube(boxId, sample) {
-  if (boxId.startsWith('cube-r')) {
-    const cube = document.getElementById('cube');
-    cube.classList.add('pulse');
-    requestAnimationFrame(() => requestAnimationFrame(() => cube.classList.remove('pulse')));
-    return;
+// Consumes Task 2's per-round theta/rho/pi/chi/iota trace events and pulses exactly the lanes
+// each event names. Returns false for any other boxId so the caller can fall through to the
+// generic pulseBoxOrCube handling (pad/absorb-split/squeeze/output boxes).
+function pulseLanesFor(ev) {
+  const m = /^lane-r(\d+)-(theta|rho|pi|chi|iota)$/.exec(ev.boxId);
+  if (!m) return false;
+  const rnd = Number(m[1]);
+  const step = m[2];
+  const lanes = ev.lanes || [];
+  lanes.forEach(([x, y]) => {
+    const el = document.getElementById(`lane-${x}-${y}`);
+    if (!el) return;
+    el.classList.add('pulse');
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
+    if (step === 'pi') {
+      const [nx, ny] = KECCAK_PI_LANE_MAP[x][y];
+      const tx = (nx - 2) * LANE_CELL, ty = (ny - 2) * LANE_CELL;
+      el.style.transition = 'transform .22s ease-in-out';
+      el.style.transform = `translate3d(${tx}px, ${ty}px, 12px)`;
+      setTimeout(() => { el.style.transform = el.dataset.baseTransform; }, 220);
+    }
+  });
+  if (step === 'iota') {
+    const counter = document.getElementById('round-counter');
+    if (counter) counter.textContent = `round ${rnd + 1} / 24`;
   }
+  return true;
+}
+
+function pulseBoxOrCube(boxId, sample) {
   pulseBox(boxId, sample);
 }
 
@@ -858,7 +894,8 @@ async function onHashClick() {
     const numBlocks = Number(trace.find(e => e.boxId === 'absorb-split').sample.split(' ')[0]);
     renderSha3AbsorbChain(numBlocks);
     showDiagramFor('sha3');
-    playTrace(trace, getSpeedMs, (ev) => pulseBoxOrCube(ev.boxId, ev.sample), () => {
+    document.getElementById('round-counter').textContent = 'round 0 / 24';
+    playTrace(trace, getSpeedMs, (ev) => { if (!pulseLanesFor(ev)) pulseBoxOrCube(ev.boxId, ev.sample); }, () => {
       addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '256-bit / 64 hex chars';
