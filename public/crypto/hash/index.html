@@ -116,6 +116,19 @@
   .block-label{font-family:var(--mono); font-size:.66rem; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
   .round-row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
   .round-box{min-width:110px; padding:10px 12px; position:relative}
+  .reg-row{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  .reg-box{ min-width:90px; padding:8px 10px; }
+  .reg-val{ font-family:var(--mono); font-size:.8rem; color:var(--ink); }
+  .func-row{ display:flex; gap:8px; justify-content:center; font-family:var(--mono);
+    font-size:.72rem; margin-top:6px; }
+  .func-box{ padding:4px 10px; border:1px solid var(--edge); border-radius:6px; color:var(--dim);
+    transition:border-color .2s, color .2s, background-color .2s; }
+  .func-box.active{ border-color:var(--accent); color:var(--accent);
+    background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .step-detail{ display:flex; gap:14px; justify-content:center; font-family:var(--mono);
+    font-size:.7rem; color:var(--dim); margin-top:6px; }
+  .step-counter{ font-family:var(--mono); font-size:.68rem; color:var(--dim);
+    text-align:center; margin-top:4px; }
   .loop-dot{width:9px; height:9px; border-radius:50%; background:var(--edge); display:inline-block;
     transition:background .2s, transform .2s, box-shadow 1.2s ease-out}
   .loop-dot.spin{background:var(--gold); animation:loopSpin .5s linear infinite}
@@ -231,32 +244,26 @@
       <div class="block-chain" id="md5-block-chain">
         <div class="block-group" id="block-group-0">
           <div class="block-label">Block 0</div>
-          <div class="round-row">
-            <div class="stage-box round-box" id="hash-box-block-0-r1">
-              <span class="box-title">Round 1</span>
-              <span class="loop-dot" id="hash-box-block-0-r1-loop"></span>
-              <span class="sample"></span>
-            </div>
-            <div class="stage-box round-box" id="hash-box-block-0-r2">
-              <span class="box-title">Round 2</span>
-              <span class="loop-dot" id="hash-box-block-0-r2-loop"></span>
-              <span class="sample"></span>
-            </div>
-            <div class="stage-box round-box" id="hash-box-block-0-r3">
-              <span class="box-title">Round 3</span>
-              <span class="loop-dot" id="hash-box-block-0-r3-loop"></span>
-              <span class="sample"></span>
-            </div>
-            <div class="stage-box round-box" id="hash-box-block-0-r4">
-              <span class="box-title">Round 4</span>
-              <span class="loop-dot" id="hash-box-block-0-r4-loop"></span>
-              <span class="sample"></span>
-            </div>
+          <div class="reg-row" id="reg-row-0">
+            <div class="stage-box reg-box" id="reg-0-A"><span class="box-title">A</span><span class="reg-val">67452301</span></div>
+            <div class="stage-box reg-box" id="reg-0-B"><span class="box-title">B</span><span class="reg-val">efcdab89</span></div>
+            <div class="stage-box reg-box" id="reg-0-C"><span class="box-title">C</span><span class="reg-val">98badcfe</span></div>
+            <div class="stage-box reg-box" id="reg-0-D"><span class="box-title">D</span><span class="reg-val">10325476</span></div>
           </div>
+          <div class="func-row" id="func-row-0">
+            <span class="func-box" id="func-0-F">F</span>
+            <span class="func-box" id="func-0-G">G</span>
+            <span class="func-box" id="func-0-H">H</span>
+            <span class="func-box" id="func-0-I">I</span>
+          </div>
+          <div class="step-detail" id="step-detail-0">
+            <span id="mword-0">M[—]</span><span id="shift-0">s=—</span><span id="kconst-0">K=—</span>
+          </div>
+          <div class="step-counter" id="step-counter-0">step — / 64</div>
         </div>
         <div class="chain-link" id="hash-box-chain-0" title="entire state passed in the clear — this hand-off is what a length-extension attack exploits"><span>chains into next block</span></div>
-        <!-- Task 6 adds/removes additional block-group / chain-link elements here for however many
-             real blocks the current input actually produces (block count varies by input length) -->
+        <!-- Task 6 adds/removes additional block-group elements here for however many real
+             blocks the current input actually produces (block count varies by input length) -->
       </div>
       <div class="flow-arrow"></div>
       <div class="stage-box" id="hash-box-output"><span class="box-title">Output state</span><span class="sample"></span></div>
@@ -750,6 +757,40 @@ function pulseBox(boxId, sample) {
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
 }
 
+// Consumes Task 1's per-step regs/func/mIndex/shift/k fields on block-{blk}-r{round}-loop
+// events and updates that block's live A/B/C/D register readout, active-function highlight,
+// M[g]/s[i]/K[i] display, and step counter. Task 6's renderMd5BlockChain generates the same
+// reg-{blk}-*/func-{blk}-*/mword-{blk}/shift-{blk}/kconst-{blk}/step-counter-{blk} ids for every
+// dynamically-created block, so this function works unmodified once Task 6 lands.
+function updateMd5RegisterView(ev) {
+  const m = /^block-(\d+)-r\d+-loop$/.exec(ev.boxId);
+  if (!m || !ev.regs) return;
+  const blk = m[1];
+  const root = document.getElementById('diagram-md5');
+  if (!root) return;
+  const setReg = (letter) => {
+    const el = root.querySelector(`#reg-${blk}-${letter}`);
+    if (!el) return;
+    const valEl = el.querySelector('.reg-val');
+    if (valEl) valEl.textContent = ev.regs[letter];
+    el.classList.add('pulse');
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
+  };
+  ['A', 'B', 'C', 'D'].forEach(setReg);
+  ['F', 'G', 'H', 'I'].forEach(fn => {
+    const el = root.querySelector(`#func-${blk}-${fn}`);
+    if (el) el.classList.toggle('active', fn === ev.func);
+  });
+  const mwordEl = root.querySelector(`#mword-${blk}`);
+  if (mwordEl) mwordEl.textContent = `M[${ev.mIndex}]`;
+  const shiftEl = root.querySelector(`#shift-${blk}`);
+  if (shiftEl) shiftEl.textContent = `s=${ev.shift}`;
+  const kEl = root.querySelector(`#kconst-${blk}`);
+  if (kEl) kEl.textContent = `K=${ev.k}`;
+  const stepEl = root.querySelector(`#step-counter-${blk}`);
+  if (stepEl) stepEl.textContent = `step ${ev.step + 1} / 64`;
+}
+
 // Build the MD5 block chain for the real number of 512-bit blocks the current input produces.
 //
 // Task 4 shipped #md5-block-chain pre-populated with a static block-group-0 (real
@@ -881,7 +922,7 @@ async function onHashClick() {
     const numBlocks = Number(trace.find(e => e.boxId === 'split').sample.split(' ')[0]);
     renderMd5BlockChain(numBlocks);
     showDiagramFor('md5');
-    playTrace(trace, getSpeedMs, (ev) => pulseBoxOrCube(ev.boxId, ev.sample), () => {
+    playTrace(trace, getSpeedMs, (ev) => { pulseBoxOrCube(ev.boxId, ev.sample); updateMd5RegisterView(ev); }, () => {
       addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '128-bit / 32 hex chars';
