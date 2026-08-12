@@ -201,10 +201,11 @@
      property changes discretely, but each face's `filter` COMPUTED value changes with it, and
      it is that filter value the transition interpolates. */
   .lane.pulse{ --lane-bright:1.85; }
-  /* pseudo-3D bar: .lane-front is the front face; ::before/::after are the top and right-side
-     faces, rotated into the XZ / YZ planes off the front face's own edges — same
-     rotateX/rotateY 3D-transform technique as the single cube this replaces, just sized down to
-     one lane instead of one 90px cube, and now genuinely --lane-depth deep. */
+  /* pseudo-3D bar: .lane-front is the front face; ::before/::after are the top and left-side
+     faces (see the comment on ::after below for why left, not right), rotated into the XZ / YZ
+     planes off the front face's own edges — same rotateX/rotateY 3D-transform technique as the
+     single cube this replaces, just sized down to one lane instead of one 90px cube, and now
+     genuinely --lane-depth deep. */
   .lane-front, .lane::before, .lane::after{ position:absolute; background:var(--lane-col);
     border:1px solid var(--edge); transition:filter 1.2s ease-out; }
   .lane.pulse .lane-front, .lane.pulse::before, .lane.pulse::after{ transition:filter .06s ease-out; }
