@@ -119,14 +119,34 @@
      lines). renderMd5BlockChain measures and raises min-height for multi-block stacks. */
   .block-chain{ position:relative; perspective:900px; display:flex; justify-content:center;
     align-items:flex-start; width:100%; min-height:210px; padding-top:6px; }
+  /* transform is driven off --block-base-transform (set once per card by renderMd5BlockChain,
+     the Z-stack position) rather than a literal inline transform, specifically so the step-wiggle
+     below (Task: card wiggle) can append a small rotate/translate jitter ON TOP of that base
+     position via `transform:` in .block-group.wiggle, and have it decay back to the *exact* same
+     resting position through this base rule's own transition — the same top-up/decay split
+     .lane-tick's rho-twist uses (base holds the resting value, a modifier class holds the
+     transient one), just via a CSS var instead of a dataset-cached string + JS revert. */
   .block-group{ position:absolute; top:0; left:50%; transform-style:preserve-3d;
     display:flex; flex-direction:column; align-items:center; gap:6px;
     border:1px solid var(--edge); border-radius:10px; padding:12px 16px; background:var(--panel2);
-    box-shadow:0 10px 24px -18px #000; filter:brightness(1); transition:filter 1.2s ease-out; }
+    box-shadow:0 10px 24px -18px #000; filter:brightness(1);
+    transform:var(--block-base-transform); transition:filter 1.2s ease-out, transform .5s ease-out; }
   /* same top-up/decay convention as .stage-box/.lane/.cube elsewhere — pulses both the block that
      just finished and the block it's handing state into, so the hand-off reads as "one running
-     state carried forward" rather than a labeled connector. */
+     state carried forward" rather than a labeled connector. Also (re)used per-STEP now: every
+     updateMd5RegisterView call adds/strips this on the step's own block too, so the card flashes
+     in sync with the register boxes flashing inside it, not just at hand-off. */
   .block-group.pulse{ filter:brightness(1.4); transition:filter .06s ease-out; }
+  /* Balatro-score-counter wiggle: added alongside .pulse on every per-step register update (NOT
+     on the hand-off pulse above, which already reads as a big event on its own). --wiggle-rot/
+     --wiggle-tx are set from JS per trigger, scaled by how far through the trace we are — small
+     near the start, more pronounced by the end (same progress fraction the speed ramp uses).
+     Fast transition-in here, slow decay via .block-group's own `transform .5s ease-out` above —
+     removing this class snaps the target back to `var(--block-base-transform)` with no jitter
+     term, and the base rule's transition carries it back down smoothly. */
+  .block-group.wiggle{
+    transform:var(--block-base-transform) rotate(var(--wiggle-rot, 0deg)) translate(var(--wiggle-tx, 0px), 0);
+    transition:transform .08s ease-out; }
   .block-label{font-family:var(--mono); font-size:.66rem; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
   .stack-caption{ display:none; font-family:var(--mono); font-size:.66rem; color:var(--dim);
     text-align:center; max-width:44ch; margin:6px auto 0; }
@@ -828,16 +848,22 @@ applyRhoTicks();
 
 let currentRunId = 0;
 
+// getSpeedMs and onEvent are both called as (idx, total) / (ev, idx, total) — idx is the event
+// about to play, total is trace.length, so a speed/effect function can derive "how far through
+// this run are we" (0 at the first event, ~1 at the last) for progress-ramped effects (MD5's
+// speed-up-by-50%-across-the-run and its wiggle-amplitude ramp). This is shared plumbing: adding
+// the extra args costs SHA-3 nothing since getSha3SpeedMs()'s own signature/formula is untouched
+// and JS silently ignores extra call args a function doesn't declare.
 function playTrace(trace, getSpeedMs, onEvent, onDone) {
   const myRunId = ++currentRunId;
   let idx = 0;
   let lastTime = performance.now();
   function frame(now) {
     if (myRunId !== currentRunId) return; // a newer run superseded this one — stop silently
-    const stepMs = getSpeedMs();
+    const stepMs = getSpeedMs(idx, trace.length);
     let elapsed = now - lastTime;
     while (elapsed >= stepMs && idx < trace.length) {
-      onEvent(trace[idx]);
+      onEvent(trace[idx], idx, trace.length);
       idx++;
       elapsed -= stepMs;
     }
@@ -877,7 +903,7 @@ function pulseBox(boxId, sample) {
 // M[g]/s[i]/K[i] display, and step counter. Task 6's renderMd5BlockChain generates the same
 // reg-{blk}-*/func-{blk}-*/mword-{blk}/shift-{blk}/kconst-{blk}/step-counter-{blk} ids for every
 // dynamically-created block, so this function works unmodified once Task 6 lands.
-function updateMd5RegisterView(ev) {
+function updateMd5RegisterView(ev, idx, total) {
   const m = /^block-(\d+)-r\d+-loop$/.exec(ev.boxId);
   if (!m || !ev.regs) return;
   const blk = m[1];
@@ -892,6 +918,22 @@ function updateMd5RegisterView(ev) {
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
   };
   ['A', 'B', 'C', 'D'].forEach(setReg);
+  // Card wiggle+flash (in addition to, not instead of, each register box's own pulse above):
+  // every register-view update for a block also briefly flashes and jitters the containing
+  // .block-group, so the CARD reads as alive in step with the boxes inside it — not just at
+  // hand-off. Amplitude ramps with trace progress (same idea as getMd5SpeedMs's speed ramp):
+  // small near the start, more pronounced by the end.
+  const cardEl = document.getElementById(`block-group-${blk}`);
+  if (cardEl) {
+    const p = (typeof total === 'number' && total > 1) ? Math.min(1, Math.max(0, idx / (total - 1))) : 0;
+    const rotDeg = (0.6 + 1.8 * p).toFixed(2);   // ~0.6deg at the start -> ~2.4deg by the end
+    const txPx = (0.6 + 2.4 * p).toFixed(2);      // ~0.6px at the start -> ~3px by the end
+    const sign = (ev.step % 2 === 0) ? 1 : -1;    // alternate direction so it reads as a jitter, not a lean
+    cardEl.style.setProperty('--wiggle-rot', `${sign * rotDeg}deg`);
+    cardEl.style.setProperty('--wiggle-tx', `${sign * txPx}px`);
+    cardEl.classList.add('pulse', 'wiggle');
+    requestAnimationFrame(() => requestAnimationFrame(() => cardEl.classList.remove('pulse', 'wiggle')));
+  }
   ['F', 'G', 'H', 'I'].forEach(fn => {
     const el = root.querySelector(`#func-${blk}-${fn}`);
     if (el) el.classList.toggle('active', fn === ev.func);
@@ -930,7 +972,9 @@ function renderMd5BlockChain(numBlocks) {
     const group = document.createElement('div');
     group.className = 'block-group';
     group.id = `block-group-${b}`;
-    group.style.transform = `translate(-50%, ${b * stackOffsetY}px) translateZ(${-b * stackDepth}px)`;
+    // Set via a custom property, not a literal inline `transform`, so the wiggle CSS above can
+    // append a rotate/translate jitter on top of this base position (see .block-group's comment).
+    group.style.setProperty('--block-base-transform', `translate(-50%, ${b * stackOffsetY}px) translateZ(${-b * stackDepth}px)`);
     group.style.zIndex = String(1000 - b);
     group.style.opacity = String(Math.max(0.55, 1 - b * 0.12));
     // ONLY block 0 starts from MD5's initialisation vector. Every later block starts from the
@@ -1091,10 +1135,29 @@ function readSpeedSlider() {
 // held visual state; SHA-3: ~125 events with 300ms rho-twist / 220ms pi-slide HOLDS that a
 // too-fast event spacing smears on top of each other), so a pacing change tuned for one
 // algorithm must never silently retune the other.
-function getMd5SpeedMs() {
-  // slider 1..100 maps to ~43.6ms (slow) .. ~4ms (fast) per event. Unchanged from the original
-  // shared getSpeedMs(); MD5 has no held per-event effects, so fast spacing costs it nothing.
-  return 4 + (100 - readSpeedSlider()) * 0.4;
+function getMd5SpeedMs(idx, total) {
+  // slider 1..100 maps to ~43.6ms (slow) .. ~4ms (fast) per event, same base range as the
+  // original shared getSpeedMs(). MD5's held effects (the register-box pulse and the card
+  // wiggle/flash, both added by the wiggle-juice task) are attack-fast (.06s-.08s) with the
+  // usual CSS-transition decay, same shape as every other pulse in this file — fast spacing still
+  // costs it nothing, they just re-trigger (top up) before fully decaying, which is the intended
+  // "juice" look, not a smearing bug like SHA-3's rho/pi holds would be.
+  const base = 4 + (100 - readSpeedSlider()) * 0.4;
+  // Balatro-style ramp: speed up ~50% from the first event to the last. p is 0 at idx===0 and 1
+  // at the final event (idx === total-1), so the multiplier goes from 1x down to 0.5x — a
+  // genuinely-timed delay per event, not a display-only effect, since this return value IS the
+  // frame loop's per-event spacing (see playTrace).
+  //
+  // NOTE: near the tail of a run at high slider settings this return value can drop under one
+  // 60fps frame (16.7ms) — e.g. slider 100 already returns 4ms pre-ramp, ramping to ~2ms. That
+  // was already true of the original constant-speed getMd5SpeedMs() at slider 100 (4ms, also
+  // sub-frame) and playTrace's `while (elapsed >= stepMs)` loop already handles it correctly by
+  // design: it can fire multiple onEvent calls within one animation frame to catch up, so no
+  // events are skipped — visually a few register-box/card updates land on the same paint instead
+  // of every one getting a distinct frame. Same accepted behavior as before, just reached
+  // slightly earlier in the run now.
+  const p = (typeof total === 'number' && total > 1) ? Math.min(1, Math.max(0, idx / (total - 1))) : 0;
+  return base * (1 - 0.5 * p);
 }
 
 function getSha3SpeedMs() {
@@ -1159,7 +1222,7 @@ async function onHashClick() {
     const numBlocks = Number(trace.find(e => e.boxId === 'split').sample.split(' ')[0]);
     renderMd5BlockChain(numBlocks);
     showDiagramFor('md5');
-    playTrace(trace, getMd5SpeedMs, (ev) => { pulseBoxOrCube(ev.boxId, ev.sample); updateMd5RegisterView(ev); }, () => {
+    playTrace(trace, getMd5SpeedMs, (ev, idx, total) => { pulseBoxOrCube(ev.boxId, ev.sample); updateMd5RegisterView(ev, idx, total); }, () => {
       addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '128-bit / 32 hex chars';
