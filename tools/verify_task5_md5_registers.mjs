@@ -12,8 +12,13 @@ await page.goto(BASE_URL + '?v=task5');
 await page.fill('#input-custom', 'register test');
 await page.locator('#speed-slider').evaluate(el => { el.value = '100'; });
 
-const initialA = await page.locator('#reg-0-A .reg-val').innerText();
+// Task 6 made renderMd5BlockChain build block-group-0's register markup dynamically on every
+// Hash click (no more static pre-rendered block-group-0) — so #reg-0-A only exists after the
+// click, not before it. Read the "initial" value right after clicking (synchronous render, still
+// showing the seeded MD5 IV) instead of before, which still exercises the same assertion: the
+// value changes once the (async, rAF-driven) animation actually runs.
 await page.click('#hash-btn');
+const initialA = await page.locator('#reg-0-A .reg-val').innerText();
 
 await page.waitForFunction(
   () => document.getElementById('step-counter-0').textContent === 'step 64 / 64',

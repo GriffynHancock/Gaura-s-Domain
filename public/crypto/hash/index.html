@@ -110,12 +110,20 @@
   .flow-arrow.pulse{background:var(--gold); box-shadow:0 0 8px var(--gold);
     transition:background-color .06s ease-out, box-shadow .06s ease-out}
 
-  .block-chain{display:flex; align-items:flex-start; gap:22px; flex-wrap:wrap; justify-content:center}
-  .block-group{display:flex; flex-direction:column; align-items:center; gap:8px;
-    border:1px dashed var(--edge); border-radius:10px; padding:12px}
+  .block-chain{ position:relative; perspective:900px; display:flex; justify-content:center;
+    align-items:flex-start; min-height:400px; padding-top:6px; }
+  .block-group{ position:absolute; top:0; left:50%; transform-style:preserve-3d;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    border:1px solid var(--edge); border-radius:10px; padding:12px 16px; background:var(--panel2);
+    box-shadow:0 10px 24px -18px #000; filter:brightness(1); transition:filter 1.2s ease-out; }
+  /* same top-up/decay convention as .stage-box/.lane/.cube elsewhere — pulses both the block that
+     just finished and the block it's handing state into, so the hand-off reads as "one running
+     state carried forward" rather than a labeled connector. */
+  .block-group.pulse{ filter:brightness(1.4); transition:filter .06s ease-out; }
   .block-label{font-family:var(--mono); font-size:.66rem; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
-  .round-row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
-  .round-box{min-width:110px; padding:10px 12px; position:relative}
+  .stack-caption{ display:none; font-family:var(--mono); font-size:.66rem; color:var(--dim);
+    text-align:center; max-width:44ch; margin:6px auto 0; }
+  .stack-caption.shown{ display:block; }
   .reg-row{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
   .reg-box{ min-width:90px; padding:8px 10px; }
   .reg-val{ font-family:var(--mono); font-size:.8rem; color:var(--ink); }
@@ -129,28 +137,6 @@
     font-size:.7rem; color:var(--dim); margin-top:6px; }
   .step-counter{ font-family:var(--mono); font-size:.68rem; color:var(--dim);
     text-align:center; margin-top:4px; }
-  .loop-dot{width:9px; height:9px; border-radius:50%; background:var(--edge); display:inline-block;
-    transition:background .2s, transform .2s, box-shadow 1.2s ease-out}
-  .loop-dot.spin{background:var(--gold); animation:loopSpin .5s linear infinite}
-  /* fast-in/slow-out "breathing" pulse, same top-up/decay convention as .stage-box/.cube/.chain-link:
-     .pulse gets a quick transition in, then two frames later JS removes the class and the base
-     .loop-dot rule above (1.2s ease-out) carries the glow back down instead of snapping it off. */
-  .loop-dot.pulse{background:var(--gold); box-shadow:0 0 6px var(--gold);
-    transition:background .06s ease-out, box-shadow .06s ease-out}
-  @keyframes loopSpin{ 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
-
-  .chain-link{display:none; align-items:center; justify-content:center; gap:6px;
-    font-family:var(--mono); font-size:.66rem; color:var(--dim); letter-spacing:.1em;
-    border:1px solid var(--edge); border-radius:20px; padding:4px 12px; background:var(--panel2);
-    /* box-shadow decays at the same 1.2s ease-out as .stage-box/.flow-arrow/.cube/.loop-dot, so
-       the length-extension callout — the spec's spotlight element — breathes with the same
-       fast-in/slow-out feel as everything else, not a flat symmetric .2s fade */
-    transition:border-color .2s, color .2s, box-shadow 1.2s ease-out}
-  .chain-link.shown{display:flex}
-  .chain-link.active{border-color:var(--gold); color:var(--gold)}
-  .chain-link.pulse{border-color:var(--accent); color:var(--accent); box-shadow:0 0 8px var(--accent);
-    transition:border-color .06s ease-out, color .06s ease-out, box-shadow .06s ease-out}
-
   .absorb-chain{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center}
 
   .cube-wrap{ perspective: 800px; display:flex; flex-direction:column; align-items:center; gap:8px; }
@@ -241,30 +227,8 @@
       <div class="flow-arrow"></div>
       <div class="stage-box" id="hash-box-split"><span class="box-title">Split into 512-bit blocks</span><span class="sample"></span></div>
       <div class="flow-arrow"></div>
-      <div class="block-chain" id="md5-block-chain">
-        <div class="block-group" id="block-group-0">
-          <div class="block-label">Block 0</div>
-          <div class="reg-row" id="reg-row-0">
-            <div class="stage-box reg-box" id="reg-0-A"><span class="box-title">A</span><span class="reg-val">67452301</span></div>
-            <div class="stage-box reg-box" id="reg-0-B"><span class="box-title">B</span><span class="reg-val">efcdab89</span></div>
-            <div class="stage-box reg-box" id="reg-0-C"><span class="box-title">C</span><span class="reg-val">98badcfe</span></div>
-            <div class="stage-box reg-box" id="reg-0-D"><span class="box-title">D</span><span class="reg-val">10325476</span></div>
-          </div>
-          <div class="func-row" id="func-row-0">
-            <span class="func-box" id="func-0-F">F</span>
-            <span class="func-box" id="func-0-G">G</span>
-            <span class="func-box" id="func-0-H">H</span>
-            <span class="func-box" id="func-0-I">I</span>
-          </div>
-          <div class="step-detail" id="step-detail-0">
-            <span id="mword-0">M[—]</span><span id="shift-0">s=—</span><span id="kconst-0">K=—</span>
-          </div>
-          <div class="step-counter" id="step-counter-0">step — / 64</div>
-        </div>
-        <div class="chain-link" id="hash-box-chain-0" title="entire state passed in the clear — this hand-off is what a length-extension attack exploits"><span>chains into next block</span></div>
-        <!-- Task 6 adds/removes additional block-group elements here for however many real
-             blocks the current input actually produces (block count varies by input length) -->
-      </div>
+      <div class="block-chain" id="md5-block-chain"></div>
+      <div class="stack-caption" id="stack-caption">state carries forward, card to card — this hand-off in the clear is what a length-extension attack exploits</div>
       <div class="flow-arrow"></div>
       <div class="stage-box" id="hash-box-output"><span class="box-title">Output state</span><span class="sample"></span></div>
     </div>
@@ -791,48 +755,63 @@ function updateMd5RegisterView(ev) {
   if (stepEl) stepEl.textContent = `step ${ev.step + 1} / 64`;
 }
 
-// Build the MD5 block chain for the real number of 512-bit blocks the current input produces.
-//
-// Task 4 shipped #md5-block-chain pre-populated with a static block-group-0 (real
-// hash-box-block-0-r1..r4 / -r*-loop ids, round-box + loop-dot styling, plus a
-// hash-box-chain-0 connector hidden by default via .chain-link{display:none}) rather than an
-// empty container. For the overwhelmingly common 1-block case, we reuse that static markup
-// as-is — it's already the right ids, already styled, nothing to build. For numBlocks > 1 we
-// only need to add block-group-1.. dynamically (same round-box/loop-dot visual language as
-// block-group-0, so extra blocks don't look like a different feature) and reveal/add the
-// chain-link connectors between them. Every render first strips any previously-added dynamic
-// groups (marked with data-dynamic-block) so repeated Hash clicks with different block counts
-// don't leak stale DOM from an earlier run.
+// Stacks the real number of 512-bit blocks the current input produces along a Z-axis, like a
+// deck of cards receding into the screen — later blocks get more negative translateZ and sit
+// visually behind earlier ones. Every render clears and rebuilds #md5-block-chain from scratch
+// (no static block-group-0 to preserve anymore — Task 5's markup for block 0 is now generated
+// here too, identically to blocks 1+).
 function renderMd5BlockChain(numBlocks) {
   const chain = document.getElementById('md5-block-chain');
-  chain.querySelectorAll('[data-dynamic-block]').forEach(el => el.remove());
-
-  const chain0 = document.getElementById('hash-box-chain-0');
-  if (chain0) chain0.classList.toggle('shown', numBlocks > 1);
-
-  for (let b = 1; b < numBlocks; b++) {
+  chain.innerHTML = '';
+  chain.style.minHeight = ''; // reset to the CSS default before re-measuring below
+  const stackDepth = 60; // px of translateZ recession per block
+  // CSS perspective foreshortens each receding card (perspective:900px + translateZ(-60px) per
+  // block scales block 1 to ~94% of block 0's size). That shrink eats into any per-block vertical
+  // offset from directly underneath — a naive 16px step leaves only ~4px of a card's edge
+  // actually visible past the one in front (verified empirically), which does not read as a
+  // stack. 44px keeps a clearly visible sliver of every card behind the front one.
+  const stackOffsetY = 44;
+  for (let b = 0; b < numBlocks; b++) {
     const group = document.createElement('div');
     group.className = 'block-group';
-    group.dataset.dynamicBlock = '1';
-    let rounds = '';
-    for (let r = 1; r <= 4; r++) {
-      rounds += `<div class="stage-box round-box" id="hash-box-block-${b}-r${r}">` +
-        `<span class="box-title">Round ${r}</span>` +
-        `<span class="loop-dot" id="hash-box-block-${b}-r${r}-loop"></span>` +
-        `<span class="sample"></span></div>`;
-    }
-    group.innerHTML = `<div class="block-label">Block ${b}</div><div class="round-row">${rounds}</div>`;
+    group.id = `block-group-${b}`;
+    group.style.transform = `translate(-50%, ${b * stackOffsetY}px) translateZ(${-b * stackDepth}px)`;
+    group.style.zIndex = String(1000 - b);
+    group.style.opacity = String(Math.max(0.55, 1 - b * 0.12));
+    group.innerHTML = `
+      <div class="block-label">Block ${b}</div>
+      <div class="reg-row" id="reg-row-${b}">
+        <div class="stage-box reg-box" id="reg-${b}-A"><span class="box-title">A</span><span class="reg-val">67452301</span></div>
+        <div class="stage-box reg-box" id="reg-${b}-B"><span class="box-title">B</span><span class="reg-val">efcdab89</span></div>
+        <div class="stage-box reg-box" id="reg-${b}-C"><span class="box-title">C</span><span class="reg-val">98badcfe</span></div>
+        <div class="stage-box reg-box" id="reg-${b}-D"><span class="box-title">D</span><span class="reg-val">10325476</span></div>
+      </div>
+      <div class="func-row" id="func-row-${b}">
+        <span class="func-box" id="func-${b}-F">F</span>
+        <span class="func-box" id="func-${b}-G">G</span>
+        <span class="func-box" id="func-${b}-H">H</span>
+        <span class="func-box" id="func-${b}-I">I</span>
+      </div>
+      <div class="step-detail" id="step-detail-${b}">
+        <span id="mword-${b}">M[—]</span><span id="shift-${b}">s=—</span><span id="kconst-${b}">K=—</span>
+      </div>
+      <div class="step-counter" id="step-counter-${b}">step — / 64</div>`;
     chain.appendChild(group);
-    if (b < numBlocks - 1) {
-      const link = document.createElement('div');
-      link.className = 'chain-link shown';
-      link.dataset.dynamicBlock = '1';
-      link.id = 'hash-box-chain-' + b;
-      link.title = 'entire state passed in the clear — this hand-off is what a length-extension attack exploits';
-      link.innerHTML = '<span>chains into next block</span>';
-      chain.appendChild(link);
-    }
   }
+  // .block-group is position:absolute (required so the cards can overlap in Z), so the cards
+  // don't contribute to #md5-block-chain's own layout height the way normal flow children would.
+  // Without this, a multi-block stack's lower/offset cards can poke out past the CSS min-height
+  // and overlap the flow-arrow + output box that follow in the diagram. Measure the real stack
+  // extent after layout and grow the container to fit it (only grows — never shrinks below the
+  // CSS min-height set for the single-block case).
+  const chainRect = chain.getBoundingClientRect();
+  let maxBottom = 0;
+  chain.querySelectorAll('.block-group').forEach(el => {
+    maxBottom = Math.max(maxBottom, el.getBoundingClientRect().bottom - chainRect.top);
+  });
+  chain.style.minHeight = Math.ceil(maxBottom + 12) + 'px';
+  const caption = document.getElementById('stack-caption');
+  caption.classList.toggle('shown', numBlocks > 1);
 }
 
 // Build one flow-arrow per real rate-block for the absorb phase. Unlike renderMd5BlockChain,
@@ -880,6 +859,22 @@ function pulseLanesFor(ev) {
 }
 
 function pulseBoxOrCube(boxId, sample) {
+  // md5WithTrace already pushes a chain-{blk-1} 'flow' event carrying the outgoing A/B/C/D state
+  // whenever it moves to a new block (public/crypto/hash/index.html, unmodified by this
+  // plan). Instead of pulsing a labeled connector pill, pulse BOTH the finishing card and the
+  // next card together — the deck-of-cards visual is meant to read as one running state carried
+  // forward, not a separate hand-off element.
+  const chainMatch = /^chain-(\d+)$/.exec(boxId);
+  if (chainMatch && getAlgorithm() === 'md5') {
+    const n = Number(chainMatch[1]);
+    [n, n + 1].forEach(b => {
+      const el = document.getElementById(`block-group-${b}`);
+      if (!el) return;
+      el.classList.add('pulse');
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
+    });
+    return;
+  }
   pulseBox(boxId, sample);
 }
 
