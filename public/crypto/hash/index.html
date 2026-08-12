@@ -141,22 +141,27 @@
   .absorb-chain{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center}
 
   .cube-wrap{ perspective: 800px; display:flex; flex-direction:column; align-items:center; gap:8px; }
-  .cube{ width:90px; height:90px; position:relative; transform-style:preserve-3d;
-    transform: rotateX(-20deg) rotateY(30deg); cursor:grab; touch-action:none;
-    filter:brightness(1); transition:filter 1.2s ease-out; }
-  .cube:active{ cursor:grabbing; }
-  /* Task 7: whole-cube brightness pulse for Keccak's 24 internal rounds — same top-up/decay
-     convention as Task 6's .pulse variants, but on `filter` (not the box's border/shadow
-     properties) so it never touches the `transform` Task 5's drag handler writes inline. */
-  .cube.pulse{ filter:brightness(1.6); transition:filter .06s ease-out; }
-  .face{ position:absolute; width:90px; height:90px; border:1px solid var(--edge);
-    background:linear-gradient(135deg, var(--gold) 0 50%, var(--panel2) 50% 100%); opacity:.92; }
-  .face.front{ transform: translateZ(45px); }
-  .face.back{ transform: translateZ(-45px) rotateY(180deg); }
-  .face.left{ transform: translateX(-45px) rotateY(-90deg); }
-  .face.right{ transform: translateX(45px) rotateY(90deg); }
-  .face.top{ transform: translateY(-45px) rotateX(90deg); }
-  .face.bottom{ transform: translateY(45px) rotateX(-90deg); }
+  .lane-grid{ width:1px; height:1px; position:relative; transform-style:preserve-3d;
+    transform: rotateX(-20deg) rotateY(30deg); cursor:grab; touch-action:none; }
+  .lane-grid:active{ cursor:grabbing; }
+  .lane{ position:absolute; top:-13px; left:-13px; width:26px; height:26px;
+    transform-style:preserve-3d; border:1px solid var(--edge); background:var(--gold);
+    opacity:.92; filter:brightness(1);
+    transition:filter 1.2s ease-out; }
+  .lane.capacity{ background:var(--panel2); }
+  /* same top-up/decay pulse convention as .stage-box/.cube/.chain-link elsewhere in this file */
+  .lane.pulse{ filter:brightness(1.85); transition:filter .06s ease-out; }
+  /* pseudo-3D block: the .lane div itself is the front face; ::before/::after are the top and
+     right-side faces, rotated into the XZ / YZ planes off the front face's own edges — same
+     rotateX/rotateY 3D-transform technique as the single cube this replaces, just sized down to
+     one lane instead of one 90px cube. */
+  .lane::before, .lane::after{ content:''; position:absolute; background:inherit; border:1px solid var(--edge); }
+  .lane::before{ width:26px; height:13px; top:-13px; left:0; filter:brightness(1.3);
+    transform:rotateX(90deg); transform-origin:bottom; }
+  .lane::after{ width:13px; height:26px; top:0; right:-13px; filter:brightness(.65);
+    transform:rotateY(90deg); transform-origin:left; }
+  .lane-tick{ position:absolute; left:50%; top:50%; width:2px; height:11px; background:var(--ink);
+    transform:translate(-50%,-100%) rotate(0deg); transform-origin:bottom center; opacity:.55; }
   .cube-legend{ font-family:var(--mono); font-size:.62rem; color:var(--dim); display:flex; gap:10px; }
   .legend-rate::before{ content:'■ '; color:var(--gold); }
   .legend-capacity::before{ content:'■ '; color:var(--dim); }
@@ -262,17 +267,10 @@
         <!-- Task 7 populates one absorb-flow arrow per real rate-block here -->
       </div>
       <div class="cube-wrap" id="cube-wrap">
-        <div class="cube" id="cube">
-          <div class="face front"></div>
-          <div class="face back"></div>
-          <div class="face left"></div>
-          <div class="face right"></div>
-          <div class="face top"></div>
-          <div class="face bottom"></div>
-        </div>
+        <div class="lane-grid" id="lane-grid"></div>
         <div class="cube-legend">
-          <span class="legend-rate">rate — exposed</span>
-          <span class="legend-capacity">capacity — hidden</span>
+          <span class="legend-rate">rate — exposed (17 lanes)</span>
+          <span class="legend-capacity">capacity — hidden (8 lanes)</span>
         </div>
       </div>
       <div class="flow-arrow"></div>
@@ -393,6 +391,45 @@ for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) ALL_25_LANES.push([x, y]
 const KECCAK_MASK64 = (1n << 64n) - 1n;
 function rol64(x, n) { n = BigInt(n % 64); return ((x << n) | (x >> (64n - n))) & KECCAK_MASK64; }
 function laneHex(x) { return x.toString(16).padStart(16,'0'); }
+
+const LANE_CELL = 34; // px between lane centers; keeps the 5x5 grid's footprint close to the old 90x90 cube
+const KECCAK_RATE_LANES = new Set();
+for (let i = 0; i < 17; i++) {
+  // mirrors the absorb-order logic already used in keccak256WithTrace's j-loop
+  // (x=(j/8)%5, y=Math.floor((j/8)/5)): the first 17 lanes visited for rateBytes=136 are
+  // exactly the rate lanes, the remaining 8 are the capacity lanes.
+  const x = i % 5, y = Math.floor(i / 5);
+  KECCAK_RATE_LANES.add(`${x},${y}`);
+}
+
+function buildLaneGrid() {
+  const grid = document.getElementById('lane-grid');
+  grid.innerHTML = '';
+  for (let y = 0; y < 5; y++) {
+    for (let x = 0; x < 5; x++) {
+      const lane = document.createElement('div');
+      lane.className = 'lane ' + (KECCAK_RATE_LANES.has(`${x},${y}`) ? 'rate' : 'capacity');
+      lane.id = `lane-${x}-${y}`;
+      lane.dataset.x = String(x);
+      lane.dataset.y = String(y);
+      const baseTransform = `translate3d(${(x - 2) * LANE_CELL}px, ${(y - 2) * LANE_CELL}px, 0)`;
+      lane.dataset.baseTransform = baseTransform;
+      lane.style.transform = baseTransform;
+      const tick = document.createElement('span');
+      tick.className = 'lane-tick';
+      lane.appendChild(tick);
+      grid.appendChild(lane);
+    }
+  }
+}
+// NOTE: the call to buildLaneGrid() is deliberately *not* here — this file's DOM-free
+// "algorithm core" is extracted by tools/extract_hash_core.mjs (bounded by the marker strings
+// it looks for near the top and bottom of this script block) and run in a Node vm context with
+// no `document` global for tools/test_md5_trace.mjs / tools/test_keccak_trace.mjs.
+// buildLaneGrid()'s definition can live here (function bodies aren't executed until called), but
+// invoking it eagerly at this point would throw ReferenceError: document is not defined under
+// that extraction. The actual call is below, alongside the other page-load DOM wiring
+// (renderAlgorithmBox() etc.) that already lives outside the extraction boundary.
 
 function keccakF1600WithTrace(state, trace) {
   for (let rnd = 0; rnd < 24; rnd++) {
@@ -629,21 +666,22 @@ function renderAlgorithmBox() {
 document.getElementById('algo-prev').onclick = document.getElementById('algo-next').onclick =
   () => setAlgorithm(currentAlgorithm === 'md5' ? 'sha3' : 'md5');
 renderAlgorithmBox();
+buildLaneGrid();
 
-(function setupCubeDrag() {
-  const cube = document.getElementById('cube');
+(function setupLaneGridDrag() {
+  const grid = document.getElementById('lane-grid');
   let rotX = -20, rotY = 30, dragging = false, lastX = 0, lastY = 0;
-  function apply() { cube.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`; }
-  cube.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; cube.setPointerCapture(e.pointerId); });
-  cube.addEventListener('pointermove', e => {
+  function apply() { grid.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`; }
+  grid.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; grid.setPointerCapture(e.pointerId); });
+  grid.addEventListener('pointermove', e => {
     if (!dragging) return;
     const dx = e.clientX - lastX, dy = e.clientY - lastY;
     rotY += dx * 0.5; rotX -= dy * 0.5;
     lastX = e.clientX; lastY = e.clientY;
     apply();
   });
-  cube.addEventListener('pointerup', () => { dragging = false; });
-  cube.addEventListener('pointercancel', () => { dragging = false; });
+  grid.addEventListener('pointerup', () => { dragging = false; });
+  grid.addEventListener('pointercancel', () => { dragging = false; });
   apply();
 })();
 
