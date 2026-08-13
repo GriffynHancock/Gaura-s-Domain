@@ -144,6 +144,26 @@ check('a STEP after a REDO advances by exactly one, from where the redo left it'
       afterResume.index === beforeRedo.index + 1 && afterResume.phaseLogLen === logLenBefore + 1,
       `index ${afterResume.index}, phaseLog ${afterResume.phaseLogLen}`);
 
+// WHILE HELD, THE CUBES MUST STILL SAY WHICH PHASE YOU ARE ON. The travelling wavefront stops at
+// the end of its phase (by design — a sweep looping forever while paused is sustained flicker),
+// so without something else the lattice would go back to saying nothing the moment a stepped
+// phase finished, which is the original "the pulse cuts out early" complaint reproduced inside
+// the mode built to answer it. The phase TINT is held instead: it is applied at constant
+// luminance, and held flat, so it is a DC hue rather than a pulse.
+await setSpeed(50);   // the default, where a stepped phase paints for well under a tenth of a second
+await drive('next', 500);
+const held = await page.evaluate(() => ({
+  juice: __sha3Debug.juice(),
+  chip: [...document.querySelectorAll('.phase-box')].filter(e => e.classList.contains('active')).map(e => e.id),
+  active: sha3.active ? sha3.active.type : null,
+}));
+check('while HELD on a phase the lattice keeps its phase hue (constant-luminance tint, held flat)',
+      held.active === null && !!held.juice.holdType && held.juice.tintAmt > 0,
+      `holding ${held.juice.holdType}, tint depth ${held.juice.tintAmt.toFixed(3)}, no phase animating`);
+check('...and the phase chip stays lit on that phase',
+      held.chip.length === 1 && held.chip[0] === 'phase-' + held.juice.holdType, held.chip.join(','));
+await setSpeed(100);
+
 // ============================================================================================
 //  3. MD5 — one sub-cycle is ONE TRACE EVENT (= one register update, in the main loop)
 // ============================================================================================
@@ -194,6 +214,36 @@ check('each step really is ONE register update — A/B/C/D changes between conse
 // "show where you are" for MD5.
 check('the MD5 readout names the block, the round and the active function',
       /step \d+\/64 · block \d+ · round \d+ · [FGHI]/.test(md5Steps[0].readout), md5Steps[0].readout);
+// ...and the round number must be RIGHT, not merely present. An MD5 round IS the group of 16
+// steps sharing a nonlinear function, so round and function have to agree at every step and
+// change together at every boundary. Checking the format alone missed a real off-by-one here
+// (step 1, function F, was labelled "round 2"), so this walks all 64 steps of the block and
+// compares the label's round against the function it is standing on.
+const roundWalk = await page.evaluate(() => {
+  const { trace } = md5WithTrace([...new TextEncoder().encode('crypto-101')]);
+  const fnOf = ['F', 'G', 'H', 'I'];
+  const bad = [];
+  for (const ev of trace) {
+    const label = md5StepLabel(ev, trace);
+    const m = /step (\d+)\/64 · block \d+ · round (\d+) · ([FGHI])/.exec(label);
+    if (!m) continue;
+    const step = Number(m[1]), round = Number(m[2]), fn = m[3];
+    if (round !== Math.floor((step - 1) / 16) + 1 || fn !== fnOf[round - 1]) bad.push(label);
+  }
+  return { bad, n: trace.filter(e => /r\d+-loop$/.test(e.boxId || '')).length };
+});
+check('the MD5 round number is correct at every one of the 64 steps (round N carries function N)',
+      roundWalk.bad.length === 0 && roundWalk.n >= 64,
+      roundWalk.bad.length ? `wrong at: ${roundWalk.bad.slice(0, 3).join(' | ')}` : `all ${roundWalk.n} loop steps agree`);
+check('the round label changes exactly at the 16-step boundary (step 16 -> 17 is F -> G)',
+      /round 1 · F/.test(await page.evaluate(() => {
+        const { trace } = md5WithTrace([...new TextEncoder().encode('crypto-101')]);
+        return md5StepLabel(trace.find(e => e.step === 15), trace);
+      })) &&
+      /round 2 · G/.test(await page.evaluate(() => {
+        const { trace } = md5WithTrace([...new TextEncoder().encode('crypto-101')]);
+        return md5StepLabel(trace.find(e => e.step === 16), trace);
+      })));
 
 console.log('\n-- MD5: redo replays without advancing');
 const md5Before = await st();
@@ -211,24 +261,57 @@ check('MD5 REDO replays the same step without advancing (index, readout and regi
 //  4. THE STATE TABLE — every toggle path leaves a coherent, non-stuck UI
 // ============================================================================================
 console.log('\n-- toggling step mode in every state');
-// (a) UNTICK while holding: normal playback must RESUME, not stop and not restart.
+// (a) UNTICK while holding: normal playback must RESUME — not stop, and not restart from the top.
+//
+// SLOWED DOWN FIRST, deliberately. At the fast slider setting the previous sections leave behind,
+// the whole 71-event MD5 trace is over inside the settling time, so "the counter changed" is
+// satisfied by a run that FINISHED rather than one that resumed, and an implementation that
+// cancelled the run on untick would pass. At slider 5 the remaining events take seconds, so the
+// counter can be caught mid-flight and the two halves of the claim can be separated: it must keep
+// ADVANCING (not stopped) and it must not have gone BACKWARDS to step 1 (not restarted).
+const stepNum = s => Number((/step (\d+) \/ 64/.exec(s) || [0, 0])[1]);
+await setSpeed(5);
 const heldAt = (await st()).index;
+const counterHeld = await page.evaluate(() => document.getElementById('step-counter-0').textContent);
 await page.click('#step-toggle');   // off
-await page.waitForTimeout(900);
+await page.waitForTimeout(350);
+const counterA = await page.evaluate(() => document.getElementById('step-counter-0').textContent);
+await page.waitForTimeout(450);
+const counterB = await page.evaluate(() => document.getElementById('step-counter-0').textContent);
 const resumed = await st();
-const md5Running = await page.evaluate(() => new Promise(res => {
-  const c = document.getElementById('step-counter-0').textContent;
-  setTimeout(() => res({ before: c, after: document.getElementById('step-counter-0').textContent }), 500);
-}));
-check('unticking while HELD resumes normal playback (it neither stops nor restarts)',
-      !resumed.on && (md5Running.before !== md5Running.after || !resumed.live),
-      `held at ${heldAt}; counter ${md5Running.before} -> ${md5Running.after}`);
+check('unticking while HELD resumes normal playback (it keeps advancing — it did not stop)',
+      !resumed.on && stepNum(counterB) > stepNum(counterA),
+      `held at trace index ${heldAt}, counter ${counterHeld} -> ${counterA} -> ${counterB}`);
+check('...and it resumed from where it was holding rather than restarting the run',
+      stepNum(counterA) >= stepNum(counterHeld),
+      `${counterHeld} -> ${counterA}`);
 await page.waitForFunction(() => document.getElementById('output-digest').textContent.length === 32, { timeout: 30000 });
 check('the resumed run completes and prints a real digest',
       (await page.evaluate(() => document.getElementById('output-digest').textContent)).length === 32);
 
+// (a2) STEPPING TO THE END must complete the run exactly as an un-stepped one does: real digest,
+// a history entry, the stepper released, and a readout that says so rather than a live position.
+await page.evaluate(() => { currentRunId++; document.getElementById('output-digest').textContent = '—'; });
+await page.waitForTimeout(300);
+await page.evaluate(() => __stepDebug.set(true));
+const histBefore = await page.evaluate(() => historyLog.length);
+await page.click('#step-next');
+await page.waitForFunction(() => __stepDebug.state().live && __stepDebug.state().index >= 1, { timeout: 10000 });
+let end = await st();
+let steps = 0;
+while (end.live && steps++ < 300) { await drive('next', 15); end = await st(); }
+const finished = await page.evaluate(() => ({
+  digest: document.getElementById('output-digest').textContent,
+  hist: historyLog.length,
+}));
+check('stepping to the LAST sub-cycle completes the run (real digest, history entry, stepper released)',
+      !end.live && finished.digest.length === 32 && finished.hist > histBefore
+      && /done$/.test(end.readout) && steps >= end.total - 2,
+      `${steps} steps to finish a ${end.total}-event trace, digest ${finished.digest.slice(0, 12)}…, readout "${end.readout}"`);
+
 // (b) TICK mid-run: the run holds, it is not cancelled.
 await page.evaluate(() => { document.getElementById('output-digest').textContent = '—'; });
+await page.evaluate(() => __stepDebug.set(false));
 await setSpeed(1);
 await page.click('#hash-btn');
 await page.waitForTimeout(500);

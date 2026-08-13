@@ -1638,7 +1638,12 @@ function sha3StepLabel(ph) {
 function md5StepLabel(ev, trace) {
   const m = /^block-(\d+)-r(\d+)-loop$/.exec(ev.boxId || '');
   if (!m || ev.step === undefined) return String(ev.boxId || '');
-  return `step ${ev.step + 1}/64 · block ${Number(m[1]) + 1} · round ${Number(m[2]) + 1} · ${ev.func}`;
+  // THE ROUND COMES FROM THE STEP NUMBER, not from the boxId's `r` capture. md5WithTrace builds
+  // that id from `round = Math.floor(i/16) + 1`, i.e. it is ALREADY 1-based, so adding one to it
+  // labelled step 1 (function F, round 1) as "round 2". Math.floor(step/16)+1 is the definition
+  // of an MD5 round — the same expression the trace itself uses — so the label cannot drift from
+  // ev.func, which is what a student is actually reading the round number to explain.
+  return `step ${ev.step + 1}/64 · block ${Number(m[1]) + 1} · round ${Math.floor(ev.step / 16) + 1} · ${ev.func}`;
 }
 
 // CORRECTION (this comment used to describe a design this file no longer has): getSpeedMs and
@@ -2123,6 +2128,8 @@ const sha3 = {
   // slider changes at all); >1 only at the slow end and in step mode, where a single sweep leaves
   // a cube dark for most of the phase. See SHA3_FLASH_CYCLE_MS.
   flashCycles: 1,
+  // The phase whose TINT is held while step mode is paused on it — see sha3FinishPhase.
+  holdType: null,
   // juice escalation state (see the SHA3 juice block below)
   roundsInBlock: 0, blocksDone: 0,
   // Counts down from SHA3_RESET_EASE_MS at the start of every run, so the render followers ease a
@@ -3375,7 +3382,10 @@ function sha3Render(opts) {
     ? Math.min(1, SHA3_FLASH_GAIN_MIN + (1 - SHA3_FLASH_GAIN_MIN) * (sha3.runElapsed || 0) / SHA3_RUN_ARM_MS)
     : 1;
   const fGain = sha3.flashGain * sha3Gov.gain * runArm;
-  const fCol = fType ? P[fType] : null;
+  // The TINT's phase is the active one, or — while step mode holds — the one being held on.
+  // (The wavefront's is `fType` alone: only the hue persists across a hold, never the sweep.)
+  const tType = fType || sha3.holdType || null;
+  const fCol = tType ? P[tType] : null;
   const fEsc = sha3.flashEsc;
   const fWiden = 1 + SHA3_WIDEN * fEsc;
   // Uniform phase tint, eased in and out across the phase (raised cosine) so consecutive phases
@@ -3411,7 +3421,10 @@ function sha3Render(opts) {
   const fTintDepth = (SHA3_TINT_MIN + (SHA3_TINT_MAX - SHA3_TINT_MIN) * fEsc) * tintArm;
   const fTintRaw = fType
     ? fTintDepth * (SHA3_TINT_FLOOR + (1 - SHA3_TINT_FLOOR) * sha3Band(fP - 0.5, 0.5))
-    : 0;
+    // Held: the envelope's own FLOOR, held flat. That is the same depth the phase's tint sits at
+    // between its ramp in and out, so a hold looks like the phase paused rather than like a new
+    // effect, and being flat it is DC by construction.
+    : (sha3.holdType ? fTintDepth * SHA3_TINT_FLOOR : 0);
   const fTintTarget = Math.min(fTintRaw, sha3Gov.tintCap);
   if (fCol) {
     if (!sha3.tintColS || smooth >= 1) sha3.tintColS = fCol.slice();
@@ -3421,8 +3434,8 @@ function sha3Render(opts) {
   // filtering at all — whenever the governor is idle). With NO phase active there is no next hue
   // to cross-fade into, so the tint releases on its own fixed time constant rather than stepping
   // to zero in a single frame; see SHA3_TINT_OFF_TAU.
-  const tintK = fType ? smooth : 1 - Math.exp(-sdt / SHA3_TINT_OFF_TAU);
-  sha3.tintAmtS = (sha3.tintAmtS === undefined || (fType && smooth >= 1))
+  const tintK = tType ? smooth : 1 - Math.exp(-sdt / SHA3_TINT_OFF_TAU);
+  sha3.tintAmtS = (sha3.tintAmtS === undefined || (tType && smooth >= 1))
     ? fTintTarget : sha3.tintAmtS + (fTintTarget - sha3.tintAmtS) * tintK;
   const fTint = sha3.tintAmtS;
   const fTintCol = sha3.tintColS || fCol;
@@ -3815,7 +3828,7 @@ function sha3ResetState() {
   sha3.phaseLog = [];
   sha3.roundsInBlock = 0; sha3.blocksDone = 0;
   sha3.flashType = null; sha3.flashP = 0; sha3.flashGain = 1; sha3.flashEsc = 0;
-  sha3.flashCycles = 1;
+  sha3.flashCycles = 1; sha3.holdType = null;
   sha3SetPhaseIndicator(null);
 }
 
@@ -3901,6 +3914,7 @@ function sha3StartPhase(ph, now) {
   // so it accounts for BOTH things that shorten a phase — the speed slider and the uncapped
   // escalation — rather than only the one the user can see.
   sha3.flashType = SHA3_PHASE_IDS[ph.type] ? ph.type : null;
+  sha3.holdType = null;   // a new phase supersedes whatever the last one was holding
   sha3.flashP = 0;
   sha3.flashGain = sha3FlashGain(ph.dur);
   sha3.flashCycles = sha3FlashCyclesFor(ph.dur);   // see THE WAVEFRONT CYCLES WITHIN ITS PHASE
@@ -4008,6 +4022,16 @@ function sha3FinishPhase(ph, now) {
   // The wavefront has left the assembly; only the decaying afterglow remains until the next
   // phase arms its own.
   sha3.flashType = null;
+  // ...but in STEP MODE the phase TINT is held, so the lattice keeps saying which step you are
+  // standing on for as long as you stand on it. Only the tint: the travelling wavefront stops
+  // (a sweep that repeated forever while paused would be sustained flicker, which is a different
+  // and much less defensible thing), while the tint is applied at CONSTANT LUMINANCE by
+  // sha3TintAt and held at a fixed depth here, so it cannot produce a luminance transition at
+  // all — it is a DC hue, not a pulse. Without this, a stepped phase at the default slider paints
+  // for ~84ms and then the cubes go back to saying nothing, which is the original complaint
+  // reproduced inside the mode built to answer it. The phase chip and the round counter still
+  // carry the position; this carries it on the object being taught.
+  sha3.holdType = (stepper.on && SHA3_PHASE_IDS[ph.type]) ? ph.type : null;
   if (ph.type === 'pi') {
     // commit to exact integer slots — an aborted or rounding-drifted transit can never leave a
     // lane at a fractional position for the next pi to permute from.
@@ -4047,6 +4071,7 @@ function sha3Stop() {
   sha3.blurTailUntil = 0;   // the tail is part of motion; it must not outlive it either
   sha3.flashType = null;   // motion must never outlive motion — same rule as the blur below
   sha3.flashCycles = 1;
+  sha3.holdType = null;
   // ...and neither must the phase tint. It releases on SHA3_TINT_OFF_TAU during the settle
   // window, which is ~5 time constants long, so by here it is already near zero; this makes it
   // exactly zero so the resting lattice can never keep a residue of the last phase's hue.
@@ -4409,6 +4434,7 @@ function initSha3Canvas() {
       // how many times the wavefront sweeps within a phase at the current pacing (1 at the
       // default speed and above) — see THE WAVEFRONT CYCLES WITHIN ITS PHASE
       flashCycles: sha3.flashCycles, flashCycleMs: SHA3_FLASH_CYCLE_MS,
+      holdType: sha3.holdType, tintAmt: sha3.tintAmtS || 0,
       // the two escalating VISUAL channels, exactly as sha3Render computes them
       flashWiden: 1 + SHA3_WIDEN * sha3.flashEsc,
       flashTint: SHA3_TINT_MIN + (SHA3_TINT_MAX - SHA3_TINT_MIN) * sha3.flashEsc,
