@@ -472,7 +472,20 @@ if (!(first.widen === 1 && first.tint === sha3Curve.tintMin)) {
 if (!(deep.widen > first.widen * 1.5)) {
   throw new Error(`the wavefront must widen as a long input grinds on: ${first.widen} -> ${deep.widen}`);
 }
-if (!(deep.tint > first.tint * 1.8)) {
+// The tint's escalation, restated in ABSOLUTE terms now that the tint is deliberately much more
+// prominent from the very first phase (SHA3_TINT_MIN/MAX went 0.14/0.32 -> 0.34/0.62, so the
+// active step's hue substantially overrides the block's own colour rather than washing over it).
+// The old form of this check was a RATIO — "deeper than 1.8x its starting value" — which the new
+// depths cannot meet: 0.62/0.34 is 1.82x of headroom in total, because the floor rose so much.
+// The ratio was never the interesting quantity though. What the escalation has to do is put a
+// VISIBLE amount of extra hue on screen for a long input, and by that measure it now does
+// strictly more than before: the tint travels 0.28 of the way to the phase colour across a long
+// run where it used to travel 0.18. So: assert the absolute travel (stronger than before) and
+// keep a relative floor as well (weaker than before, and justified by the arithmetic above).
+if (!(deep.tint - first.tint > 0.2)) {
+  throw new Error(`the phase tint must visibly deepen as a long input grinds on: ${first.tint} -> ${deep.tint} (travel ${(deep.tint - first.tint).toFixed(3)}, need > 0.2)`);
+}
+if (!(deep.tint > first.tint * 1.5)) {
   throw new Error(`the phase tint must deepen as a long input grinds on: ${first.tint} -> ${deep.tint}`);
 }
 // Containment without a cap, same rule as everywhere else on this page: the factor is unbounded,
@@ -543,18 +556,30 @@ for (let i = 1; i < runCurve.length; i++) {
     throw new Error(`the slider goes dead between ${runCurve[i - 1][0]} and ${runCurve[i][0]}: ${runCurve[i - 1][1]}ms -> ${runCurve[i][1]}ms`);
   }
 }
-// The slow end is legibility-critical and must NOT have been sped up by any of this.
-if (!(runAt[1] > 25000)) throw new Error(`the slow end must stay slow enough to read (>25s), got ${runAt[1]}ms`);
+// The slow end is legibility-critical and must NOT have been sped up by any of this. RAISED from
+// >25s to >60s: the owner's report was that 26s at slider 1 "is not slow enough, probably needs to
+// be 2.5x slower", so 2.5 x 26.0s = 65s is now the target and the old bound would no longer catch
+// a regression back toward it.
+if (!(runAt[1] > 60000)) throw new Error(`the slow end must stay slow enough to read (>60s), got ${runAt[1]}ms`);
 // The default is the one the room sees first; it is unchanged on purpose.
 if (!(runAt[50] > 7000 && runAt[50] < 10000)) throw new Error(`the default (slider 50) should be unchanged at ~8.5s, got ${runAt[50]}ms`);
 // The fast end must be a real step change, not the old ~4.6s. It does NOT need to reach REAL
 // TIME's ~22ms — that is a separate toggle — but it must feel like a different mode of use.
 if (!(runAt[100] < 2200)) throw new Error(`the fast end must be genuinely fast (<2.2s), got ${runAt[100]}ms`);
-// ...and the fast HALF of the travel must carry most of the range, which is what "it doesn't seem
-// to speed up much" was really about.
+// ...and BOTH halves of the travel must carry a real range. This replaces an earlier check that
+// the fast half carried MORE range than the slow half — which was the right shape of assertion
+// when the complaint was "it doesn't seem to speed up much", but is now directly contradicted by
+// the owner's later instruction to make the slow end 2.5x slower. Stretching the slow end is
+// exactly what makes the slow half's ratio the larger one, so the old comparison would fail on
+// the requested behaviour rather than on a regression.
+//
+// What the original defect actually was — a stretch of travel where nothing happens — is caught
+// by two checks that are unaffected: the per-step "the slider goes dead between X and Y" loop
+// above (every sampled step must shorten the run by at least 7%), and the requirement that each
+// half spans at least 3x. Both halves are geometric now, so a fixed ratio is the natural bound.
 const fastHalfRatio = runAt[50] / runAt[100], slowHalfRatio = runAt[1] / runAt[50];
-if (!(fastHalfRatio > slowHalfRatio)) {
-  throw new Error(`the fast half of the slider must cover at least as much range as the slow half, got ${fastHalfRatio.toFixed(2)}x vs ${slowHalfRatio.toFixed(2)}x`);
+if (!(fastHalfRatio > 3 && slowHalfRatio > 3)) {
+  throw new Error(`both halves of the slider must carry a real range (>3x each), got fast ${fastHalfRatio.toFixed(2)}x, slow ${slowHalfRatio.toFixed(2)}x`);
 }
 console.log(`OK  SHA-3 slider speeds up across its whole travel: ${runCurve.map(([v, ms]) => `${v}->${(ms / 1000).toFixed(1)}s`).join(' ')} (slow half ${slowHalfRatio.toFixed(1)}x, fast half ${fastHalfRatio.toFixed(1)}x)`);
 

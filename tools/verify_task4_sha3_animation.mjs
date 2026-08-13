@@ -181,11 +181,17 @@ console.log('OK  re-clicking Hash mid-run hard-cancelled the previous run (no le
 
 // ---- per-lane rho rotations differ from one another ----
 const lanes = await page.evaluate(() => window.__sha3Debug.lanes());
-const spinSet = new Set(lanes.map(l => Math.round((l.spinTarget % 360 + 360) % 360)));
+// Read from spinTrue, the UNSCALED accumulated rho angle, rather than from spinTarget, which is
+// now the apparent (aliased) angle the renderer eases toward — see the TEMPORAL ALIASING block.
+// This is the stronger of the two readings: spinTrue is the [FAIRLY ACCURATE] picture of rho's
+// real bit-rotation, so asserting distinctness on it asserts the claim the animation is making,
+// not the claim the shutter is making. (This pass runs at slider 100, where the geometric alias
+// factor is small and negative, so the drawn angles are a scaled-down mirror of these.)
+const spinSet = new Set(lanes.map(l => Math.round((l.spinTrue % 360 + 360) % 360)));
 if (spinSet.size < 5) {
-  throw new Error(`per-lane rho rotations are not distinct enough: only ${spinSet.size} distinct angles across 25 lanes`);
+  throw new Error(`per-lane rho rotations are not distinct enough: only ${spinSet.size} distinct true angles across 25 lanes`);
 }
-console.log(`OK  per-lane rho rotations are genuinely different (${spinSet.size} distinct angles across 25 lanes)`);
+console.log(`OK  per-lane rho rotations are genuinely different (${spinSet.size} distinct true angles across 25 lanes)`);
 
 // ---- lane contents are data-derived: a different input gives a different state ----
 const stateOf = ls => ls.map(l => l.bytes.join(',')).join(';');
@@ -357,7 +363,23 @@ console.log(`OK  flash brightness falls as speed rises (slider 1 -> ${gains.bySl
 // 100, with the escalation held identical, every cube's material colour must come out
 // BYTE-IDENTICAL while the highlight must fall.
 const speedColour = await page.evaluate(() => {
+  // Make the two samples comparable at all. The renderer's tint and highlight are one-pole
+  // FILTERS whenever the controller is live, so sampling twice in a row while a settle window
+  // from an earlier check is still painting compares "partway to the target" against "further
+  // along toward the same target" — a difference in how long the filter has run, not in speed.
+  // Park the controller and clear the filter state before each render so both samples land
+  // exactly on their targets, which is what the assertion below is actually about.
+  currentRunId++; sha3.running = false;
+  // ...and park the CLOSED LOOP too. This check is about the feed-forward relationship between
+  // playback speed and brightness (sha3FlashGain), and about the fact that it does not touch
+  // colour. The measured governor is a separate mechanism with its own tests: leaving it holding
+  // a hard cap from an earlier check clamps BOTH samples to the same ceiling and makes the
+  // brightness half of the comparison meaningless — the slow sample reads the cap, not the gain.
+  sha3Gov.hiCap = Infinity; sha3Gov.tintCap = Infinity; sha3Gov.gain = 1; sha3Gov.tau = 0;
+  sha3Pace.ema = 1e9; sha3Pace.relFrom = 0;
   const sample = v => {
+    sha3.tintAmtS = undefined; sha3.tintColS = null;
+    sha3.lanes.forEach(L => { if (L.hiS) L.hiS.fill(0); });
     document.getElementById('speed-slider').value = String(v);
     sha3.roundsInBlock = 10; sha3.blocksDone = 0;   // identical escalation at both speeds
     const dur = sha3PhaseDuration('theta');
@@ -395,36 +417,83 @@ if (!(speedColour.fast.maxHi < speedColour.slow.maxHi * 0.6)) {
 console.log(`OK  speed changes brightness ONLY: at the same escalation, slider 1 -> 100 leaves every cube's colour byte-identical (tint ${speedColour.slow.tint.toFixed(3)} both) while the highlight falls ${speedColour.slow.maxHi.toFixed(3)} -> ${speedColour.fast.maxHi.toFixed(3)}`);
 
 // ---- the phase hue must NEVER cost the rate/capacity read ----
-// The tint is applied uniformly to every cube precisely so this holds by construction (an affine
-// map compresses the gold/grey gap but cannot cross it). This checks the rendered result anyway,
-// on real hashed state, at the worst case: full gain, tint at its crest, every lane glowing.
+//
+// The tint is applied uniformly to every cube precisely so this holds by construction: it is an
+// affine map c -> (1-t)c + t*hue, identical for rate and capacity lanes, so it compresses the
+// gold/grey warmth gap by exactly (1-t) and can never invert or cross it. This checks the
+// rendered result anyway, on real hashed state, at the worst case: full gain, tint at its crest,
+// every lane glowing, escalation fully open (so the depth is SHA3_TINT_MAX, not MIN).
+//
+// UPDATED for the deliberately much more prominent tint (0.14/0.32 -> 0.34/0.62). Two changes,
+// and the net is a STRONGER statement than before, not a weaker one:
+//
+//   * the FILL-gap floor is now stated against the arithmetic instead of a round number. At
+//     t = SHA3_TINT_MAX = 0.62 an affine mix leaves (1-t) = 38% of the gap, so the old "> 50% of
+//     the gap at rest" was unsatisfiable BY CONSTRUCTION at the new depth — it would have been
+//     failing on the definition of the change, not on a regression. The floor is 0.30, which
+//     leaves real room below the 0.38 the maths predicts, so a genuine regression (a tint that
+//     stopped being uniform, a hue that dragged one family harder than the other) still trips it.
+//   * a second, UNCOMPRESSED channel is asserted: the box outlines. They are drawn from the fill
+//     pulled SHA3_EDGE_IDENTITY of the way back to the lane's own untinted material, so their
+//     gap must survive at essentially its full at-rest value at every tint depth. That is a
+//     property the old renderer did not have and could not have been asserted of.
+//
+// The load-bearing assertion in both cases is the STRICT ORDERING — every rate lane warmer than
+// every capacity lane — which is what "which 17 lanes are gold" actually depends on.
+const FILL_GAP_FLOOR = 0.30;   // see above: the maths predicts 0.38 at SHA3_TINT_MAX
+const EDGE_GAP_FLOOR = 0.60;   // the edge channel keeps most of the gap at any tint depth
 const legibility = await page.evaluate(() => {
   const gold = c => c[0] - c[2];      // warmth: gold lanes are warm, capacity lanes neutral/cool
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
   const sample = (type) => {
     // WORST CASE on every knob: full speed-gain, tint at its crest, and the escalation fully
     // opened up so the tint sits at SHA3_TINT_MAX rather than SHA3_TINT_MIN.
     sha3.flashType = type; sha3.flashP = 0.5; sha3.flashGain = 1; sha3.flashEsc = 1;
     sha3.lanes.forEach(L => { L.glow = type ? 0.9 : 0; });
     sha3Render();
-    const rate = [], cap = [];
-    sha3.lanes.forEach(L => (L.isRate ? rate : cap).push(gold(L.lastCol)));
-    return { worstRate: Math.min(...rate), bestCap: Math.max(...cap),
-             gap: rate.reduce((a, b) => a + b, 0) / rate.length - cap.reduce((a, b) => a + b, 0) / cap.length };
+    const rate = [], cap = [], rateE = [], capE = [];
+    sha3.lanes.forEach(L => {
+      (L.isRate ? rate : cap).push(gold(L.lastCol));
+      (L.isRate ? rateE : capE).push(gold(L.lastEdge));
+    });
+    return { worstRate: Math.min(...rate), bestCap: Math.max(...cap), gap: mean(rate) - mean(cap),
+             worstRateEdge: Math.min(...rateE), bestCapEdge: Math.max(...capE),
+             edgeGap: mean(rateE) - mean(capE),
+             tint: sha3.tintAmtS };
   };
+  // Start from a genuinely untinted lattice. The tint now RELEASES on a time constant when no
+  // phase is active (SHA3_TINT_OFF_TAU) rather than snapping to zero, so an earlier check in
+  // this file that left a tint standing would otherwise still be decaying into this sample. On
+  // the real page sha3Stop zeroes it at the end of every run; here we do the same by hand.
+  sha3.tintAmtS = 0; sha3.tintColS = null;
   const out = { rest: sample(null) };
   for (const t of ['theta', 'rho', 'pi', 'chi', 'iota']) out[t] = sample(t);
-  sha3.flashType = null; sha3.flashEsc = 0; sha3.lanes.forEach(L => { L.glow = 0; }); sha3Render();
+  sha3.flashType = null; sha3.flashEsc = 0; sha3.lanes.forEach(L => { L.glow = 0; });
+  sha3.tintAmtS = 0; sha3.tintColS = null; sha3Render();
   return out;
 });
 for (const [t, r] of Object.entries(legibility)) {
   if (!(r.worstRate > r.bestCap)) {
-    throw new Error(`during ${t} the rate and capacity lanes overlap in warmth (worst rate ${r.worstRate.toFixed(1)} <= best capacity ${r.bestCap.toFixed(1)}) — "which 17 lanes are gold" must stay answerable at every phase`);
+    throw new Error(`during ${t} the rate and capacity lanes overlap in FILL warmth (worst rate ${r.worstRate.toFixed(1)} <= best capacity ${r.bestCap.toFixed(1)}) — "which 17 lanes are gold" must stay answerable at every phase`);
   }
-  if (!(r.gap > legibility.rest.gap * 0.5)) {
-    throw new Error(`during ${t} the rate/capacity colour gap collapsed to ${r.gap.toFixed(1)} from ${legibility.rest.gap.toFixed(1)} at rest`);
+  if (!(r.worstRateEdge > r.bestCapEdge)) {
+    throw new Error(`during ${t} the rate and capacity lanes overlap in EDGE warmth (worst rate ${r.worstRateEdge.toFixed(1)} <= best capacity ${r.bestCapEdge.toFixed(1)})`);
+  }
+  if (!(r.gap > legibility.rest.gap * FILL_GAP_FLOOR)) {
+    throw new Error(`during ${t} the rate/capacity FILL gap collapsed to ${r.gap.toFixed(1)} from ${legibility.rest.gap.toFixed(1)} at rest (floor ${(FILL_GAP_FLOOR * 100)}%; an affine tint of depth ${r.tint.toFixed(2)} should leave ${((1 - r.tint) * 100).toFixed(0)}%)`);
+  }
+  if (!(r.edgeGap > legibility.rest.edgeGap * EDGE_GAP_FLOOR)) {
+    throw new Error(`during ${t} the rate/capacity EDGE gap collapsed to ${r.edgeGap.toFixed(1)} from ${legibility.rest.edgeGap.toFixed(1)} at rest — the outline channel is supposed to be the one the tint cannot consume`);
   }
 }
-console.log(`OK  every rate lane stays warmer than every capacity lane through all five phase tints (gap at rest ${legibility.rest.gap.toFixed(1)}, worst phase ${Math.min(...Object.values(legibility).map(r => r.gap)).toFixed(1)})`);
+// The tint must actually BE prominent — this is the owner-requested change, so assert the
+// depth rather than only asserting that it did no harm.
+const litTints = Object.entries(legibility).filter(([t]) => t !== 'rest').map(([, r]) => r.tint);
+if (!(Math.min(...litTints) > 0.55)) {
+  throw new Error(`the phase tint is supposed to substantially override the block colour: deepest-escalation crest measured only ${Math.min(...litTints).toFixed(3)}`);
+}
+if (!(legibility.rest.tint === 0)) throw new Error(`the lattice at rest must be untinted, measured ${legibility.rest.tint}`);
+console.log(`OK  phase tint reaches ${Math.min(...litTints).toFixed(2)} of the way to the phase hue (was 0.32) and every rate lane still stays warmer than every capacity lane through all five tints — fill gap ${legibility.rest.gap.toFixed(1)} at rest -> worst ${Math.min(...Object.entries(legibility).filter(([t]) => t !== 'rest').map(([, r]) => r.gap)).toFixed(1)} tinted; edge gap ${legibility.rest.edgeGap.toFixed(1)} -> ${Math.min(...Object.entries(legibility).filter(([t]) => t !== 'rest').map(([, r]) => r.edgeGap)).toFixed(1)}`);
 
 if (consoleErrors.length) throw new Error('console errors: ' + consoleErrors.join(' | '));
 

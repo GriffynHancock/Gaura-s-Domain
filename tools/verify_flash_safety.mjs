@@ -28,7 +28,7 @@
 // The red-flash threshold (2.3.2) is checked as well, because the escalation deliberately
 // reddens as it intensifies and that is the dangerous direction.
 import { chromium } from 'playwright';
-import { analyse, analyseRed, maxFrameStep, RED_SAT } from './flash_analysis.mjs';
+import { analyse, analyseRed, maxFrameStep, maxFrameStepAt, RED_SAT } from './flash_analysis.mjs';
 
 const BASE_URL = process.env.HASH_MODULE_URL || 'http://localhost:8787/public/crypto/hash/';
 
@@ -72,12 +72,34 @@ async function setSpeed(page, v, realtime) {
   }, !!realtime);
 }
 
+// Bring the canvas to REST before a recording starts.
+//
+// Why this exists: cases run back to back on one page, and an earlier case can leave a run still
+// in flight (case 3 deliberately cancels one). The next case's very first recorded frame is then
+// the previous case's leftover image, and its second frame is the new run's freshly-reset
+// lattice — so the pair reads as one enormous luminance step that belongs to NEITHER run. It is
+// an artifact of stitching two recordings together, and it moves with unrelated changes (it
+// changed when the slow end of the speed slider was restretched, purely because a preceding case
+// then sat at a different point in its run when it was cancelled).
+//
+// This is NOT sweeping a real transition under the rug: clicking Hash over a run already in
+// flight is a real thing a user does, it does produce a real step, and it is measured directly —
+// see the dedicated re-click case below, which does nothing but that, ten times over.
+async function settleSha3(page) {
+  await page.evaluate(() => { currentRunId++; });
+  await page.waitForFunction(() => !sha3.running, { timeout: 5000 }).catch(() => {});
+  // Long enough to outlast SHA3_PACE_RELEASE_MS as well, so a recording starts with the previous
+  // run's attenuation fully released rather than part-way through releasing.
+  await page.waitForTimeout(800);
+}
+
 // Run a SHA-3 hash to completion with the meter on, and return the recorded frames.
 async function recordSha3(page, { input, slider, realtime, maxMs = 120000, tiles = 3 }) {
   await setAlgo(page, 'sha3');
   await page.fill('#input-custom', input);
   await setSpeed(page, slider, realtime);
   await page.locator('#lane-canvas').scrollIntoViewIfNeeded();
+  await settleSha3(page);
   await page.evaluate(t => window.__flashMeter.start(t), tiles);
   await page.click('#hash-btn');
   const t0 = Date.now();
@@ -99,6 +121,7 @@ async function recordSha3Burst(page, { input, slider, realtime, clicks = 10, gap
   await page.fill('#input-custom', input);
   await setSpeed(page, slider, realtime);
   await page.locator('#lane-canvas').scrollIntoViewIfNeeded();
+  await settleSha3(page);   // same reason as recordSha3: measure THIS burst, not the last case's tail
   await page.evaluate(t => window.__flashMeter.start(t), tiles);
   for (let i = 0; i < clicks; i++) { await page.click('#hash-btn'); await page.waitForTimeout(gapMs); }
   await page.waitForTimeout(1200);
@@ -131,7 +154,11 @@ function assertSafe(label, rows, limited) {
   const step = maxFrameStep(rows);
   console.log(`    ${label}: ${a.frames} frames over ${a.seconds.toFixed(1)}s at ${a.fps.toFixed(0)}fps, ${a.tiles} patches`);
   console.log(`      general flashes, worst 1s window = ${a.worstPeakPerSecond}   red flashes = ${red.peakPerSecond}`);
+  const at = maxFrameStepAt(rows);
   console.log(`      biggest single-frame luminance step = ${step.toFixed(4)}   peak R/(R+G+B) = ${red.maxRatio.toFixed(3)} (saturated-red threshold ${RED_SAT})`);
+  // WHERE it happened matters as much as how big it was: frame 0-1 of a recording is a seam
+  // between two runs, anything later is the animation itself.
+  if (at) console.log(`        ...at frame ${at.frame}/${at.frames} (t=+${(at.ms / 1000).toFixed(2)}s), patch ${at.tile}: ${at.from.toFixed(3)} -> ${at.to.toFixed(3)}`);
   check(`${label}: at most ${FLASH_BOUND_PER_SECOND} general flashes in any one second`,
         a.worstPeakPerSecond <= FLASH_BOUND_PER_SECOND, `measured ${a.worstPeakPerSecond}`);
   check(`${label}: at most ${FLASH_BOUND_PER_SECOND} red flashes in any one second`,
@@ -252,6 +279,9 @@ await page.evaluate(() => {
 });
 await page.fill('#input-custom', 'x'.repeat(136 * 2));
 await setSpeed(page, 25, false);
+// Start from rest: this case is about the escalation WITHIN one run, so the previous case's
+// attenuation must not still be releasing into its opening samples (see SHA3_PACE_RELEASE_MS).
+await settleSha3(page);
 await page.evaluate(() => { window.__esc = []; });
 await page.click('#hash-btn');
 await page.waitForTimeout(40000);
@@ -286,6 +316,13 @@ assertSafe('SHA-3 slider 100, 8 rate-blocks', await recordSha3(page, { input: 'x
 assertSafe('SHA-3 REAL TIME, 8 rate-blocks', await recordSha3(page, { input: 'x'.repeat(136 * 8), slider: 100, realtime: true, maxMs: 25000 }), true);
 assertSafe('SHA-3 REAL TIME, re-clicked 10x back to back (sustained worst case)',
            await recordSha3Burst(page, { input: 'x'.repeat(136 * 8), slider: 100, realtime: true }), true);
+// THE SEAM, measured on purpose: Hash re-clicked while the previous run is still mid-flight, at
+// the fastest ANIMATED setting. Every click hard-resets the state, so a fully lit, mid-transit
+// lattice is replaced by an all-zero one between two frames — the single largest discontinuity
+// this page can produce, and one a bored teenager reaches by mashing the button. Ten of them in
+// three seconds is also a rate test on the discontinuity itself, not just an amplitude one.
+assertSafe('SHA-3 slider 100, Hash re-clicked 10x mid-run (the reset seam)',
+           await recordSha3Burst(page, { input: 'x'.repeat(136 * 8), slider: 100, realtime: false }), true);
 // FINER TILING. At 3x3 the lattice sits almost entirely inside one tile and the other eight are
 // constant background, so a local excursion — theta lights 5 lanes of 25 — is averaged down
 // before it is measured. 6x6 puts roughly four tiles across the lattice, which is finer than

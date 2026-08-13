@@ -445,6 +445,10 @@
   .legend-rate::before{ content:'■ '; color:var(--gold); }
   .legend-capacity::before{ content:'■ '; color:var(--dim); }
   .round-counter{ font-family:var(--mono); font-size:.7rem; color:var(--dim); }
+  /* The aliasing honesty note. Deliberately quiet — it must be findable by anyone who notices the
+     lattice turning backwards, without becoming a paragraph the room has to read mid-demo. */
+  .alias-note{ font-family:var(--mono); font-size:.6rem; line-height:1.5; color:var(--dim);
+    opacity:.75; max-width:34rem; margin-top:4px; text-align:center; }
 
   /* Task 6: outer input/output box flash on Hash click, distinct from per-diagram-box pulses */
   #input-box, #output-box{ transition: background-color .4s ease-out; }
@@ -697,6 +701,15 @@
             <span class="ph-glyph">ι</span><span class="ph-name">iota</span></div>
         </div>
         <div class="round-counter" id="round-counter">round — / 24</div>
+        <!-- THE ONE THING THAT MUST BE SAID OUT LOUD ON THE PAGE. Past the middle of the speed
+             slider the animation deliberately aliases: apparent motion slows, freezes and then
+             runs backwards, the way a filmed wheel does (see the TEMPORAL ALIASING block in the
+             script). That is a shutter illusion in the picture. It is NOT Keccak running in
+             reverse, and a student who sees the lattice counter-rotate must not be able to
+             conclude that it is — so this stays on the page rather than living only in a code
+             comment. Kept to one line: the page is for a room being talked through it, not read.
+             tools/verify_sha3_aliasing.mjs asserts this element still says so. -->
+        <div class="alias-note" id="alias-note">at speed the motion aliases like a filmed wheel — it can look frozen or backwards. SHA-3 never runs backwards.</div>
       </div>
       <div class="flow-arrow"></div>
       <div class="stage-box" id="hash-box-squeeze"><span class="box-title">Squeeze</span><span class="sample"></span></div>
@@ -1467,7 +1480,15 @@ function showDiagramFor(algo) {
   // Additive: MD5's branch is untouched and this is a no-op before the canvas is initialised.
   if (algo === 'sha3' && typeof sha3ResizeCanvas === 'function' && sha3.ctx) {
     sha3ResizeCanvas();
-    sha3Render();
+    // ...but NOT while a run is painting. This function is reached on every Hash click, just
+    // after sha3Play has reset the state, and a bare sha3Render() is an OPAQUE wipe by
+    // definition. That erased several frames of accumulated motion-blur trail in a single frame
+    // — measured as a 0.12 luminance jump on the centre tile, on every click, which is the
+    // largest single-frame step this page produced and the direct cause of a 7-flashes-per-second
+    // reading when Hash was mashed at slider 100. A running controller repaints every frame
+    // anyway, so there is nothing this call was contributing there; the resize above is the part
+    // that genuinely has to happen the instant the diagram becomes visible.
+    if (!sha3.running) sha3Render();
   }
 }
 
@@ -1945,6 +1966,9 @@ const sha3 = {
   flashType: null, flashP: 0, flashGain: 1, flashEsc: 0,
   // juice escalation state (see the SHA3 juice block below)
   roundsInBlock: 0, blocksDone: 0,
+  // Counts down from SHA3_RESET_EASE_MS at the start of every run, so the render followers ease a
+  // state wipe in instead of snapping it. See THE RESET SEAM at sha3ResetState.
+  resetEase: 0, runElapsed: 0,
 };
 
 // ============================================================================================
@@ -2050,6 +2074,123 @@ function sha3SpeedIntensity() {
 }
 
 // ============================================================================================
+//  TEMPORAL ALIASING — the wagon-wheel effect, and why the fast end LOOKS like it slows down
+// ============================================================================================
+//
+//  [ANALOGY] throughout. Nothing below changes a state value, a phase order, a sweep axis or the
+//  digest; it changes only how much of a motion the RENDERER draws.
+//
+//  THE PROBLEM IT SOLVES. A real SHA3-256 permutation is 24 rounds in a few microseconds. Every
+//  millisecond this page spends on a round is a concession to legibility, and the top of the speed
+//  slider is where that concession runs out: past a certain pace the eye stops resolving
+//  individual rounds and the animation degenerates into flicker — which reads as "broken", not as
+//  "fast". Simply going faster stops carrying the message at exactly the point the message
+//  ("this is going far quicker than you can follow") matters most.
+//
+//  So past that pace the animation stops showing the true rate and shows what a CAMERA would see
+//  instead. Film a spinning wheel and, as it speeds up, the spokes appear to slow, stop, and then
+//  turn BACKWARDS — the wagon-wheel effect, seen in every western ever shot. Each frame catches
+//  the wheel a little short of a whole spoke-spacing, so the sampled positions walk backwards even
+//  though the wheel is turning forwards faster than ever. That is temporal aliasing, and it is
+//  precisely what perception does at the limit this animation is trying to describe. "Too fast to
+//  see" is the honest message; aliasing is what too-fast-to-see actually looks like.
+//
+//  THE CURVE. Sampling a motion of true rate r with a shutter of rate f_s gives an APPARENT rate
+//
+//      apparent(r) = (f_s / pi) * sin(pi * r / f_s)
+//
+//  which is the whole behaviour in one line. apparent'(0) = 1, so slow motion is drawn completely
+//  truthfully; it peaks at r = f_s/2; it falls back through ZERO at r = f_s (apparently frozen);
+//  it is NEGATIVE for f_s < r < 2*f_s (apparently reversed); and then it folds again, forever.
+//  Note what does NOT decay: the apparent rate keeps swinging by the same +-f_s/pi at every fold,
+//  so the tenth fold reverses just as visibly as the first — which is why this stays legible no
+//  matter how far the escalation pushes the pace. Only the RATIO
+//
+//      sha3AliasFactor(r) = apparent(r) / r = sinc(r / f_s)
+//
+//  shrinks with r, and the ratio is the convenient form here because every quantity below is
+//  expressed as "what fraction of the true motion do we draw".
+//
+//  THIS IS AN ILLUSION, NOT THE ALGORITHM RUNNING BACKWARDS. Nothing about Keccak is reversed,
+//  re-ordered or undone. The state values, the phase sequence (theta -> rho -> pi -> chi -> iota,
+//  24 times), the per-phase sweep axes and the digest are all bit-for-bit what they were; a
+//  camera's shutter does not change how fast the wheel is turning. Slow the slider down, or wait
+//  for a run to settle, and every lane is in its true slot and every dial at its true angle,
+//  because at low rates the factor is exactly 1. Keccak-f IS invertible in principle, and that is
+//  a genuinely interesting fact — but it is not what is on screen here, and a student must not
+//  come away thinking it is. There is a one-line note on the page (#alias-note) saying so, and a
+//  test asserts the note is there.
+//
+//  TWO SHUTTERS, ON PURPOSE, AND THEY GO OUT OF PHASE. Geometry and colour get different shutter
+//  rates, so at any fast setting they sit at different points on their own aliasing curves — the
+//  spin can be visibly retrograde while the colour wave is still sweeping forwards. That is not a
+//  defect to tune away: things moving at visibly different apparent rates is what "far beyond the
+//  rate you can sample" looks like, and it is what the owner asked for in as many words.
+//
+//    * GEOMETRY (rho's spin, pi's transit) aliases EARLY, calibrated so the DEFAULT slider
+//      position, 50, sits at r = f_s/2 — the peak of the curve. That is the owner's own anchor:
+//      "where the sha3 speed starts at default middle slider position is actually pretty much the
+//      limit I think before it starts slowing down". Below 50 geometry is drawn honestly; above
+//      it apparent motion falls away, freezes around slider 68, and runs retrograde through the
+//      high seventies before folding again.
+//    * COLOUR / BRIGHTNESS (the travelling wavefront) aliases 3x later, so it keeps tracking the
+//      true rate right through the range where geometry has already folded, and only reverses at
+//      the very top of the slider.
+//
+//  WHAT IS DELIBERATELY NOT ALIASED: the phase tint's envelope and the flash gain. Both are
+//  inputs to the photosensitivity governor's world — the tint pulses once per phase, the gain
+//  bounds the brightness excursion — and re-timing a safety-relevant envelope would change the
+//  flash characteristics the governor and its offline proof are written against, for no visual
+//  gain. The aliasing moves things; it does not change how hard anything flashes. (If anything it
+//  reduces apparent flicker, since a frozen or retrograde motion is a smaller frame-to-frame
+//  change than a full-speed one. That is a bonus, not a licence: every limiter below is unchanged.)
+const SHA3_ALIAS_GEO_HZ = 3.92;    // rounds/sec at which apparent GEOMETRIC motion first freezes
+const SHA3_ALIAS_COL_HZ = 11.76;   // ...and for the colour/brightness wavefront: 3x later
+const SHA3_ALIAS_MAX_HZ = 60;      // clamp, so REAL TIME's zero-length phases stay finite
+
+// Rounds per second the controller is currently pacing at — the "true rate" that gets folded.
+// Derived from the SAME sha3PhaseDuration the controller uses, so it follows both the slider and
+// the uncapped juice escalation without either of them needing to know this exists.
+function sha3RoundRate() {
+  let per = 0;
+  for (const t of ['theta', 'rho', 'pi', 'chi', 'iota']) per += sha3PhaseDuration(t);
+  return per > 0 ? Math.min(SHA3_ALIAS_MAX_HZ, 1000 / per) : SHA3_ALIAS_MAX_HZ;
+}
+// sinc(r / f_s) — the share of a true motion that a shutter of rate f_s actually resolves.
+// 1 at rest, 0 at r = f_s, negative (retrograde) beyond it, folding forever. See the block above.
+function sha3AliasFactor(rate, shutterHz) {
+  const q = rate / shutterHz;
+  if (!(q > 1e-9)) return 1;
+  return Math.sin(Math.PI * q) / (Math.PI * q);
+}
+function sha3AliasGeo() { return sha3AliasFactor(sha3RoundRate(), SHA3_ALIAS_GEO_HZ); }
+function sha3AliasCol() { return sha3AliasFactor(sha3RoundRate(), SHA3_ALIAS_COL_HZ); }
+
+// Warp a phase's progress 0..1 into APPARENT progress, for the aliased quantities that still have
+// to arrive exactly where they were always going to arrive:
+//
+//     w(p) = p + (1 - f) * sin(2*pi*p) / (2*pi)
+//
+// Endpoints are EXACT — w(0) = 0 and w(1) = 1 for every f — so pi's transit still lands on its
+// true slot and sha3FinishPhase's integer commit is unchanged. In between, w'(p) = 1 +
+// (1-f)*cos(2*pi*p), so the instantaneous apparent rate in the MIDDLE of the phase is exactly f:
+// at f = 1 the warp is the identity, at f = 0 the motion stalls dead mid-transit, and at f < 0 it
+// visibly backs up before completing. w stays strictly inside (0,1) for every f in [-1,1], so no
+// lane is ever driven past either end of its own transit.
+//
+// APPLIED TO THE SHARED PHASE CLOCK, NEVER PER LANE. pi's staggered per-lane slide windows (see
+// sha3PhaseProgress) exist precisely so that two lanes swapping slots are never co-located, which
+// is the precondition the painter's-algorithm depth sort depends on. Warping the shared clock
+// just replays a configuration the unwarped design already guarantees is safe; warping each
+// lane's own s with this non-monotone curve could map two different lanes' s to the same value
+// and collide them. A test measures the closest approach over a fully retrograde transit.
+function sha3AliasWarp(p, f) {
+  const b = 1 - f;
+  if (b <= 1e-9) return p;
+  return p + b * Math.sin(2 * Math.PI * p) / (2 * Math.PI);
+}
+
+// ============================================================================================
 //  THE DIRECTIONAL FLASH — one travelling wavefront per Keccak-f step, along the axis that step
 //  actually operates on.
 // ============================================================================================
@@ -2136,8 +2277,55 @@ function sha3SpeedIntensity() {
 //  different (and unwanted) thing from making it look calmer. See the fTint site in sha3Render.
 const SHA3_FLASH_AMP      = 0.75;  // travelling wavefront's contribution to brightness
 const SHA3_AFTERGLOW_AMP  = 0.30;  // the older per-lane decaying glow, now a supporting channel
-const SHA3_TINT_MIN       = 0.14;  // phase tint at the very start of a run
-const SHA3_TINT_MAX       = 0.32;  // phase tint once the escalation has fully opened up
+// ---- PHASE TINT DEPTH: the active step's hue substantially OVERRIDES the lane's own colour ----
+//
+// Raised from 0.14/0.32 on the owner's report ("the active phase hue should be more prominent
+// overriding the original blocks colour" / "the colouring from each stage might need to be more
+// prominent"). At 0.62 the mix is nearly two-thirds of the way to the phase hue: at its crest the
+// lattice reads as a teal/oxblood/green object that happens to have a gold-and-dark grain, rather
+// than as a gold object with a wash over it. That is the requested reversal of emphasis.
+//
+// WHAT PAYS FOR IT. The tint is an affine map c -> (1-t)c + t*hue applied IDENTICALLY to every
+// cube, so it compresses the rate/capacity warmth gap by exactly (1-t) and can never invert or
+// cross it — the ordering "every rate lane is warmer than every capacity lane" is preserved by
+// construction at every t, for every hue. But at t = 0.62 the surviving gap is only 38% of the
+// gap at rest, which is a real legibility cost on a channel that carries a real structural fact
+// (17 rate lanes vs 8 capacity lanes). So the identity is now ALSO carried on a channel the tint
+// does not consume: see SHA3_EDGE_IDENTITY below, which keeps each box's outline part-way toward
+// its own UNTINTED material colour. The fill can be washed hard because the rim still says which
+// family the box belongs to.
+const SHA3_TINT_MIN       = 0.34;  // phase tint at the very start of a run (was 0.14)
+const SHA3_TINT_MAX       = 0.62;  // phase tint once the escalation has fully opened up (was 0.32)
+// The tint no longer pulses all the way back to zero inside each phase. It used to be a bare
+// raised cosine 0 -> depth -> 0, which is a luminance oscillation once per phase — a flashing
+// channel in its own right, and precisely the thing that gets expensive as the depth goes up. It
+// now sits at this fraction of full depth for the whole phase and only the raised-cosine part on
+// top of that moves. Two wins at once: the hue is present continuously (much more "overriding"
+// than a hue that spends half of every phase fading out), and the moving part of the tint is
+// 45% of what it was even though the peak depth roughly doubled.
+const SHA3_TINT_FLOOR     = 0.55;  // share of the depth held flat across the whole phase
+// ...and when the LAST phase of a run retires there is no next hue to cross-fade into, so the
+// tint would otherwise step straight to zero in one frame — a step this deep tint makes worth
+// avoiding. It decays on this time constant instead. Only ever applied when no phase is active,
+// so it cannot smooth anything the "governor idle means nothing is filtered" guarantee covers.
+const SHA3_TINT_OFF_TAU   = 190;   // ms
+// ...and the same problem exists at the OTHER end, where it is a safety one rather than a tidiness
+// one. A run OPENS with the governor freshly reset — no measured history, no attenuation, both
+// caps at Infinity — so the first frame of a fast run would put the full depth on screen in one
+// step, on top of the first flash. Measured: that single opening frame was the largest luminance
+// excursion in an entire 8-block run at slider 100, and at this tint depth it exceeded the
+// flash-safety suite's amplitude bound. So the tint ATTACKS over this long from the start of every
+// run, feed-forward, for exactly the reason sha3FlashGain is feed-forward: a closed loop cannot
+// attenuate the first excursion, because the first excursion is what it measures.
+const SHA3_TINT_ATTACK_MS = 420;
+// The same idea applied to the brightness gain — see the RUN-OPENING RAMP note at the fGain site,
+// which is where the measurement that forced it is written down.
+const SHA3_RUN_ARM_MS     = 420;
+// How far each box's OUTLINE is pulled back toward its own untinted material colour (gold for a
+// rate lane, dim for a capacity lane). The tint is applied to the fill only; the rim keeps this
+// much of the lane's own identity at every tint depth, so "which 17 lanes are gold" stays
+// answerable off the edges even when the fill is two-thirds phase hue.
+const SHA3_EDGE_IDENTITY  = 0.5;
 const SHA3_WIDEN          = 0.7;   // how much wider the wavefront grows across an escalating run
 const SHA3_FLASH_GAIN_MIN = 0.30;  // peak brightness at the fastest phases
 const SHA3_FLASH_FAST_MS  = 45;    // at/below this phase duration, gain is at its floor
@@ -2211,6 +2399,7 @@ const SHA3_SMOOTH_TAU_MS = 110;     // temporal smoothing at full attenuation (s
 const SHA3_POS_TAU_SCALE = 0.8;     // the position follower's time constant, as a share of the above
 const SHA3_LIFT_FLOOR_GAIN = 3;     // how hard an off-slot lane is held clear of the lattice
 const SHA3_BLUR_TAIL_MS = 260;      // how long a motion-blur trail takes to dissolve back to crisp
+const SHA3_BLUR_ATTACK_TAU = 80;    // ...and the time constant for DEEPENING one (see the wipe filter)
 
 //  TWO MEASUREMENTS, NOT ONE, because two different questions are being asked and one number
 //  cannot answer both honestly:
@@ -2226,8 +2415,23 @@ const SHA3_BLUR_TAIL_MS = 260;      // how long a motion-blur trail takes to dis
 //  produced excursions fast enough to matter.
 const SHA3_PACE_FREE_MS = 190;   // phases arriving this far apart are legible: no tweening at all
 const SHA3_PACE_FULL_MS = 45;    // ...at this spacing, full tweening/smoothing/blur
+// THE RE-CLICK RELEASE. sha3ResetState wipes this average on every run start, and it must: the
+// tail of a long escalating run would otherwise smooth the opening, legible, slow phases of the
+// next one, which is the whole reason the reset exists. But wiping it also means a re-click hands
+// a fully attenuated run over to a completely unattenuated one between two frames — and at slider
+// 100, with Hash mashed ten times in three seconds, that measured SEVEN flashes per second on
+// painted pixels against WCAG 2.3.1's bound of three, one on each click.
+//
+// So the wipe RELEASES rather than snapping: the attenuation in force at the moment of the reset
+// decays linearly to nothing over SHA3_PACE_RELEASE_MS while the new run re-measures its own
+// pace (which takes a handful of phases — at the fast end, tens of milliseconds, so the new
+// measurement has long taken over before the release runs out). At the slow end the release is
+// half a second at the very top of a run whose first phase alone lasts several seconds, so the
+// "slider 1 is never attenuated" guarantee is untouched: there is nothing to release from,
+// because a run reached from rest has no attenuation in force to begin with.
+const SHA3_PACE_RELEASE_MS = 600;
 const sha3Pace = {
-  last: 0, ema: 1e9,
+  last: 0, ema: 1e9, relFrom: 0, relUntil: 0,
   note(now) {
     if (this.last) {
       const gap = now - this.last;
@@ -2237,8 +2441,22 @@ const sha3Pace = {
     }
     this.last = now;
   },
-  reset() { this.last = 0; this.ema = 1e9; },
-  share() { return sha3PaceShareForGap(this.ema); },
+  reset() {
+    // relFrom is read BEFORE the average is cleared — it is what the attenuation was, not what it
+    // becomes. Zero on a run reached from rest, so nothing is released in that case.
+    this.relFrom = this.share();
+    this.relUntil = performance.now() + SHA3_PACE_RELEASE_MS;
+    this.last = 0; this.ema = 1e9;
+  },
+  share() {
+    const s = sha3PaceShareForGap(this.ema);
+    if (this.relFrom > 0) {
+      const left = this.relUntil - performance.now();
+      if (left > 0) return Math.max(s, this.relFrom * (left / SHA3_PACE_RELEASE_MS));
+      this.relFrom = 0;
+    }
+    return s;
+  },
 };
 
 // The governor samples the REAL PAINTED PIXELS, not a model of them: sha3Render draws the canvas
@@ -2534,6 +2752,11 @@ function parseCssColor(str) {
   return [128, 128, 128];
 }
 function mixRgb(a, b, t) { return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]; }
+// Rec.709 weights applied straight to the 0..255 values — a cheap stand-in for relLum, used only
+// to hold two colours at the SAME apparent brightness so their difference is pure hue (see the
+// edge identity channel in sha3Render). Not a photometric measurement: relLum, which gamma-decodes
+// first, is what the flash governor and the offline analysis use for anything safety-bearing.
+function lumaProxy(c) { return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
 function rgbCss(c, mul) {
   const m = mul === undefined ? 1 : mul;
   const cl = v => Math.max(0, Math.min(255, Math.round(v * m)));
@@ -2573,7 +2796,7 @@ function sha3MakeLanes() {
     lanes.push({
       cx: x, cy: y, sx: x, sy: y, fx: x, fy: y, prevSx: x, prevSy: y,
       lift: 0, liftShelf: 0,
-      spin: 0, spinTarget: 0,
+      spin: 0, spinTarget: 0, spinTrue: 0,
       bytes: new Array(SHA3_SUBS_PER_LANE).fill(0),
       bytesTarget: new Array(SHA3_SUBS_PER_LANE).fill(0),
       glow: 0,
@@ -2876,7 +3099,12 @@ function sha3Render(opts) {
   //  it is — the same fanned-out transit regime pi already uses, just triggered by distance
   //  rather than by phase progress. It relaxes continuously to zero as the lane arrives, so
   //  there is no moment where the lift drops out from under a box that is still moving.
-  const posTau = sha3Gov.tau > 0 ? sha3Gov.tau * SHA3_POS_TAU_SCALE : 0;
+  // ...and the same follower is borrowed, briefly, to ease a STATE WIPE in rather than let it
+  // land in one frame (see THE RESET SEAM at sha3ResetState). sha3.resetEase counts down from
+  // SHA3_RESET_EASE_MS at the start of every run; while it is positive the follower runs on its
+  // own constant regardless of what the governor is doing, and then hands straight back.
+  let posTau = sha3Gov.tau > 0 ? sha3Gov.tau * SHA3_POS_TAU_SCALE : 0;
+  if (sha3.resetEase > 0) posTau = Math.max(posTau, SHA3_RESET_TAU_MS);
   const posK = (sha3.running && posTau > 0) ? 1 - Math.exp(-sdt / posTau) : 1;
   for (const L of sha3.lanes) {
     if (L.rx === undefined || posK >= 1) { L.rx = L.fx; L.ry = L.fy; L.rlift = L.lift; continue; }
@@ -2906,10 +3134,38 @@ function sha3Render(opts) {
   // phase, its progress and its colour are the same for all 200 cubes in a frame; only the
   // position sampled from the wave differs.
   const fType = sha3.flashType, fP = sha3.flashP;
+  // THE COLOUR/BRIGHTNESS SHUTTER. The travelling wavefront's POSITION along its axis is sampled
+  // through its own, much later, aliasing threshold (SHA3_ALIAS_COL_HZ, 3x the geometric one), so
+  // it keeps sweeping honestly through the whole range where the lattice's motion has already
+  // frozen and reversed — and only folds at the very top of the slider. The two channels being
+  // visibly out of step with each other IS the intended effect.
+  //
+  // Warped here, at the CALL SITE, and never inside sha3FlashWave: the wave function stays a pure
+  // function of progress, so the per-phase FIPS-202 sweep AXES it encodes (and the tests that pin
+  // them) are completely untouched. Only the position along the axis, and hence the direction of
+  // travel, is affected — never which axis.
+  const fPWave = fType ? sha3AliasWarp(fP, sha3AliasCol()) : 0;
   // The gain applied to brightness is now a PRODUCT of the two halves described above: the
   // feed-forward term the controller resolved at phase start (sha3.flashGain), and the governor's
   // own measured-rate multiplier. Neither one alone is the guarantee — sha3Gov.hiCap below is.
-  const fGain = sha3.flashGain * sha3Gov.gain;
+  // ...times a RUN-OPENING RAMP, which is the third feed-forward term and exists for one specific
+  // measured failure. sha3ResetState deliberately wipes the governor's measured history on every
+  // run start (otherwise the tail of a long run's attenuation would dim the opening, legible,
+  // slow phases of the next one). The cost is that a re-click re-opens a completely unattenuated
+  // window: a run that was being held at gain 0.25 hands over to one drawn at gain 1, and the
+  // brightness jumps fourfold between two frames. Measured at slider 100 with Hash re-clicked ten
+  // times over three seconds: SEVEN flashes in the worst one-second window against WCAG 2.3.1's
+  // bound of three, every one of them landing exactly on a click.
+  //
+  // A closed loop cannot fix this — it has just been told to forget everything. So the gain opens
+  // from its floor to full over SHA3_RUN_ARM_MS instead of starting there, exactly as the phase
+  // tint does. At the slow end this is invisible (a single phase at slider 1 runs for seconds;
+  // the ramp is over before the first wavefront has crossed the lattice), and at the fast end it
+  // is the difference between a compliant page and a non-compliant one.
+  const runArm = sha3.running
+    ? Math.min(1, SHA3_FLASH_GAIN_MIN + (1 - SHA3_FLASH_GAIN_MIN) * (sha3.runElapsed || 0) / SHA3_RUN_ARM_MS)
+    : 1;
+  const fGain = sha3.flashGain * sha3Gov.gain * runArm;
   const fCol = fType ? P[fType] : null;
   const fEsc = sha3.flashEsc;
   const fWiden = 1 + SHA3_WIDEN * fEsc;
@@ -2935,15 +3191,30 @@ function sha3Render(opts) {
   //      up and back down. Holding the depth steady instead would not have helped — it would
   //      only move the transition to the phase boundary, where teal and oxblood differ in
   //      luminance just as much.
-  const fTintRaw = fType ? (SHA3_TINT_MIN + (SHA3_TINT_MAX - SHA3_TINT_MIN) * fEsc)
-                        * sha3Band(fP - 0.5, 0.5) : 0;
+  //
+  //   3. the envelope now HOLDS at SHA3_TINT_FLOOR of full depth for the whole phase instead of
+  //      returning to zero in the middle of it, so the deeper hue is a mostly-DC presence with a
+  //      smaller moving part on top — more prominent to look at and less of an oscillation to
+  //      govern than the shallower pulse it replaced.
+  // The opening ramp (SHA3_TINT_ATTACK_MS). Only ever applied while the controller is running, so
+  // a static/idle render — a drag, a theme change, a test probe — is never attenuated by it.
+  const tintArm = sha3.running ? Math.min(1, (sha3.runElapsed || 0) / SHA3_TINT_ATTACK_MS) : 1;
+  const fTintDepth = (SHA3_TINT_MIN + (SHA3_TINT_MAX - SHA3_TINT_MIN) * fEsc) * tintArm;
+  const fTintRaw = fType
+    ? fTintDepth * (SHA3_TINT_FLOOR + (1 - SHA3_TINT_FLOOR) * sha3Band(fP - 0.5, 0.5))
+    : 0;
   const fTintTarget = Math.min(fTintRaw, sha3Gov.tintCap);
   if (fCol) {
     if (!sha3.tintColS || smooth >= 1) sha3.tintColS = fCol.slice();
     else sha3.tintColS = mixRgb(sha3.tintColS, fCol, smooth);
   }
-  sha3.tintAmtS = (sha3.tintAmtS === undefined || smooth >= 1)
-    ? fTintTarget : sha3.tintAmtS + (fTintTarget - sha3.tintAmtS) * smooth;
+  // While a phase is active this is exactly the filter it always was (and `smooth` is 1 — i.e. no
+  // filtering at all — whenever the governor is idle). With NO phase active there is no next hue
+  // to cross-fade into, so the tint releases on its own fixed time constant rather than stepping
+  // to zero in a single frame; see SHA3_TINT_OFF_TAU.
+  const tintK = fType ? smooth : 1 - Math.exp(-sdt / SHA3_TINT_OFF_TAU);
+  sha3.tintAmtS = (sha3.tintAmtS === undefined || (fType && smooth >= 1))
+    ? fTintTarget : sha3.tintAmtS + (fTintTarget - sha3.tintAmtS) * tintK;
   const fTint = sha3.tintAmtS;
   const fTintCol = sha3.tintColS || fCol;
   // Per-tile accumulation for the governor: mean drawn colour of the cubes in each ninth of the
@@ -2991,7 +3262,7 @@ function sha3Render(opts) {
       // the whole lattice while that phase is active (which is also what "tie the hue to the
       // active phase" actually means), and the wavefront carries direction through brightness
       // alone. `laneCol` and the density mix above are untouched either way.
-      const wave = fType ? sha3FlashWave(fType, fP, L, k, fWiden) : 0;
+      const wave = fType ? sha3FlashWave(fType, fPWave, L, k, fWiden) : 0;
       // THE HARD CLAMP. `hi` is the whole brightness excursion — travelling wavefront plus the
       // residual afterglow, which at speed sits pinned near 1 and is therefore mostly a DC
       // offset rather than a flash, but still eats headroom. Both are inside the cap, so the cap
@@ -3003,10 +3274,29 @@ function sha3Render(opts) {
       L.hiS[k] = smooth >= 1 ? hiRaw : L.hiS[k] + (hiRaw - L.hiS[k]) * smooth;
       const hi = L.hiS[k];
       if (fTint > 0) base = mixRgb(base, fTintCol, fTint);
+      // THE EDGE IDENTITY CHANNEL. The fill above is now washed hard toward the phase hue, which
+      // compresses the rate/capacity warmth gap by (1-t). The hairline outline is pulled back
+      // toward the lane's OWN untinted material instead, so it retains SHA3_EDGE_IDENTITY of the
+      // full gold/dim separation no matter how deep the tint goes — a channel the tint cannot
+      // consume, on the one feature of a box that is always visible against its neighbours.
+      //
+      // ...AND IT IS RENORMALISED TO THE FILL'S LUMINANCE, which is not a nicety. Measured: the
+      // un-renormalised version made bright lanes' rims brighter and dark lanes' rims darker,
+      // because gold and dim differ in luminance as well as in hue. That widened the whole
+      // lattice's dynamic range, and it more than tripled the biggest single-frame luminance step
+      // in the flash-safety suite's worst case (0.039 -> 0.139 across a run's opening reset).
+      // Scaling the rim back onto the fill's own luminance makes this a pure CHROMA channel: it
+      // says which family the box belongs to and contributes nothing whatever to how bright
+      // anything is, so it costs the photosensitivity governor exactly zero.
+      const edgeMix = mixRgb(base, laneCol, SHA3_EDGE_IDENTITY);
+      const edgeY = lumaProxy(edgeMix);
+      const kEdge = edgeY > 1e-6 ? lumaProxy(base) / edgeY : 1;
+      const edge = [edgeMix[0] * kEdge, edgeMix[1] * kEdge, edgeMix[2] * kEdge];
       // Read-only instrumentation for the regression scripts (same role as facesDrawn/lastBlur):
-      // the material colour and highlight of this lane's middle cube, AFTER the phase tint, so a
-      // test can prove the rate/capacity hue split survives every phase's wash.
-      if (k === 4) { L.lastCol = base; L.lastHi = hi; }
+      // the material colour and highlight of this lane's middle cube, AFTER the phase tint, plus
+      // the outline colour drawn from it, so a test can prove the rate/capacity split survives
+      // every phase's wash on both channels.
+      if (k === 4) { L.lastCol = base; L.lastHi = hi; L.lastEdge = edge; }
       const corners = [];
       let depthSum = 0;
       for (let i = 0; i < 8; i++) {
@@ -3018,7 +3308,7 @@ function sha3Render(opts) {
         corners.push(p);
         depthSum += p.z;
       }
-      items.push({ corners, depth: depthSum / 8, base, hi, cs, sn, k });
+      items.push({ corners, depth: depthSum / 8, base, edge, hi, cs, sn, k });
     }
   }
   // Painter's algorithm: farthest first. Exactly correct here — the boxes are rigid, convex and
@@ -3054,9 +3344,11 @@ function sha3Render(opts) {
       ctx.closePath();
       ctx.fillStyle = rgbCss(it.base, shade * bright);
       ctx.fill();
-      // A hairline edge in the same shaded colour, darkened — this is what makes the shared
-      // corners legible as corners and stops adjacent coplanar faces melting together.
-      ctx.strokeStyle = rgbCss(it.base, shade * bright * 0.55);
+      // A hairline edge, darkened by the same shading — this is what makes the shared corners
+      // legible as corners and stops adjacent coplanar faces melting together. Its colour is
+      // `it.edge`, the fill pulled part-way back to the lane's untinted material, so the rim also
+      // carries the rate/capacity identity through a deep phase tint (see SHA3_EDGE_IDENTITY).
+      ctx.strokeStyle = rgbCss(it.edge, shade * bright * 0.55);
       ctx.lineWidth = 0.6;
       ctx.stroke();
       faces++;
@@ -3131,9 +3423,21 @@ const SHA3_PHASE_IDS = { theta:'phase-theta', rho:'phase-rho', pi:'phase-pi', ch
 
 // Slider 1..100 -> a scale applied to the base phase durations.
 //
-// SLOW HALF (1..50): unchanged, and deliberately so. It is linear from 0.90 down to 0.28, it puts
-// a one-rate-block run at roughly 40s at slider 1, and legibility at the slow end genuinely needs
-// every bit of that. Nothing below was touched.
+// SLOW HALF (1..50): REBUILT, for the same two reasons the fast half was.
+//
+// It used to be linear from 0.90 down to 0.28, which put a one-rate-block run at 26.0s at slider
+// 1 — and the owner's report is that this "is not slow enough, probably needs to be 2.5x slower".
+// Taken literally: 0.90 * 2.5 = 2.25 at slider 1, and 26.0s * 2.5 = 65s, which is what the
+// measured numbers now come out at (see tools/measure_sha3_durations.mjs).
+//
+// The shape changed too, to GEOMETRIC, matching the fast half. Stretching a linear ramp by 2.5x
+// at one end only makes the linearity worse: the same 10 units of travel near slider 1 would move
+// the scale by 0.40 (a 1.2x change) while 10 units near slider 50 moved it by 0.40 as well (a
+// 2.4x change), so the slow half's own bottom third would feel dead in exactly the way the fast
+// half used to. A constant multiplier per unit of travel makes every 10 units of the slider a
+// fixed RATIO change, end to end, which is what a duration control should do. Both halves are now
+// the same kind of curve, they meet continuously at 0.28, and slider 50 is untouched — the owner
+// said the default is right and the fast end was retuned recently, so only the slow end moved.
 //
 // FAST HALF (50..100): rebuilt. It used to be linear 0.28 -> 0.10, which had two problems. The
 // first is that 0.10 was not fast: combined with the old floors it bottomed out around 4.6s, only
@@ -3148,13 +3452,13 @@ const SHA3_PHASE_IDS = { theta:'phase-theta', rho:'phase-rho', pi:'phase-pi', ch
 // durations sum to 1820ms per round, and 1820 * 0.039 = 71ms, which is the sum of the new floors.
 // The floors therefore start binding right at the end of the travel instead of two-fifths of the
 // way through it, so every part of the slider does something.
-const SHA3_SCALE_MID  = 0.28;   // slider 50 (default)
-const SHA3_SCALE_SLOW = 0.90;   // slider 1
-const SHA3_SCALE_FAST = 0.039;  // slider 100
+const SHA3_SCALE_MID  = 0.28;   // slider 50 (default) — unchanged
+const SHA3_SCALE_SLOW = 2.25;   // slider 1 — was 0.90; 2.5x slower, per the owner's report
+const SHA3_SCALE_FAST = 0.039;  // slider 100 — unchanged
 function sha3PhaseScale() {
   const v = readSpeedSlider();
   if (v >= 50) return SHA3_SCALE_MID * Math.pow(SHA3_SCALE_FAST / SHA3_SCALE_MID, (v - 50) / 50);
-  return SHA3_SCALE_MID + (50 - v) * (SHA3_SCALE_SLOW - SHA3_SCALE_MID) / 49;
+  return SHA3_SCALE_MID * Math.pow(SHA3_SCALE_SLOW / SHA3_SCALE_MID, (50 - v) / 49);
 }
 function sha3PhaseDuration(type) {
   // REAL TIME: a real Keccak permutation takes microseconds, so the honest duration is zero and
@@ -3173,14 +3477,56 @@ function sha3SetPhaseIndicator(type) {
   });
 }
 
+// ============================================================================================
+//  THE RESET SEAM — clearing the state must not be a single-frame flash
+// ============================================================================================
+//
+//  A new run wipes the state: 25 lanes of real data go to all-zero, 24 of them jump back from
+//  wherever pi had moved them, and every glow is dropped. If that lands in one frame it is the
+//  single largest luminance discontinuity this page can produce — and a bored teenager mashing
+//  Hash produces one every few hundred milliseconds.
+//
+//  MEASURED, on painted pixels, at slider 100 with Hash re-clicked ten times over three seconds:
+//  SEVEN flashes in the worst one-second window, against WCAG 2.3.1's bound of three, with a
+//  0.134 single-frame luminance step. That is a real photosensitivity failure and it was NOT
+//  introduced by any of the recent work — the suite simply never exercised the seam, because
+//  every case recorded a run that started from a lattice already at rest. It is now a case of its
+//  own (see verify_flash_safety.mjs) and this is the fix.
+//
+//  The fix is to hand the reset to the easings that already exist rather than to add a new
+//  effect. Three changes, and each one uses machinery that was already there:
+//    * BYTES — only the TARGETS are zeroed. The live values ease down on sha3Ambient's existing
+//      kFill time constant, so brightness fades over ~150ms instead of stepping. Nothing that
+//      reads the state for correctness is affected: __sha3Debug.lanes() reports bytesTarget, so
+//      "capacity is genuinely all-zero the moment input is absorbed" is as true as it ever was,
+//      and the digest never had anything to do with these numbers.
+//    * GLOW — left to decay on its own kGlow constant rather than being dropped to zero.
+//    * POSITIONS — the slots themselves reset immediately (they must: the next pi permutes from
+//      them, and the lattice's identity depends on it), but the render FOLLOWERS keep their old
+//      positions and ease in, using exactly the follower the governor's tweening already uses.
+//      sha3.resetEase runs it for SHA3_RESET_EASE_MS regardless of governor state, then hands
+//      back. The follower's lift floor holds an in-transit lane clear of the lattice while it
+//      catches up, so the depth sort stays correct throughout — that guarantee is why the
+//      follower can be reused here rather than needing its own path.
+const SHA3_RESET_EASE_MS = 260;   // how long the render followers ease a state wipe in over
+const SHA3_RESET_TAU_MS  = 70;    // ...and their time constant while they do
+const SHA3_RESET_FILL_TAU = 420;  // ...and the (slower) fill constant the byte values clear on
 function sha3ResetState() {
   sha3.lanes.forEach(L => {
     L.sx = L.cx; L.sy = L.cy; L.fx = L.cx; L.fy = L.cy; L.prevSx = L.cx; L.prevSy = L.cy;
-    L.lift = 0; L.liftShelf = 0; L.spin = 0; L.spinTarget = 0; L.glow = 0;
-    L.bytes.fill(0); L.bytesTarget.fill(0);
-    L.rx = L.cx; L.ry = L.cy; L.rlift = 0;      // render followers start ON their targets
-    if (L.hiS) L.hiS.fill(0);
+    L.lift = 0; L.spinTarget = 0; L.spinTrue = 0;
+    // L.spin and L.liftShelf are NOT snapped, for the same reason as the byte values: the drawn
+    // spin is what decides which faces catch the light, so dropping 25 lanes' rotation to zero in
+    // one frame is a real luminance step (measured as the largest one left in a re-clicked run).
+    // sha3Ambient eases spin toward the target it has just been given, and liftShelf only has any
+    // effect while a lane is lifted — the next pi recomputes it before it can matter again.
+    L.bytesTarget.fill(0);
+    // Followers deliberately NOT snapped onto the targets — see the RESET SEAM note above. On a
+    // first run they are already there (sha3MakeLanes builds them at home with zero data), so
+    // this is a no-op then and only does work when a run is replacing a run.
+    if (L.rx === undefined) { L.rx = L.cx; L.ry = L.cy; L.rlift = 0; }
   });
+  sha3.resetEase = SHA3_RESET_EASE_MS;
   // A new run starts from an un-attenuated, un-smoothed state: no measured history, no residual
   // filter contents. Otherwise the tail of the last run's escalation would dim the first,
   // legible, slow phases of the next one.
@@ -3242,8 +3588,19 @@ function sha3StartPhase(ph, now) {
     // the same way — which was the "the dials always point to the same place" complaint.
     // [FAIRLY ACCURATE]: the ANGLE is a real, exact picture of rho's bit-rotation amount; the
     // choice to show it as a spinning cube (rather than, say, a number) is [ANALOGY].
+    //
+    // ...and past the geometric aliasing threshold the DRAWN angle is only the apparent one. The
+    // true per-round step is recorded unscaled in spinTrue (which is the [FAIRLY ACCURATE] value,
+    // and what a test reads); spinTarget, which is what the renderer eases toward, takes the same
+    // step multiplied by the aliasing factor — so at high speed the dials slow, stop, and then
+    // visibly counter-rotate, exactly as a filmed wheel does. At any speed below the threshold the
+    // factor is 1 and the two are identical. See the TEMPORAL ALIASING block: this is a shutter
+    // effect on the picture, not rho running the other way.
+    const aGeo = sha3AliasGeo();
     sha3.lanes.forEach(L => {
-      L.spinTarget += (KECCAK_RHO_OFFSETS[L.cx][L.cy] % 64) * (360 / 64);
+      const step = (KECCAK_RHO_OFFSETS[L.cx][L.cy] % 64) * (360 / 64);
+      L.spinTrue += step;
+      L.spinTarget += step * aGeo;
     });
   } else if (ph.type === 'pi') {
     // Permute SLOTS, composing with wherever each lane already is. This mutation is permanent —
@@ -3272,6 +3629,12 @@ function sha3StartPhase(ph, now) {
 
 function sha3PhaseProgress(ph, p) {
   if (ph.type !== 'pi') return;
+  // APPARENT progress, not true progress — the shared-clock aliasing warp (see sha3AliasWarp and
+  // the TEMPORAL ALIASING block). At slow settings this is the identity and the line below does
+  // nothing at all; past the geometric threshold the rearrangement visibly stalls, and past the
+  // fold it backs up part-way before completing. w(1) = 1 exactly, so pi still finishes on its
+  // true slots and sha3FinishPhase's integer commit is untouched.
+  p = sha3AliasWarp(p, sha3AliasGeo());
   // LIFT / SLIDE / DROP, not a straight lerp. A straight lerp would send lanes through the
   // lattice interior, momentarily interpenetrating other boxes and breaking the one precondition
   // the depth sort relies on. Rising clear of the whole lattice first keeps every box either at
@@ -3314,7 +3677,13 @@ function sha3FinishPhase(ph, now) {
 // constants) so it behaves the same at 60 and 120 Hz.
 function sha3Ambient(dt) {
   const kSpin = 1 - Math.exp(-dt / 130);
-  const kFill = 1 - Math.exp(-dt / 150);
+  // The fill easing runs SLOWER while a state wipe is being absorbed (see THE RESET SEAM). Its
+  // normal 150ms constant is tuned for a lane picking up one new value; a wipe changes all 200
+  // sub-cubes at once, from a full lattice to an empty one, and at 150ms the first frame of that
+  // alone was a ~0.06 luminance step — the largest one left anywhere in the suite. Stretching it
+  // for the ~260ms the reset ease lasts takes that first frame to well under a fifth of the WCAG
+  // transition threshold, and reads better besides: the state visibly CLEARS instead of blinking.
+  const kFill = 1 - Math.exp(-dt / (sha3.resetEase > 0 ? SHA3_RESET_FILL_TAU : 150));
   const kGlow = Math.exp(-dt / 260);
   for (const L of sha3.lanes) {
     L.spin += (L.spinTarget - L.spin) * kSpin;
@@ -3333,6 +3702,10 @@ function sha3Stop() {
   sha3.running = false; sha3.active = null;
   sha3.blurTailUntil = 0;   // the tail is part of motion; it must not outlive it either
   sha3.flashType = null;   // motion must never outlive motion — same rule as the blur below
+  // ...and neither must the phase tint. It releases on SHA3_TINT_OFF_TAU during the settle
+  // window, which is ~5 time constants long, so by here it is already near zero; this makes it
+  // exactly zero so the resting lattice can never keep a residue of the last phase's hue.
+  sha3.tintAmtS = 0; sha3.tintColS = null;
   sha3SetPhaseIndicator(null);
   sha3Render();
 }
@@ -3350,13 +3723,34 @@ function sha3Play(trace, onDone) {
   sha3.onDone = onDone;
   sha3.settleUntil = 0;
   let last = performance.now();
+  const runStart = last;
+  sha3.runElapsed = 0;      // drives the phase tint's opening ramp (SHA3_TINT_ATTACK_MS)
   let doneFired = false;
 
   function frame(now) {
-    if (myRunId !== currentRunId) { sha3Stop(); return; }
+    // A newer run has taken over. TWO different situations look identical from in here, and
+    // conflating them was a real bug:
+    //
+    //   * nothing replaced this run — an algorithm switch, a page-level cancel. sha3Stop is
+    //     exactly right: clear the flags and leave one crisp frame painted.
+    //   * a NEW SHA-3 RUN replaced it (the user re-clicked Hash). sha3Play has ALREADY run
+    //     sha3ResetState and set sha3.running = true by the time this stale callback fires — this
+    //     one was queued first, so it runs first — and calling sha3Stop here then set
+    //     sha3.running = false for the whole of the new run. Consequences, all silent: the
+    //     luminance governor never sampled a frame (its feed is gated on sha3.running), so a
+    //     re-clicked run had NO attenuation of any kind; the position followers snapped instead
+    //     of easing; and the stale sha3Stop painted one crisp, un-blurred frame of the new,
+    //     freshly-wiped state on top of the old one. Measured cost: seven flashes per second at
+    //     slider 100 with Hash re-clicked ten times, against WCAG 2.3.1's bound of three.
+    //
+    // sha3.runId is the discriminator — sha3Play stamps it, so a newer run has already
+    // overwritten it and this callback must simply retire without touching anything.
+    if (myRunId !== currentRunId) { if (sha3.runId === myRunId) sha3Stop(); return; }
     const dt = Math.min(120, now - last);
     last = now;
     sha3.dt = dt;      // real frame delta — every temporal filter in the renderer is driven by it
+    sha3.runElapsed = now - runStart;
+    if (sha3.resetEase > 0) sha3.resetEase = Math.max(0, sha3.resetEase - dt);
     sha3Ambient(dt);
 
     if (sha3.active) {
@@ -3411,6 +3805,26 @@ function sha3Play(trace, onDone) {
       const a = sha3.blurTailFrom + (1 - sha3.blurTailFrom) * t;
       blurAlpha = a >= 0.995 ? 0 : a;
     }
+    // THE OTHER END OF THE TAIL. SHA3_BLUR_TAIL_MS already ramps the wipe back to opaque when
+    // motion stops, for the measured reason written above it. Switching the other way — from a
+    // fully opaque wipe at rest to a deep trail on the first frame of a run — is the same
+    // discontinuity mirrored, and it measured as the largest single-frame step in a run that
+    // starts from a resting lattice (0.08 on the centre tile at slider 100). So the wipe also
+    // ATTACKS from opaque down to its working value over SHA3_BLUR_ATTACK_MS. Nothing else
+    // changes: by the end of the first few frames this term is 1 and the alpha is whatever the
+    // speed asked for.
+    // Expressed as a FILTER ON THE WIPE ITSELF, deliberately, rather than as a ramp keyed off
+    // run-elapsed time. Keying it off the run would re-open the wipe to fully opaque on every
+    // re-click, which is precisely the thing that erases a live trail in one frame; sha3.wipeA
+    // persists across runs, so a Hash pressed mid-run simply carries the trail it already had.
+    // Deepening is filtered, going crisp is not — the existing SHA3_BLUR_TAIL_MS ramp already
+    // owns the release, and it must always be able to reach a genuinely opaque wipe.
+    if (sha3.wipeA === undefined) sha3.wipeA = 1;
+    const wipeTarget = blurAlpha > 0 ? blurAlpha : 1;
+    sha3.wipeA = wipeTarget >= sha3.wipeA
+      ? wipeTarget
+      : sha3.wipeA + (wipeTarget - sha3.wipeA) * (1 - Math.exp(-dt / SHA3_BLUR_ATTACK_TAU));
+    blurAlpha = sha3.wipeA >= 0.995 ? 0 : sha3.wipeA;   // 0 is how sha3Render spells "opaque"
     sha3Render({ blur: blurAlpha });
 
     if (sha3.active || sha3.qi < sha3.queue.length) { requestAnimationFrame(frame); return; }
@@ -3441,6 +3855,31 @@ function initSha3Canvas() {
 
   // Drag-rotation: same accumulate-from-pointer-deltas approach the old CSS grid used, now
   // feeding the projection's rotation instead of a CSS transform string.
+  //
+  // ---- VERTICAL SIGN: TOUCH IS THE OPPOSITE OF MOUSE, ON PURPOSE ----
+  //
+  //  Reported as "up and down rotation are reverse to what it should be on mobile". There was no
+  //  code divergence to find: this one pointer handler serves mouse, pen and touch alike, and it
+  //  applied the same `rotX -= dy` to all three. The bug is a CONVENTION mismatch, and the
+  //  projection maths says exactly why.
+  //
+  //  Take a point on the front face (py = 0, pz = +1) with rotY = 0. sha3Project gives
+  //  y2 = -z1*sin(rotX) = -sin(rotX), and screen sy = oy - y2 = oy + sin(rotX). So RAISING rotX
+  //  moves the front face DOWN the screen. Dragging up decreases dy, `rotX -= dy` raises rotX,
+  //  and the surface therefore travels opposite the input.
+  //
+  //  With a MOUSE that is the ordinary orbit-camera convention — the cursor is not on the object,
+  //  it is a handle on the camera, and "drag up to tip the top toward you" is what desktop 3D
+  //  tools do. Nobody complained about it and it is left exactly as it was.
+  //
+  //  With a FINGER the pointer is physically ON the glass, on the object, so direct manipulation
+  //  is the only correct rule: the surface under the finger must follow the finger. That needs
+  //  the opposite sign. Hence vSign below. Horizontal is unaffected — `rotY += dx` already moves
+  //  the front face with the pointer, which is why only the vertical axis was reported.
+  //
+  //  PEN stays on the mouse convention deliberately: a stylus drives a hovering cursor and reads
+  //  as a pointing device, not as a finger pressed onto the surface.
+  const dragVSign = e => (e.pointerType === 'touch' ? 1 : -1);
   let dragging = false, lastX = 0, lastY = 0;
   c.addEventListener('pointerdown', e => {
     dragging = true; lastX = e.clientX; lastY = e.clientY;
@@ -3457,7 +3896,7 @@ function initSha3Canvas() {
       sha3.hintAnimating = false;
     }
     sha3.rotY += dx * 0.5;
-    sha3.rotX -= dy * 0.5;
+    sha3.rotX += dy * 0.5 * dragVSign(e);
     sha3.rotX = Math.max(-89, Math.min(89, sha3.rotX));
     lastX = e.clientX; lastY = e.clientY;
     sha3RequestRender();
@@ -3573,6 +4012,13 @@ function initSha3Canvas() {
                    userRotated: !!sha3.userRotated,
                    dx: SHA3_HINT_DX, dy: SHA3_HINT_DY, ms: SHA3_HINT_MS }),
     activePhase: () => (sha3.active ? sha3.active.type : null),
+    // TEMPORAL ALIASING — the true pace the controller is running at, and the two shutters' worth
+    // of apparent motion drawn from it. `geo`/`col` are ratios: 1 = drawn truthfully, 0 = drawn
+    // frozen, negative = drawn retrograde. Multiply by roundRate for the apparent rate itself.
+    alias: () => ({
+      roundRate: sha3RoundRate(), geo: sha3AliasGeo(), col: sha3AliasCol(),
+      geoHz: SHA3_ALIAS_GEO_HZ, colHz: SHA3_ALIAS_COL_HZ,
+    }),
     juice: () => ({
       roundsInBlock: sha3.roundsInBlock, blocksDone: sha3.blocksDone,
       speedIntensity: sha3SpeedIntensity(),
@@ -3594,7 +4040,7 @@ function initSha3Canvas() {
     phaseLog: () => sha3.phaseLog.map(r => ({ type: r.type, round: r.round, start: r.start, end: r.end })),
     lanes: () => sha3.lanes.map(L => ({
       cx: L.cx, cy: L.cy, sx: L.sx, sy: L.sy, isRate: L.isRate,
-      spin: L.spin, spinTarget: L.spinTarget,
+      spin: L.spin, spinTarget: L.spinTarget, spinTrue: L.spinTrue,
       bytes: L.bytesTarget.slice(),
       value: L.bytesTarget.reduce((s, b) => s + b, 0),
     })),

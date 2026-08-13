@@ -129,3 +129,25 @@ export function maxFrameStep(rows) {
   }
   return mx;
 }
+
+// WHERE the biggest single-frame step happened, not just how big it was. Added after a whole
+// debugging session went into locating one by hand: a step at the first frame of a recording is a
+// seam between two runs, a step in the middle is the animation itself, and the two need completely
+// different fixes. Returns null for an empty recording.
+export function maxFrameStepAt(rows) {
+  let best = null;
+  if (!rows || !rows.length) return null;
+  for (let k = 0; k < rows[0].tiles.length; k++) {
+    let prev = null;
+    for (let i = 0; i < rows.length; i++) {
+      const l = relLum(rows[i].tiles[k]);
+      if (prev !== null) {
+        const d = Math.abs(l - prev);
+        if (!best || d > best.step) best = { step: d, frame: i, frames: rows.length, tile: k,
+                                             ms: rows[i].t - rows[0].t, from: prev, to: l };
+      }
+      prev = l;
+    }
+  }
+  return best;
+}
