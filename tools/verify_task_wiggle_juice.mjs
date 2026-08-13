@@ -495,10 +495,68 @@ const fastest = await page.evaluate(() => {
   document.getElementById('speed-slider').value = '50';
   return out;
 });
+// The floors are now split by what each phase has to SHOW, rather than one flat 20ms rule for all
+// five. pi and rho are the two phases that genuinely MOVE something — pi slides every lane to a
+// new slot, rho eases 25 spins — and a movement that occupies one frame is a jump, not a
+// movement, which is the failure mode the phase controller exists to prevent. So those two keep a
+// floor above one 60Hz frame. theta, chi and iota only flash: a flash has no in-between state to
+// lose, so a single frame of it is still a flash, and holding them to pi's floor was throwing
+// away most of the fast end of the slider for nothing.
+const MOVING_FLOOR = 16.7, FLASH_FLOOR = 8;
 for (const [t, ms] of fastest) {
-  if (ms < 20) throw new Error(`phase ${t} is only ${ms}ms at max escalation + fastest slider — it would snap`);
+  const need = (t === 'pi' || t === 'rho') ? MOVING_FLOOR : FLASH_FLOOR;
+  if (ms < need) throw new Error(`phase ${t} is only ${ms}ms at max escalation + fastest slider (floor for this phase is ${need}ms) — it would snap`);
 }
-console.log(`OK  SHA-3 phase floors still hold at max escalation: ${fastest.map(([t, m]) => `${t}=${m.toFixed(0)}ms`).join(' ')}`);
+console.log(`OK  SHA-3 phase floors still hold at max escalation: ${fastest.map(([t, m]) => `${t}=${m.toFixed(0)}ms`).join(' ')} (moving phases >= ${MOVING_FLOOR}ms, flash-only phases >= ${FLASH_FLOOR}ms)`);
+
+// ---- the slider must speed things up ACROSS ITS WHOLE TRAVEL ----
+// The reported failure was "the max speed isn't fast enough, and it doesn't seem to speed up
+// much". Both had the same cause: the old per-phase floors summed to 184ms/round while the old
+// fast-end scale put the unfloored per-round total at 182ms, so at slider 100 every phase sat on
+// its floor from the first round and the top of the travel did nothing. This measures the whole
+// curve — the full simulated duration of a one-rate-block run (24 rounds x 5 phases + 5 stage
+// events, escalation included) at six settings — and asserts that it keeps falling all the way,
+// not just over the slow half.
+const runCurve = await page.evaluate(() => {
+  const keepR = sha3.roundsInBlock, keepB = sha3.blocksDone;
+  const at = v => {
+    document.getElementById('speed-slider').value = String(v);
+    let total = 0;
+    sha3.blocksDone = 0;
+    for (let r = 0; r < 24; r++) {
+      sha3.roundsInBlock = r;
+      for (const t of ['theta', 'rho', 'pi', 'chi', 'iota']) total += sha3PhaseDuration(t);
+    }
+    sha3.roundsInBlock = 0;
+    total += 5 * sha3PhaseDuration('box');
+    return Math.round(total);
+  };
+  const out = [1, 25, 50, 65, 80, 90, 100].map(v => [v, at(v)]);
+  sha3.roundsInBlock = keepR; sha3.blocksDone = keepB;
+  document.getElementById('speed-slider').value = '50';
+  return out;
+});
+const runAt = Object.fromEntries(runCurve);
+for (let i = 1; i < runCurve.length; i++) {
+  // every step of the slider must still be doing something, in particular past the midpoint
+  if (!(runCurve[i][1] < runCurve[i - 1][1] * 0.93)) {
+    throw new Error(`the slider goes dead between ${runCurve[i - 1][0]} and ${runCurve[i][0]}: ${runCurve[i - 1][1]}ms -> ${runCurve[i][1]}ms`);
+  }
+}
+// The slow end is legibility-critical and must NOT have been sped up by any of this.
+if (!(runAt[1] > 25000)) throw new Error(`the slow end must stay slow enough to read (>25s), got ${runAt[1]}ms`);
+// The default is the one the room sees first; it is unchanged on purpose.
+if (!(runAt[50] > 7000 && runAt[50] < 10000)) throw new Error(`the default (slider 50) should be unchanged at ~8.5s, got ${runAt[50]}ms`);
+// The fast end must be a real step change, not the old ~4.6s. It does NOT need to reach REAL
+// TIME's ~22ms — that is a separate toggle — but it must feel like a different mode of use.
+if (!(runAt[100] < 2200)) throw new Error(`the fast end must be genuinely fast (<2.2s), got ${runAt[100]}ms`);
+// ...and the fast HALF of the travel must carry most of the range, which is what "it doesn't seem
+// to speed up much" was really about.
+const fastHalfRatio = runAt[50] / runAt[100], slowHalfRatio = runAt[1] / runAt[50];
+if (!(fastHalfRatio > slowHalfRatio)) {
+  throw new Error(`the fast half of the slider must cover at least as much range as the slow half, got ${fastHalfRatio.toFixed(2)}x vs ${slowHalfRatio.toFixed(2)}x`);
+}
+console.log(`OK  SHA-3 slider speeds up across its whole travel: ${runCurve.map(([v, ms]) => `${v}->${(ms / 1000).toFixed(1)}s`).join(' ')} (slow half ${slowHalfRatio.toFixed(1)}x, fast half ${fastHalfRatio.toFixed(1)}x)`);
 
 // ============================================================================================
 // 10. SHA-3 does NOT shake — the lattice holds still (owner decision; the directional flash now
@@ -534,6 +592,7 @@ const sha3Still = await page.evaluate(async () => {
   // after the run fully settles the canvas must be repainted CRISP — no permanent smear
   await new Promise(r => setTimeout(r, 1400));
   seen.blurAfterRun = __sha3Debug.lastBlur();
+  seen.blurAlphaAfterRun = __sha3Debug.lastBlurAlpha();
   seen.noShake = __sha3Debug.noShake();
   seen.flashTypesList = [...seen.flashTypes];
   return seen;
@@ -568,6 +627,42 @@ console.log(`OK  SHA-3 no longer shakes at all (no shake state, no shake functio
 // ============================================================================================
 if (!sha3Still.blurDuringPi) throw new Error('motion blur never engaged during the pi rearrangement');
 if (sha3Still.blurAfterRun) throw new Error('motion blur is still on after the run finished — it would smear permanently');
+// ---- ...and its STRENGTH rises with speed ----
+// The blur is an incomplete wipe: sha3Render lays down a translucent background instead of
+// clearing, so a LOWER alpha erases less of the previous frame and leaves a LONGER trail. Faster
+// playback should therefore wipe with a lower alpha — both because a fast phase really does move
+// further between frames, and because smearing consecutive frames together is the other half
+// (with the brightness gain) of stopping fast playback from reading as a strobe.
+const blurCurve = await page.evaluate(() => {
+  const at = v => {
+    document.getElementById('speed-slider').value = String(v);
+    const keepR = sha3.roundsInBlock, keepB = sha3.blocksDone;
+    sha3.roundsInBlock = 0; sha3.blocksDone = 0;
+    const a = __sha3Debug.blurAlphaFor(sha3PhaseDuration('pi'));
+    sha3.roundsInBlock = keepR; sha3.blocksDone = keepB;
+    return a;
+  };
+  const out = [1, 25, 50, 75, 100].map(v => [v, at(v)]);
+  document.getElementById('speed-slider').value = '50';
+  return out;
+});
+for (let i = 1; i < blurCurve.length; i++) {
+  if (!(blurCurve[i][1] <= blurCurve[i - 1][1] + 1e-9)) {
+    throw new Error(`blur must not weaken as speed rises: slider ${blurCurve[i - 1][0]} alpha ${blurCurve[i - 1][1]} -> ${blurCurve[i][0]} alpha ${blurCurve[i][1]}`);
+  }
+}
+const slowA = blurCurve[0][1], fastA = blurCurve[blurCurve.length - 1][1];
+if (!(fastA < slowA * 0.75)) {
+  throw new Error(`the fast end must blur noticeably more than the slow end (lower wipe alpha), got ${slowA} -> ${fastA}`);
+}
+// Never so low that the lattice never resolves: below ~0.12 the canvas is holding 8+ frames of
+// history and reads as mush rather than as motion.
+if (!(fastA >= 0.12)) throw new Error(`blur alpha ${fastA} is too low — the lattice would never resolve`);
+// A crisp wipe is alpha 0 by construction, which is what every "must be crisp" path uses.
+if (sha3Still.blurAlphaAfterRun !== 0) {
+  throw new Error(`after the run the canvas must be wiped opaquely (alpha 0), got ${sha3Still.blurAlphaAfterRun}`);
+}
+console.log(`OK  motion blur STRENGTHENS with speed (pi's wipe alpha ${blurCurve.map(([v, a]) => `${v}->${a.toFixed(2)}`).join(' ')}; lower = longer trail) and still ends crisp at alpha 0`);
 // drag must repaint crisply
 const canvas = await page.locator('#lane-canvas').boundingBox();
 await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2);

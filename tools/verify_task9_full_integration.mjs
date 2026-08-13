@@ -56,12 +56,22 @@ const state = await page.evaluate(() => ({
   lanes: window.__sha3Debug.lanes().length,
   rate: window.__sha3Debug.lanes().filter(l => l.isRate).length,
   faces: window.__sha3Debug.facesDrawn(),
+  rot: window.__sha3Debug.rotation(),
   phases: window.__sha3Debug.phaseLog().length,
 }));
 if (state.lanes !== 25) throw new Error(`expected 25 lanes, found ${state.lanes}`);
 if (state.boxes !== 25 * 8) throw new Error(`expected 200 drawn boxes, found ${state.boxes}`);
 if (state.rate !== 17) throw new Error(`expected 17 rate lanes, found ${state.rate}`);
 if (state.faces < state.boxes) throw new Error(`only ${state.faces} faces drawn for ${state.boxes} boxes — not drawn as solids`);
+// A whole run must not disturb the camera: the view is still exactly where it started (face-on,
+// 0/0, orthographic) unless the USER moved it. Hashing is not permitted to rotate anything, and
+// the flat opening view has to survive a run so a second Hash click looks like the first.
+if (state.rot.rotX !== 0 || state.rot.rotY !== 0 || state.rot.perspWeight !== 0) {
+  throw new Error(`a run must leave the face-on camera untouched, got ${JSON.stringify(state.rot)}`);
+}
+if (state.faces !== state.boxes) {
+  throw new Error(`still face-on after a run, so exactly ${state.boxes} faces should be drawn, got ${state.faces}`);
+}
 if (state.phases !== 125) throw new Error(`expected 125 controller phases for a one-rate-block input, found ${state.phases}`);
 const roundCounterText = await page.locator('#round-counter').innerText();
 if (roundCounterText !== 'round 24 / 24') throw new Error(`expected round counter at 24/24, got "${roundCounterText}"`);

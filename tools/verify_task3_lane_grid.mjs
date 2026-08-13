@@ -43,6 +43,7 @@ const geom = await page.evaluate(() => ({
   bitsPerSub: window.__sha3Debug.bitsPerSub,
   boxes: window.__sha3Debug.boxCount(),
   faces: window.__sha3Debug.facesDrawn(),
+  rot: window.__sha3Debug.rotation(),
   lanes: window.__sha3Debug.lanes(),
 }));
 if (geom.lanes.length !== 25) throw new Error(`expected 25 lanes, found ${geom.lanes.length}`);
@@ -50,12 +51,30 @@ if (geom.subs * geom.bitsPerSub !== 64) {
   throw new Error(`subsPerLane * bitsPerSub must equal the real 64-bit lane, got ${geom.subs} * ${geom.bitsPerSub}`);
 }
 if (geom.boxes !== 25 * geom.subs) throw new Error(`expected ${25 * geom.subs} boxes, found ${geom.boxes}`);
-// Every box is a closed solid: with backface culling exactly 1-3 of a cube's 6 faces can face the
-// camera, so a fully-drawn lattice paints between 1 and 3 faces per box and never zero. A "plane
-// glued to a front face" implementation (the bug being fixed) would paint exactly one.
+// Every box is a closed solid: with backface culling between 1 and 3 of a cube's 6 faces can face
+// the camera, so a fully-drawn lattice never paints zero faces for a box and never more than 3.
 if (geom.faces < geom.boxes) throw new Error(`only ${geom.faces} faces drawn for ${geom.boxes} boxes — boxes are not being drawn as solids`);
 if (geom.faces > geom.boxes * 3) throw new Error(`${geom.faces} faces for ${geom.boxes} boxes — backface culling is not running`);
-console.log(`OK  ${geom.boxes} boxes (25 lanes x ${geom.subs} cubes, ${geom.bitsPerSub} real bits each), ${geom.faces} visible faces drawn`);
+// THE FACE-ON START. The camera opens square-on so the state reads as the flat 5x5 grid of
+// squares every published Keccak diagram uses, and the depth is something the user discovers by
+// dragging. Three independent proofs, because "it looks flat" must not be a matter of opinion:
+//   * the rotation state is exactly 0/0;
+//   * the perspective weight is 0, i.e. the projection is orthographic, which is what makes the
+//     eight sub-cubes of an off-centre lane land on exactly the same square instead of fanning
+//     outward from the canvas centre;
+//   * and the cull therefore passes EXACTLY ONE face per box — the +z face. 200, not the ~600 an
+//     oblique camera draws. This is the strongest of the three: it is impossible to draw one face
+//     per cube from any camera that is not square-on.
+if (geom.rot.rotX !== 0 || geom.rot.rotY !== 0) {
+  throw new Error(`the view must START face-on (0,0) so it reads as the flat 5x5 diagram, got ${JSON.stringify(geom.rot)}`);
+}
+if (geom.rot.perspWeight !== 0) {
+  throw new Error(`face-on must project orthographically (perspective weight 0), got ${geom.rot.perspWeight} — the sub-cubes will fan out instead of stacking`);
+}
+if (geom.faces !== geom.boxes) {
+  throw new Error(`face-on must draw exactly one face per box (${geom.boxes}), got ${geom.faces} — the opening view is not square-on`);
+}
+console.log(`OK  ${geom.boxes} boxes (25 lanes x ${geom.subs} cubes, ${geom.bitsPerSub} real bits each) and the view STARTS face-on: rot 0/0, orthographic, exactly ${geom.faces} faces = 1 per box (a flat 5x5 grid of squares)`);
 
 // ---- 3. rate/capacity split at the exact real absorb-order positions ----
 // keccak256WithTrace visits lanes as x=(j/8)%5, y=floor((j/8)/5); the first 17 are the rate
@@ -122,10 +141,24 @@ async function canvasStats() {
   });
 }
 const idle = await canvasStats();
-// A blank canvas (or one painted with only the flat background) has essentially one colour. The
-// shaded lattice has many, because every visible face gets its own Lambert-shaded fill.
-if (idle.distinct < 20) throw new Error(`canvas looks blank/flat — only ${idle.distinct} distinct sampled colours`);
-console.log(`OK  canvas renders real pixel data (${idle.distinct} distinct sampled colours)`);
+// A blank canvas has exactly one colour. The FACE-ON opening view legitimately has few — it is 25
+// flat squares in two families (gold rate, grey capacity) plus their edge strokes and the
+// background — so the old "> 20 distinct colours" floor is the wrong test to apply here and is
+// re-applied to the ROTATED view further down, where it is the right one. What must hold here is
+// that real geometry is painted at all, and that the two lane families are still tellable apart
+// in the flat view (which is the whole point of showing it).
+if (idle.distinct < 4) throw new Error(`canvas looks blank — only ${idle.distinct} distinct sampled colours in the face-on view`);
+const flatFamilies = await page.evaluate(() => {
+  const warm = c => c[0] - c[2];
+  const rate = [], cap = [];
+  window.__sha3Debug.lanes();   // ensure a render has happened
+  sha3.lanes.forEach(L => (L.isRate ? rate : cap).push(warm(L.lastCol)));
+  return { worstRate: Math.min(...rate), bestCap: Math.max(...cap) };
+});
+if (!(flatFamilies.worstRate > flatFamilies.bestCap)) {
+  throw new Error(`even flat, every rate lane must read warmer than every capacity lane (worst rate ${flatFamilies.worstRate}, best capacity ${flatFamilies.bestCap})`);
+}
+console.log(`OK  the face-on view paints real geometry (${idle.distinct} distinct sampled colours) and still separates rate from capacity (${flatFamilies.worstRate.toFixed(1)} vs ${flatFamilies.bestCap.toFixed(1)} warmth)`);
 
 // ---- 6. retina backing store ----
 const dprOk = await page.evaluate(() => {
@@ -145,7 +178,9 @@ await page.mouse.down();
 await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2 + 45, { steps: 8 });
 await page.mouse.up();
 await page.waitForTimeout(250);
-const rotAfter = await page.evaluate(() => window.__sha3Debug.rotation());
+const rotAfter = await page.evaluate(() => ({ ...window.__sha3Debug.rotation(),
+                                              faces: window.__sha3Debug.facesDrawn(),
+                                              hint: window.__sha3Debug.hint() }));
 if (rotAfter.rotX === rotBefore.rotX && rotAfter.rotY === rotBefore.rotY) {
   throw new Error(`drag did not change the camera rotation (still ${JSON.stringify(rotBefore)})`);
 }
@@ -153,7 +188,18 @@ const dragged = await canvasStats();
 if (Math.abs(dragged.mean - idle.mean) < 0.5 && dragged.distinct === idle.distinct) {
   throw new Error('drag changed the rotation state but the painted pixels are unchanged — the canvas is not re-rendering');
 }
-console.log(`OK  real pointer drag rotates the projection (${JSON.stringify(rotBefore)} -> ${JSON.stringify(rotAfter)}) and repaints`);
+// THE DISCOVERY. Dragging away from face-on must actually reveal the solids: more than one face
+// per box now passes the cull, perspective is back on, and the many-Lambert-shaded-faces colour
+// count the flat view legitimately does not have is now present. This is the pair to the
+// face-on assertions above — together they pin "flat at rest, 3D once you touch it".
+if (!(rotAfter.faces > geom.boxes)) {
+  throw new Error(`after a drag the boxes must read as solids — expected more than ${geom.boxes} faces (one per box), got ${rotAfter.faces}`);
+}
+if (!(rotAfter.perspWeight > 0)) throw new Error(`rotating away from square-on must restore perspective, got weight ${rotAfter.perspWeight}`);
+if (dragged.distinct < 20) throw new Error(`the rotated lattice should be richly shaded, got only ${dragged.distinct} distinct sampled colours`);
+// The drag must also latch "the user is driving", which is what stands the scroll hint down.
+if (rotAfter.hint.userRotated !== true) throw new Error('a real pointer drag must set userRotated, so the scroll hint knows to stand down');
+console.log(`OK  real pointer drag rotates the projection (${JSON.stringify(rotBefore)} -> rotX ${rotAfter.rotX}/rotY ${rotAfter.rotY}), repaints, and REVEALS the cubes: ${geom.faces} faces face-on -> ${rotAfter.faces} rotated, ${idle.distinct} -> ${dragged.distinct} distinct colours`);
 
 // ---- 8. theme toggle repaints the canvas from the page's CSS custom properties ----
 const beforeTheme = await canvasStats();
@@ -186,6 +232,96 @@ if (Math.abs(sizing.backing - sizing.expected) > 2) {
   throw new Error(`canvas mis-sized on first SHA-3 paint at a narrow viewport: backing store ${sizing.backing}px for a ${sizing.cssW}px box (expected ~${sizing.expected}px)`);
 }
 console.log(`OK  first SHA-3 paint is correctly sized on a 420px viewport (${sizing.cssW}px box -> ${sizing.backing}px backing store)`);
+
+// ---- 10. the scroll hint: a nudge for people who never think to drag ----
+// Starting face-on only works as a discovery if the discovery is actually findable. When the
+// bottom of the page comes into view the camera eases ~5 degrees onto each axis, which is enough
+// for the flat squares to visibly acquire sides. Three rules, each checked on its own fresh page
+// load because they are all about "what happened first":
+//   A. it fires, it EASES (does not snap), and it fires only ONCE;
+//   B. if the user has already rotated manually it never fires at all — it must not fight them;
+//   C. reaching the bottom while MD5 is showing does not burn the one shot on a hidden canvas.
+const hintPage = async (label, fn) => {
+  const p = await browser.newPage({ viewport: { width: 1100, height: 950 } });
+  p.on('pageerror', err => consoleErrors.push(`[${label}] ${err}`));
+  await p.goto(BASE_URL + '?v=' + label);
+  await p.waitForFunction(() => !!window.__sha3Debug, { timeout: 5000 });
+  const out = await fn(p);
+  await p.close();
+  return out;
+};
+const toBottom = p => p.evaluate(() => document.getElementById('realtime-note').scrollIntoView({ block: 'center' }));
+
+const hintA = await hintPage('hintA', async p => {
+  await p.click('#algo-next');                     // MD5 -> SHA-3
+  await p.waitForTimeout(150);
+  const before = await p.evaluate(() => __sha3Debug.rotation());
+  await toBottom(p);
+  await p.waitForTimeout(130);
+  const mid = await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint() }));
+  await p.waitForTimeout(1600);
+  const after = await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint(), faces: __sha3Debug.facesDrawn() }));
+  await p.evaluate(() => window.scrollTo(0, 0));
+  await p.waitForTimeout(250);
+  await toBottom(p);
+  await p.waitForTimeout(1600);
+  const again = await p.evaluate(() => __sha3Debug.rotation());
+  return { before, mid, after, again };
+});
+if (hintA.before.rotX !== 0 || hintA.before.rotY !== 0) throw new Error('hint test did not start face-on');
+const dX = hintA.after.h.dx, dY = hintA.after.h.dy;
+if (!(Math.abs(dX) >= 3 && Math.abs(dX) <= 10 && Math.abs(dY) >= 3 && Math.abs(dY) <= 10)) {
+  throw new Error(`the hint should be a ~5 degree nudge, not a re-aim: dx=${dX} dy=${dY}`);
+}
+if (hintA.after.r.rotX !== dX || hintA.after.r.rotY !== dY) {
+  throw new Error(`the hint must land exactly ${dX}/${dY} degrees from the face-on start, got ${JSON.stringify(hintA.after.r)}`);
+}
+// EASED, not snapped: sampled ~130ms into an ~1100ms ease it must have moved, but nowhere near
+// the whole way. A snap would already be at the destination on the first sample.
+const midFrac = Math.abs(hintA.mid.r.rotY / dY);
+if (!(midFrac > 0 && midFrac < 0.5)) {
+  throw new Error(`the hint must ease in gently — 130ms into it the rotation was ${(midFrac * 100).toFixed(0)}% of the way there (${JSON.stringify(hintA.mid.r)})`);
+}
+// ONCE. Scrolling back up and down again must not nudge it a second time.
+if (hintA.again.rotX !== hintA.after.r.rotX || hintA.again.rotY !== hintA.after.r.rotY) {
+  throw new Error(`the hint fired more than once: ${JSON.stringify(hintA.after.r)} -> ${JSON.stringify(hintA.again)} on a second scroll`);
+}
+// ...and it must genuinely have revealed depth, not just changed a number.
+if (!(hintA.after.faces > 200)) throw new Error(`after the hint the cubes should show more than one face each, got ${hintA.after.faces}`);
+if (!(hintA.after.r.perspWeight > 0)) throw new Error('the hint should bring the perspective back on');
+
+const hintB = await hintPage('hintB', async p => {
+  await p.click('#algo-next');
+  await p.waitForTimeout(150);
+  const c = await p.locator('#lane-canvas').boundingBox();
+  await p.mouse.move(c.x + c.width / 2, c.y + c.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(c.x + c.width / 2 + 120, c.y + c.height / 2 - 30, { steps: 8 });
+  await p.mouse.up();
+  await p.waitForTimeout(200);
+  const manual = await p.evaluate(() => __sha3Debug.rotation());
+  await toBottom(p);
+  await p.waitForTimeout(1800);
+  return { manual, post: await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint() })) };
+});
+if (hintB.post.r.rotX !== hintB.manual.rotX || hintB.post.r.rotY !== hintB.manual.rotY) {
+  throw new Error(`the hint overrode a view the user had already set: ${JSON.stringify(hintB.manual)} -> ${JSON.stringify(hintB.post.r)}`);
+}
+if (hintB.post.h.fired) throw new Error('the hint fired even though the user had already rotated manually');
+
+const hintC = await hintPage('hintC', async p => {
+  await toBottom(p);                                // bottom reached while MD5 is showing
+  await p.waitForTimeout(700);
+  const whileMd5 = await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint() }));
+  await p.click('#algo-next');                      // now switch to SHA-3
+  await p.waitForTimeout(1800);
+  return { whileMd5, after: await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint() })) };
+});
+if (hintC.whileMd5.h.fired) throw new Error('the hint fired while the SHA-3 canvas was hidden — the one shot was wasted where nobody could see it');
+if (!hintC.after.h.fired || hintC.after.r.rotY !== dY) {
+  throw new Error(`the hint should be deferred until SHA-3 is actually on screen, then fire: ${JSON.stringify(hintC.after)}`);
+}
+console.log(`OK  scroll hint eases ${dX}/${dY} degrees onto the face-on view (${(midFrac * 100).toFixed(0)}% of the way at 130ms), fires exactly once, defers while MD5 is showing, and never touches a view the user has already dragged`);
 
 if (consoleErrors.length) throw new Error('console errors: ' + consoleErrors.join(' | '));
 

@@ -1901,7 +1901,12 @@ const SHA3_LIFT_SPREAD = 3.0;
 
 const sha3 = {
   canvas: null, ctx: null, w: 0, h: 0, dpr: 1,
-  rotX: -24, rotY: 34,          // camera, degrees — same default angle the old CSS grid used
+  // Camera, degrees. STARTS FACE-ON (0,0) on purpose — see the FACE-ON START block below.
+  rotX: 0, rotY: 0,
+  // Set true the first time a pointer drag actually moves the camera. The scroll hint reads it and
+  // stands down: an automatic nudge must never overwrite a view the user chose.
+  userRotated: false,
+  hintFired: false, hintAnimating: false,
   lanes: [],
   palette: null,
   // controller
@@ -1917,6 +1922,41 @@ const sha3 = {
   // juice escalation state (see the SHA3 juice block below)
   roundsInBlock: 0, blocksDone: 0,
 };
+
+// ============================================================================================
+//  FACE-ON START — the 3D is a discovery, not the opening statement
+// ============================================================================================
+//
+//  The camera starts at rotX = rotY = 0, which in sha3Project is the identity rotation: screen x
+//  IS world x, screen y IS world y, and depth IS world z. The 5x5 lane grid therefore lands square
+//  on the canvas and the 8 sub-cubes of a lane stack exactly behind one another along the view
+//  axis. Under the projection's mild perspective (f = 34) the nearest sub-cube is drawn ~11% larger
+//  than the lane's centre and ~23% larger than the farthest, and the cube edge (SHA3_CUBE = 0.66)
+//  is comfortably under the lane pitch (SHA3_CELL = 1.0), so the nearest cube strictly CONTAINS
+//  the silhouette of the seven behind it. The painter's sort draws it last. Result: 25 flat
+//  coloured squares, one per lane, and the backface cull passes exactly ONE face per box (the +z
+//  face) — 200 faces rather than the ~600 an oblique view draws. That face count is the cleanest
+//  proof the start really is face-on, and the tests assert it.
+//
+//  WHY: this is exactly the picture every published Keccak diagram uses — a 5x5 grid of squares —
+//  so a student who has seen the FIPS 202 figures, or will see them later, starts from something
+//  they can match one-to-one. The depth is then something they FIND by dragging, which is a much
+//  better way to learn "each of those squares is 64 bits deep" than being told it up front.
+//
+//  THE TRADE, stated honestly: face-on, only the nearest sub-cube of each lane is visible, so the
+//  flat view shows one byte per lane rather than eight, and rho's sweep (which travels along z)
+//  reads as an undirected pulse until the view is rotated. theta, chi, pi and iota all work in the
+//  x-y plane and read correctly face-on. This is the same trade the printed diagrams make.
+//
+//  THE SCROLL HINT: some users will never think to drag. When the bottom of the page comes into
+//  view, the camera eases ~5 degrees on each axis (see SHA3_HINT_*), which is enough for the flat
+//  squares to visibly acquire sides. Rules, all enforced in initSha3Canvas: it fires at most ONCE
+//  per page load; it does nothing if the user has already rotated manually; a drag that starts
+//  mid-nudge cancels it on the spot; and it only arms while the SHA-3 diagram is actually on
+//  screen (the page opens on MD5, and a hint nobody could see must not burn the once-only flag).
+const SHA3_HINT_DX   = -5;    // degrees added to rotX by the hint
+const SHA3_HINT_DY   = 5;     // degrees added to rotY by the hint
+const SHA3_HINT_MS   = 1100;  // eased over this long — a drift, not a snap
 
 // ============================================================================================
 //  JUICE ESCALATION (SHA-3)
@@ -2063,6 +2103,13 @@ function sha3SpeedIntensity() {
 //  The gain is keyed off the phase's own EFFECTIVE DURATION rather than off the slider, because
 //  the slider is only one of the two things that shortens a phase; the uncapped escalation is the
 //  other, and it is the one the cat photo actually hits.
+//
+//  IT APPLIES TO BRIGHTNESS ONLY. The gain multiplies `hi` — the travelling wavefront and the
+//  per-lane afterglow — and nothing else. It does NOT touch the lane's own gold/grey material
+//  colour, and (since the colour fix) it does not touch the phase tint either. Colour strength is
+//  speed-INDEPENDENT by construction: at any slider setting the cubes are the same colour, they
+//  just flash less hard. Dimming the hue as well made a fast run look washed out, which is a
+//  different (and unwanted) thing from making it look calmer. See the fTint site in sha3Render.
 const SHA3_FLASH_AMP      = 0.75;  // travelling wavefront's contribution to brightness
 const SHA3_AFTERGLOW_AMP  = 0.30;  // the older per-lane decaying glow, now a supporting channel
 const SHA3_TINT_MIN       = 0.14;  // phase tint at the very start of a run
@@ -2076,6 +2123,28 @@ function sha3FlashGain(durMs) {
   if (!(durMs > 0)) return SHA3_FLASH_GAIN_MIN;   // REAL TIME mode: zero-length phases
   const t = (durMs - SHA3_FLASH_FAST_MS) / (SHA3_FLASH_SLOW_MS - SHA3_FLASH_FAST_MS);
   return SHA3_FLASH_GAIN_MIN + (1 - SHA3_FLASH_GAIN_MIN) * Math.max(0, Math.min(1, t));
+}
+
+// ---- motion blur vs speed ----
+// The blur is the OPPOSITE pairing to the gain above, on the same input. Canvas 2D "motion blur"
+// here is just an incomplete wipe: instead of clearing the frame, sha3Render lays down a
+// TRANSLUCENT background rectangle, so previous frames bleed through as a trail. LOWER alpha =
+// less of the old frame erased per frame = LONGER trail = more blur.
+//
+// It scales with speed for two reasons. The obvious one is physical: a fast phase moves further
+// between frames, so a longer trail is the honest picture of it. The second is that it does the
+// same job as the brightness gain from the other direction — smearing consecutive frames into
+// each other softens the hard edges that make rapid flashing read as a strobe. Fast playback
+// should look like motion, not like a stutter.
+//
+// Keyed off the phase's own effective duration (not the slider) for the same reason the gain is:
+// the escalation shortens phases too. Same anchors, so the two curves stay in step.
+const SHA3_BLUR_ALPHA_FAST = 0.20;  // shortest phases: a long trail (~5 frames of history)
+const SHA3_BLUR_ALPHA_SLOW = 0.42;  // longest phases: barely a smear
+function sha3BlurAlpha(durMs) {
+  if (!(durMs > 0)) return SHA3_BLUR_ALPHA_FAST;   // REAL TIME: as fast as it gets
+  const t = (durMs - SHA3_FLASH_FAST_MS) / (SHA3_FLASH_SLOW_MS - SHA3_FLASH_FAST_MS);
+  return SHA3_BLUR_ALPHA_FAST + (SHA3_BLUR_ALPHA_SLOW - SHA3_BLUR_ALPHA_FAST) * Math.max(0, Math.min(1, t));
 }
 
 // Raised cosine: 1 at the crest, easing to 0 at +/- width. Smooth at both ends, so a cube fades in
@@ -2257,12 +2326,30 @@ function sha3ApplyLaneValues(lv) {
 // Axonometric: rotate about Y, then about X, then a weak perspective divide. This is a genuine
 // coordinate system — boxes are defined as centre + half-extents in world units and everything
 // downstream (occlusion, shading, hit order) falls out of the maths rather than being hand-tuned.
+//
+// `cam.pw` is the PERSPECTIVE WEIGHT, 0..1, and it exists for the face-on start. Perspective
+// divergence is radial about the canvas centre, so with the camera square-on the eight sub-cubes
+// of an off-centre lane do NOT stack behind each other — they fan outward away from the centre by
+// a few pixels each, and the flat 5x5 grid comes out looking like 25 little exploded stacks
+// instead of 25 squares (measured: it did, on the first attempt). Face-on is also the one camera
+// where perspective conveys nothing: the depth axis IS the view axis, so the fan is pure radial
+// spread with no rotational information in it. So the projection eases from ORTHOGRAPHIC at
+// square-on to the normal weak perspective by SHA3_PERSP_FULL_DEG off-axis. At pw = 0 the eight
+// cubes of a lane project to exactly the same square and the painter's sort leaves the nearest on
+// top, which is what makes the opening view genuinely flat. Rotate at all and the depth returns.
+// It is a presentation choice about the CAMERA only — no world position, depth order, face normal
+// or colour depends on it.
+const SHA3_PERSP_FULL_DEG = 10;   // full perspective once the camera is this far off square-on
+function sha3PerspWeight(rotXDeg, rotYDeg) {
+  const off = Math.max(Math.abs(rotXDeg), Math.abs(rotYDeg));
+  return Math.min(1, off / SHA3_PERSP_FULL_DEG);
+}
 function sha3Project(px, py, pz, cam) {
   const x1 = px * cam.cy + pz * cam.sy;
   const z1 = -px * cam.sy + pz * cam.cy;
   const y2 = py * cam.cx - z1 * cam.sx;
   const z2 = py * cam.sx + z1 * cam.cx;     // depth: larger = nearer the camera
-  const persp = cam.f / (cam.f - z2);
+  const persp = 1 + cam.pw * (cam.f / (cam.f - z2) - 1);
   return { sx: cam.ox + x1 * cam.scale * persp, sy: cam.oy - y2 * cam.scale * persp, z: z2 };
 }
 // Same rotation, no translation/perspective — for face normals.
@@ -2317,9 +2404,13 @@ function sha3Render(opts) {
 
   // Motion blur, essentially free in Canvas 2D: instead of wiping the frame, lay down a
   // TRANSLUCENT background so the previous frames bleed through as a trail. Used only while
-  // something is genuinely in fast transit (pi's slide), so the lattice at rest stays crisp.
+  // something is genuinely in fast transit, so the lattice at rest stays crisp.
+  //
+  // `opts.blur` is now the ALPHA to wipe with (see sha3BlurAlpha), not a boolean: smaller = more
+  // blur. 0 / absent / a bare sha3Render() means an opaque wipe, i.e. no blur at all — which is
+  // what guarantees a drag, an idle repaint and sha3Stop's final frame are always crisp.
   ctx.globalAlpha = 1;
-  ctx.fillStyle = blur ? `rgba(${P.panel2.map(v=>Math.round(v)).join(',')},0.30)` : rgbCss(P.panel2);
+  ctx.fillStyle = blur ? `rgba(${P.panel2.map(v=>Math.round(v)).join(',')},${blur.toFixed(3)})` : rgbCss(P.panel2);
   ctx.fillRect(0, 0, w, h);
 
   // Zoom out slightly while lanes are lifted, so pi's transit arc (which rises above the whole
@@ -2333,7 +2424,7 @@ function sha3Render(opts) {
   const cam = {
     cx: Math.cos(rx), sx: Math.sin(rx), cy: Math.cos(ry), sy: Math.sin(ry),
     scale: Math.min(w / 12.5, h / 11) * (1 - 0.18 * Math.min(1, maxLift)),
-    f: 34, ox: w / 2, oy: h / 2,
+    f: 34, pw: sha3PerspWeight(sha3.rotX, sha3.rotY), ox: w / 2, oy: h / 2,
   };
 
   // Build the draw list: one entry per sub-cube (25 lanes x SHA3_SUBS_PER_LANE).
@@ -2347,11 +2438,18 @@ function sha3Render(opts) {
   const fEsc = sha3.flashEsc;
   const fWiden = 1 + SHA3_WIDEN * fEsc;
   // Uniform phase tint, eased in and out across the phase (raised cosine) so consecutive phases
-  // cross-fade through the untinted lattice instead of snapping from one hue to the next. Scaled
-  // by the same speed-inverse gain as the flash, so a fast run is quiet in colour as well as in
-  // brightness. Equal for every cube — see the note at the mix site for why that matters.
+  // cross-fade through the untinted lattice instead of snapping from one hue to the next. Equal
+  // for every cube — see the note at the mix site for why that matters.
+  //
+  // COLOUR IS DELIBERATELY NOT SCALED BY fGain. It used to be, and that was wrong: the
+  // speed-inverse gain exists to stop rapid high-amplitude BRIGHTNESS swings (photosensitivity,
+  // and legibility of the flash as punctuation), and brightness is the only channel that carries
+  // that risk. Multiplying the hue by it as well meant a fast run also came out desaturated —
+  // the object appeared to fade, when what should happen is that the same fully-coloured object
+  // flashes more gently. So: `hi` (brightness) is gain-scaled, `fTint` (hue) is not. Tint depth
+  // now depends only on the escalation, which is a property of the INPUT, not of playback speed.
   const fTint = fType ? (SHA3_TINT_MIN + (SHA3_TINT_MAX - SHA3_TINT_MIN) * fEsc)
-                        * fGain * sha3Band(fP - 0.5, 0.5) : 0;
+                        * sha3Band(fP - 0.5, 0.5) : 0;
   for (const L of sha3.lanes) {
     const spin = L.spin * Math.PI / 180;
     const cs = Math.cos(spin), sn = Math.sin(spin);
@@ -2457,7 +2555,8 @@ function sha3Render(opts) {
   }
   sha3.facesDrawn = faces;
   sha3.framesDrawn++;
-  sha3.lastBlur = !!blur;   // read-only instrumentation for the regression scripts
+  sha3.lastBlur = !!blur;              // read-only instrumentation for the regression scripts
+  sha3.lastBlurAlpha = blur ? blur : 0; // ...and the strength it was drawn at (0 = crisp wipe)
 }
 
 // A single idle repaint (theme change, drag, resize, first load) — distinct from the controller's
@@ -2497,21 +2596,48 @@ function sha3RequestRender() {
 //  the pacing/holding/easing described here. [EXACT]: the SEQUENCE of steps being paced (theta,
 //  rho, pi, chi, iota, 24 times, per real absorbed block) comes straight from the real trace.
 const SHA3_PHASE_BASE  = { theta:300, rho:420, pi:560, chi:320, iota:220, box:320 };
-// Floors, per phase rather than one global minimum: at the fast end of the slider a uniform
-// scale would push pi under two frames, and a snapping pi is precisely the failure mode this
-// rewrite exists to fix. Each floor is the shortest duration at which that phase still reads as
-// a movement rather than a jump.
-const SHA3_PHASE_FLOOR = { theta:30,  rho:44,  pi:58,  chi:30,  iota:22,  box:40 };
+// Floors, per phase rather than one global minimum. Each floor is the shortest duration at which
+// that phase still reads as something happening rather than a dropped frame.
+//
+// LOWERED (was theta:30 rho:44 pi:58 chi:30 iota:22 box:40) because those floors, not the slider,
+// were what the fast end of the slider actually hit. They summed to 184ms per round, and the old
+// fast-end scale of 0.10 put the unfloored per-round total at 182ms — so from the FIRST round at
+// slider 100 every phase was already sitting on its floor, and the top ~40% of the slider's travel
+// changed nothing at all. That is exactly the reported "it doesn't seem to speed up much".
+//
+// The floors now split by what the phase has to SHOW. pi and rho are the two that genuinely MOVE
+// something (pi slides every lane to a new slot, rho eases 25 spins), so they keep a floor of more
+// than one 60Hz frame — a snapping pi is the failure mode the phase controller exists to prevent.
+// theta, chi and iota only flash: a flash has no in-between state to lose, so it can be short.
+const SHA3_PHASE_FLOOR = { theta:12,  rho:18,  pi:20,  chi:12,  iota:9,   box:16 };
 const SHA3_PHASE_IDS = { theta:'phase-theta', rho:'phase-rho', pi:'phase-pi', chi:'phase-chi', iota:'phase-iota' };
 
-// Slider 1..100 -> a scale applied to the base phase durations. Full-run durations for the
-// common one-rate-block input (24 rounds x 5 phases + 5 stage events) are documented in the
-// task report; the slow end is preserved (~40s, legibility genuinely needs it) and the fast end
-// is opened up a long way past the old 85ms/event floor.
+// Slider 1..100 -> a scale applied to the base phase durations.
+//
+// SLOW HALF (1..50): unchanged, and deliberately so. It is linear from 0.90 down to 0.28, it puts
+// a one-rate-block run at roughly 40s at slider 1, and legibility at the slow end genuinely needs
+// every bit of that. Nothing below was touched.
+//
+// FAST HALF (50..100): rebuilt. It used to be linear 0.28 -> 0.10, which had two problems. The
+// first is that 0.10 was not fast: combined with the old floors it bottomed out around 4.6s, only
+// ~1.8x quicker than the default. The second is that a LINEAR ramp is the wrong shape for a
+// duration control. What a user perceives is the RATIO between settings, so equal slider steps
+// should give equal ratios — otherwise the same 10 units of travel that takes 0.28 to 0.24
+// (a 1.17x change, barely noticeable) later takes 0.14 to 0.10 (a 1.4x change), and the control
+// feels dead through its middle. So the fast half is now GEOMETRIC: a constant multiplier per
+// unit of travel, all the way down to 0.039 at slider 100.
+//
+// 0.038 is chosen to meet the new SHA3_PHASE_FLOOR rather than to be a round number: the base
+// durations sum to 1820ms per round, and 1820 * 0.039 = 71ms, which is the sum of the new floors.
+// The floors therefore start binding right at the end of the travel instead of two-fifths of the
+// way through it, so every part of the slider does something.
+const SHA3_SCALE_MID  = 0.28;   // slider 50 (default)
+const SHA3_SCALE_SLOW = 0.90;   // slider 1
+const SHA3_SCALE_FAST = 0.039;  // slider 100
 function sha3PhaseScale() {
   const v = readSpeedSlider();
-  if (v >= 50) return 0.28 - (v - 50) * (0.28 - 0.10) / 50;   // 50 -> 0.28, 100 -> 0.10
-  return 0.28 + (50 - v) * (0.90 - 0.28) / 49;                // 50 -> 0.28,   1 -> 0.90
+  if (v >= 50) return SHA3_SCALE_MID * Math.pow(SHA3_SCALE_FAST / SHA3_SCALE_MID, (v - 50) / 50);
+  return SHA3_SCALE_MID + (50 - v) * (SHA3_SCALE_SLOW - SHA3_SCALE_MID) / 49;
 }
 function sha3PhaseDuration(type) {
   // REAL TIME: a real Keccak permutation takes microseconds, so the honest duration is zero and
@@ -2734,9 +2860,12 @@ function sha3Play(trace, onDone) {
     // rather than moving (fast slider settings, or deep into an escalating run). Off at rest,
     // off during drag (sha3Render is called without opts from the pointer handler), and off on
     // the final frame (sha3Stop), so no trail can ever persist.
+    // ...and its STRENGTH rises with speed (sha3BlurAlpha: lower alpha = longer trail), so a fast
+    // run smears rather than strobes. 0 when not blurring, which sha3Render treats as an opaque
+    // wipe — so every "must be crisp" path (drag, idle, sha3Stop) is unaffected by construction.
     const blurring = !!sha3.active &&
       (sha3.active.type === 'pi' || sha3.active.dur <= 90);
-    sha3Render({ blur: blurring });
+    sha3Render({ blur: blurring ? sha3BlurAlpha(sha3.active.dur) : 0 });
 
     if (sha3.active || sha3.qi < sha3.queue.length) { requestAnimationFrame(frame); return; }
     // queue drained: fire onDone once, then keep painting briefly so the ambient easings settle
@@ -2773,8 +2902,16 @@ function initSha3Canvas() {
   });
   c.addEventListener('pointermove', e => {
     if (!dragging) return;
-    sha3.rotY += (e.clientX - lastX) * 0.5;
-    sha3.rotX -= (e.clientY - lastY) * 0.5;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    if (dx || dy) {
+      // The user is driving. Latch that, and abandon any hint nudge still in flight — the hint
+      // exists to suggest that this is possible, so the moment it is being done it is redundant,
+      // and continuing to add to the rotation would be fighting the hand on the mouse.
+      sha3.userRotated = true;
+      sha3.hintAnimating = false;
+    }
+    sha3.rotY += dx * 0.5;
+    sha3.rotX -= dy * 0.5;
     sha3.rotX = Math.max(-89, Math.min(89, sha3.rotX));
     lastX = e.clientX; lastY = e.clientY;
     sha3RequestRender();
@@ -2782,6 +2919,52 @@ function initSha3Canvas() {
   const endDrag = () => { dragging = false; };
   c.addEventListener('pointerup', endDrag);
   c.addEventListener('pointercancel', endDrag);
+
+  // ---- the scroll hint (see the FACE-ON START block) ----
+  // Eases SHA3_HINT_DX/DY onto whatever the rotation currently is, ONCE, when the bottom of the
+  // page comes into view. Additive rather than absolute so it composes with any state the page is
+  // in, and self-cancelling the instant a drag begins.
+  function sha3RunHint() {
+    if (sha3.hintFired || sha3.userRotated) return;
+    sha3.hintFired = true;
+    sha3.hintAnimating = true;
+    const fromX = sha3.rotX, fromY = sha3.rotY;
+    const t0 = performance.now();
+    const step = now => {
+      if (!sha3.hintAnimating) return;            // cancelled by a drag
+      const t = Math.min(1, (now - t0) / SHA3_HINT_MS);
+      const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;   // easeInOutQuad
+      sha3.rotX = fromX + SHA3_HINT_DX * e;
+      sha3.rotY = fromY + SHA3_HINT_DY * e;
+      sha3RequestRender();                         // no-op while a run is painting every frame
+      if (t < 1) requestAnimationFrame(step);
+      else sha3.hintAnimating = false;
+    };
+    requestAnimationFrame(step);
+  }
+  const hintTarget = document.getElementById('realtime-note');
+  const sha3Diagram = document.getElementById('diagram-sha3');
+  if (hintTarget && sha3Diagram && 'IntersectionObserver' in window) {
+    // Two conditions, in either order: the bottom of the page has been reached, AND the SHA-3
+    // diagram is on screen. The page opens on MD5 with #diagram-sha3 display:none, so scrolling
+    // to the bottom first would otherwise rotate a canvas nobody can see and burn the once-only
+    // flag — the user would never get the hint at the moment it could have helped.
+    let bottomSeen = false;
+    const maybeHint = () => {
+      if (!bottomSeen || sha3Diagram.offsetParent === null) return;
+      io.disconnect(); mo.disconnect();
+      sha3RunHint();
+    };
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(en => en.isIntersecting)) { bottomSeen = true; maybeHint(); }
+    }, { rootMargin: '0px 0px -10% 0px' });
+    io.observe(hintTarget);
+    // Fires the deferred case: bottom already reached, then the user switches MD5 -> SHA-3. The
+    // algorithm switch toggles this element's inline display, so watching `style` catches it
+    // without the switching code needing to know the hint exists.
+    const mo = new MutationObserver(maybeHint);
+    mo.observe(sha3Diagram, { attributes: true, attributeFilter: ['style'] });
+  }
 
   // Follow the page's light/dark toggle: re-read the custom properties and repaint.
   new MutationObserver(() => { sha3ReadPalette(); sha3RequestRender(); })
@@ -2798,8 +2981,19 @@ function initSha3Canvas() {
     boxCount: () => sha3.lanes.length * SHA3_SUBS_PER_LANE,
     facesDrawn: () => sha3.facesDrawn,
     lastBlur: () => !!sha3.lastBlur,
+    // The wipe alpha the last frame was painted with: 0 = fully opaque wipe = crisp, and the
+    // LOWER a non-zero value is the LONGER the trail. Lets a test measure blur STRENGTH rather
+    // than just its presence.
+    lastBlurAlpha: () => sha3.lastBlurAlpha || 0,
+    blurAlphaFor: durMs => sha3BlurAlpha(durMs),
     framesDrawn: () => sha3.framesDrawn,
-    rotation: () => ({ rotX: sha3.rotX, rotY: sha3.rotY }),
+    rotation: () => ({ rotX: sha3.rotX, rotY: sha3.rotY,
+                       perspWeight: sha3PerspWeight(sha3.rotX, sha3.rotY) }),
+    // Scroll-hint state, so the fires-once / yields-to-manual rules can be asserted directly
+    // instead of being inferred from scroll timing.
+    hint: () => ({ fired: !!sha3.hintFired, animating: !!sha3.hintAnimating,
+                   userRotated: !!sha3.userRotated,
+                   dx: SHA3_HINT_DX, dy: SHA3_HINT_DY, ms: SHA3_HINT_MS }),
     activePhase: () => (sha3.active ? sha3.active.type : null),
     juice: () => ({
       roundsInBlock: sha3.roundsInBlock, blocksDone: sha3.blocksDone,

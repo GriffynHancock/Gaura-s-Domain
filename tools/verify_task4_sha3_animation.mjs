@@ -348,6 +348,52 @@ if (!(gains.escalated.wild < gains.escalated.calm * 0.75)) {
 }
 console.log(`OK  flash brightness falls as speed rises (slider 1 -> ${gains.bySlider[1][0].toFixed(2)}, 50 -> ${gains.bySlider[50][0].toFixed(2)}, 100 -> ${gains.bySlider[100][0].toFixed(2)}; escalation alone takes it ${gains.escalated.calm.toFixed(2)} -> ${gains.escalated.wild.toFixed(2)})`);
 
+// ---- ...but COLOUR must NOT. Brightness and hue are separate channels with separate rules ----
+// The gain above exists for photosensitivity and legibility, and both of those are properties of
+// rapid BRIGHTNESS swings. It used to be multiplied into the phase tint as well, which meant a
+// fast run also came out desaturated — the object appeared to fade rather than to flash more
+// gently, which is not the same thing and is not what anyone wanted. So this pins the split
+// directly on the RENDERED PIXELS, not just on the intermediate numbers: at slider 1 and slider
+// 100, with the escalation held identical, every cube's material colour must come out
+// BYTE-IDENTICAL while the highlight must fall.
+const speedColour = await page.evaluate(() => {
+  const sample = v => {
+    document.getElementById('speed-slider').value = String(v);
+    sha3.roundsInBlock = 10; sha3.blocksDone = 0;   // identical escalation at both speeds
+    const dur = sha3PhaseDuration('theta');
+    sha3.flashType = 'theta'; sha3.flashP = 0.5;
+    sha3.flashGain = sha3FlashGain(dur);
+    sha3.flashEsc = 1 - 1 / sha3Intensity();
+    sha3.lanes.forEach(L => { L.glow = 0.5; });
+    sha3Render();
+    return {
+      dur, gain: sha3.flashGain, tint: __sha3Debug.juice().flashTint,
+      cols: sha3.lanes.map(L => L.lastCol.map(c => Math.round(c * 1000) / 1000)),
+      maxHi: Math.max(...sha3.lanes.map(L => L.lastHi)),
+    };
+  };
+  const slow = sample(1), fast = sample(100);
+  sha3.flashType = null; sha3.flashEsc = 0; sha3.roundsInBlock = 0;
+  sha3.lanes.forEach(L => { L.glow = 0; });
+  document.getElementById('speed-slider').value = '50'; sha3Render();
+  return { slow, fast };
+});
+if (!(speedColour.fast.dur < speedColour.slow.dur * 0.5)) {
+  throw new Error(`the two samples must genuinely differ in speed, got ${speedColour.slow.dur}ms vs ${speedColour.fast.dur}ms`);
+}
+if (speedColour.slow.tint !== speedColour.fast.tint) {
+  throw new Error(`the phase TINT must not depend on playback speed: ${speedColour.slow.tint} at slider 1 vs ${speedColour.fast.tint} at slider 100`);
+}
+const colourDrift = Math.max(...speedColour.slow.cols.map((c, i) =>
+  Math.max(...c.map((v, j) => Math.abs(v - speedColour.fast.cols[i][j])))));
+if (colourDrift !== 0) {
+  throw new Error(`cube COLOUR must be identical at every speed — a fast run must not look washed out. Max per-channel drift slider 1 vs 100: ${colourDrift}`);
+}
+if (!(speedColour.fast.maxHi < speedColour.slow.maxHi * 0.6)) {
+  throw new Error(`...while the BRIGHTNESS spike must still fall with speed: ${speedColour.slow.maxHi} -> ${speedColour.fast.maxHi}`);
+}
+console.log(`OK  speed changes brightness ONLY: at the same escalation, slider 1 -> 100 leaves every cube's colour byte-identical (tint ${speedColour.slow.tint.toFixed(3)} both) while the highlight falls ${speedColour.slow.maxHi.toFixed(3)} -> ${speedColour.fast.maxHi.toFixed(3)}`);
+
 // ---- the phase hue must NEVER cost the rate/capacity read ----
 // The tint is applied uniformly to every cube precisely so this holds by construction (an affine
 // map compresses the gold/grey gap but cannot cross it). This checks the rendered result anyway,
