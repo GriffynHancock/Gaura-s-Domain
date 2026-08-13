@@ -95,6 +95,24 @@ export function analyse(rows, opts = {}) {
   };
 }
 
+// WCAG 2.3.2's red flash, measured rather than argued. Two parts, both reported:
+//   * whether any measured state is a SATURATED RED at all (R/(R+G+B) >= 0.8 on linearised
+//     channels). If nothing ever is, the red-flash threshold cannot be met by definition and the
+//     rest is moot — but "cannot be met" is worth measuring rather than asserting from the
+//     source colours, because filters and blending change the ratio that reaches the screen.
+//   * the flash rate on the linear RED channel on its own, so the answer does not depend on that
+//     first condition holding.
+export function analyseRed(rows) {
+  let peak = 0, maxRatio = 0;
+  for (let k = 0; k < rows[0].tiles.length; k++) {
+    const series = rows.map(r => ({ t: r.t, l: lin(r.tiles[k][0]) }));
+    for (const r of rows) { const rr = redRatio(r.tiles[k]); if (rr > maxRatio) maxRatio = rr; }
+    const p = peakRate(findFlashes(series, FLASH_THRESHOLD, 1.01).map(f => f.t)).peak;
+    if (p > peak) peak = p;
+  }
+  return { peakPerSecond: peak, maxRatio };
+}
+
 // The largest luminance change between CONSECUTIVE measured frames, per patch — the raw
 // excursion, independent of whether it was big enough to be scored as a flash. This is what
 // proves an attenuation actually attenuated rather than merely falling under the threshold in
