@@ -2396,6 +2396,140 @@ function sha3ResizeCanvas() {
   sha3.w = cssW; sha3.h = cssH; sha3.dpr = dpr;
 }
 
+// ============================================================================================
+//  THE FLASH METER — ground-truth photosensitivity measurement (opt-in, off by default)
+// ============================================================================================
+//
+//  Everything else in this file that talks about photosensitivity is a MODEL: a gain curve, a
+//  clamp, a smoothing time constant. This is the only part that MEASURES, and it measures the
+//  thing WCAG 2.3.1 actually talks about — the relative luminance of the pixels that reached the
+//  screen, frame by frame, on the page's own clock.
+//
+//  How: once per painted frame, the 200-box canvas is drawn into a tiny offscreen canvas (a 3x3
+//  tiling, 24px per tile) and read back with getImageData. Downscaling with drawImage is a
+//  hardware area-average, so one small read gives the mean colour of each ninth of the canvas
+//  for free — no willReadFrequently on the real context, no measurable cost to the animation.
+//
+//  WHY TILES AND NOT A WHOLE-CANVAS MEAN: theta lights one x-plane, i.e. 5 lanes of 25. A
+//  whole-canvas mean would show ~20% of the local swing and would understate the excursion in
+//  exactly the unsafe direction. WCAG's threshold is about a flashing AREA, so the honest unit is
+//  a patch, and a 3x3 tiling puts each patch at ~11% of the canvas — comfortably finer than the
+//  "25% of 10 degrees of visual field" the standard is written against, so it is conservative
+//  without being so fine that single-cube twinkle counts as a screen flash.
+//
+//  MD5 has no canvas, so its meter samples the RESOLVED COMPUTED STYLE of each block card every
+//  frame instead (background-color after color-mix, plus the brightness()/saturate() filter,
+//  applied here the way Chrome applies them: in sRGB, in listed order). That is a per-frame
+//  measurement of the real painted style rather than of the code's intent. It does not model the
+//  box-shadow glow, which is stated as a limitation rather than papered over.
+//
+//  The rows are read out AFTER a run, the same way phaseLog is — never sampled live from
+//  outside — see CLAUDE.md's "animation verification trap".
+const srgbLin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+// WCAG relative luminance, on 0..255 sRGB channels.
+function relLum(r, g, b) { return 0.2126 * srgbLin(r) + 0.7152 * srgbLin(g) + 0.0722 * srgbLin(b); }
+
+const flashMeter = {
+  on: false, tiles: 3, small: null, sctx: null, rows: [], md5Rows: [], md5Raf: 0, cap: 20000,
+  start(tiles) {
+    this.tiles = tiles || 3;
+    const n = 24 * this.tiles;
+    if (!this.small) this.small = document.createElement('canvas');
+    this.small.width = n; this.small.height = n;
+    this.sctx = this.small.getContext('2d', { willReadFrequently: true });
+    this.rows = []; this.md5Rows = [];
+    this.on = true;
+  },
+  stop() { this.on = false; if (this.md5Raf) cancelAnimationFrame(this.md5Raf); this.md5Raf = 0; },
+  // One painted canvas frame -> per-tile mean colour.
+  sampleCanvas(src) {
+    if (!this.on || !src || !src.width || this.rows.length >= this.cap) return;
+    const n = this.small.width, t = this.tiles, per = n / t;
+    this.sctx.clearRect(0, 0, n, n);
+    this.sctx.drawImage(src, 0, 0, n, n);
+    const d = this.sctx.getImageData(0, 0, n, n).data;
+    const sum = new Float64Array(t * t * 3), cnt = new Float64Array(t * t);
+    for (let y = 0; y < n; y++) {
+      const ty = Math.min(t - 1, Math.floor(y / per));
+      for (let x = 0; x < n; x++) {
+        const i = (y * n + x) * 4, ti = ty * t + Math.min(t - 1, Math.floor(x / per));
+        sum[ti * 3] += d[i]; sum[ti * 3 + 1] += d[i + 1]; sum[ti * 3 + 2] += d[i + 2]; cnt[ti]++;
+      }
+    }
+    const tilesOut = [];
+    for (let i = 0; i < t * t; i++) {
+      const c = cnt[i] || 1;
+      tilesOut.push([sum[i * 3] / c, sum[i * 3 + 1] / c, sum[i * 3 + 2] / c]);
+    }
+    this.rows.push({ t: performance.now(), tiles: tilesOut });
+  },
+  // MD5: per-frame resolved style of every flashing card, composited back into the SAME 3x3
+  // spatial tiling the canvas meter uses. Per-ELEMENT series would be the wrong unit — one card
+  // is a few percent of the screen, and WCAG's threshold is about a flashing AREA, so a
+  // sequence of small elements each flashing once would read as 60 flashes a second on an
+  // element-indexed series while being, on screen, a travelling highlight. Area-weighting each
+  // element into the tile it covers is what makes the number comparable to the canvas one.
+  startMd5() {
+    if (this.md5Raf) cancelAnimationFrame(this.md5Raf);
+    const t = this.tiles;
+    const step = () => {
+      if (!this.on) { this.md5Raf = 0; return; }
+      const host = document.getElementById('diagram-md5');
+      if (!host) { this.md5Raf = requestAnimationFrame(step); return; }
+      const box = host.getBoundingClientRect();
+      const baseCol = parseCssColor(getComputedStyle(host).backgroundColor) || [0, 0, 0];
+      const tw = box.width / t, th = box.height / t;
+      const acc = [], wt = [];
+      for (let i = 0; i < t * t; i++) { acc.push([0, 0, 0]); wt.push(0); }
+      const add = (ti, col, w) => {
+        acc[ti][0] += col[0] * w; acc[ti][1] += col[1] * w; acc[ti][2] += col[2] * w; wt[ti] += w;
+      };
+      // the diagram's own background under everything
+      for (let i = 0; i < t * t; i++) add(i, baseCol, tw * th);
+      document.querySelectorAll('#diagram-md5 .block-group, #diagram-md5 .stage-box, #diagram-md5 .flow-arrow')
+        .forEach(el => {
+          const r = el.getBoundingClientRect();
+          if (!r.width || !r.height) return;
+          const col = flashMeterElemColor(el);
+          for (let ty = 0; ty < t; ty++) for (let tx = 0; tx < t; tx++) {
+            const x0 = box.left + tx * tw, y0 = box.top + ty * th;
+            const ow = Math.max(0, Math.min(r.right, x0 + tw) - Math.max(r.left, x0));
+            const oh = Math.max(0, Math.min(r.bottom, y0 + th) - Math.max(r.top, y0));
+            if (ow > 0 && oh > 0) add(ty * t + tx, col, ow * oh);
+          }
+        });
+      const tilesOut = acc.map((c, i) => [c[0] / (wt[i] || 1), c[1] / (wt[i] || 1), c[2] / (wt[i] || 1)]);
+      if (this.md5Rows.length < this.cap) this.md5Rows.push({ t: performance.now(), tiles: tilesOut });
+      this.md5Raf = requestAnimationFrame(step);
+    };
+    this.md5Raf = requestAnimationFrame(step);
+  },
+};
+// Resolve one element's painted colour: computed background-color put through its computed
+// filter. brightness() is a per-channel multiply and saturate() the standard luminance-preserving
+// saturation matrix, both applied in sRGB and in the order the filter list gives them — which is
+// what Chrome does for the CSS filter shorthand.
+function flashMeterElemColor(el) {
+  const cs = getComputedStyle(el);
+  let c = parseCssColor(cs.backgroundColor);
+  const f = cs.filter || 'none';
+  if (f && f !== 'none') {
+    const parts = f.match(/[a-z-]+\([^)]*\)/g) || [];
+    for (const p of parts) {
+      const m = /^([a-z-]+)\(([^)]*)\)$/.exec(p);
+      if (!m) continue;
+      const argRaw = m[2].trim();
+      const v = argRaw.endsWith('%') ? parseFloat(argRaw) / 100 : parseFloat(argRaw);
+      if (m[1] === 'brightness' && isFinite(v)) c = c.map(x => Math.max(0, Math.min(255, x * v)));
+      else if (m[1] === 'saturate' && isFinite(v)) {
+        const l = 0.213 * c[0] + 0.715 * c[1] + 0.072 * c[2];
+        c = c.map(x => Math.max(0, Math.min(255, l + (x - l) * v)));
+      }
+    }
+  }
+  return c;
+}
+
 function sha3Render(opts) {
   const ctx = sha3.ctx;
   if (!ctx) return;
@@ -2560,6 +2694,7 @@ function sha3Render(opts) {
   sha3.framesDrawn++;
   sha3.lastBlur = !!blur;              // read-only instrumentation for the regression scripts
   sha3.lastBlurAlpha = blur ? blur : 0; // ...and the strength it was drawn at (0 = crisp wipe)
+  if (flashMeter.on) flashMeter.sampleCanvas(sha3.canvas);
 }
 
 // A single idle repaint (theme change, drag, resize, first load) — distinct from the controller's
@@ -2978,6 +3113,16 @@ function initSha3Canvas() {
   // backgrounds rAF, so the tests read RECORDED history (phaseLog, with page-clock timestamps
   // captured as each phase actually fired) rather than sampling an in-flight animation — see
   // CLAUDE.md's "animation verification trap".
+  // The photosensitivity meter (see THE FLASH METER above). Separate from __sha3Debug because it
+  // measures BOTH algorithms' rendered output, not just the SHA-3 canvas.
+  window.__flashMeter = {
+    start: tiles => { flashMeter.start(tiles); },
+    startMd5: () => { flashMeter.startMd5(); },
+    stop: () => { flashMeter.stop(); },
+    rows: () => flashMeter.rows,
+    md5Rows: () => flashMeter.md5Rows,
+  };
+
   window.__sha3Debug = {
     subsPerLane: SHA3_SUBS_PER_LANE,
     bitsPerSub: SHA3_BITS_PER_SUB,
