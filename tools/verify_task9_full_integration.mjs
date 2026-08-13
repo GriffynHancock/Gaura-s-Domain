@@ -39,6 +39,13 @@ console.log('OK  MD5 register boxes updated during animation');
 
 // ---- 3. SHA-3 digest spot-check + lane grid + round counter ----
 await page.click('#algo-next'); // -> SHA-3
+// Snapshot the camera immediately before the run. Asserted identical afterwards below: hashing
+// must never move the view. Captured rather than hardcoded to 0/0 on purpose — the scroll hint
+// legitimately nudges the camera when the bottom of the page is in view, which depends on the
+// viewport height and on what has been clicked (Playwright's click auto-scrolls), and none of
+// that is what this assertion is about.
+const camBeforeRun = await page.evaluate(() => window.__sha3Debug.rotation());
+const facesBeforeRun = await page.evaluate(() => window.__sha3Debug.facesDrawn());
 await page.click('#hash-btn');
 // 30s, not the original 15s: SHA-3's animation is deliberately slow-by-default now
 // (getSha3SpeedMs), ~10.7s at the fastest slider setting. Timeout headroom only.
@@ -63,14 +70,16 @@ if (state.lanes !== 25) throw new Error(`expected 25 lanes, found ${state.lanes}
 if (state.boxes !== 25 * 8) throw new Error(`expected 200 drawn boxes, found ${state.boxes}`);
 if (state.rate !== 17) throw new Error(`expected 17 rate lanes, found ${state.rate}`);
 if (state.faces < state.boxes) throw new Error(`only ${state.faces} faces drawn for ${state.boxes} boxes — not drawn as solids`);
-// A whole run must not disturb the camera: the view is still exactly where it started (face-on,
-// 0/0, orthographic) unless the USER moved it. Hashing is not permitted to rotate anything, and
-// the flat opening view has to survive a run so a second Hash click looks like the first.
-if (state.rot.rotX !== 0 || state.rot.rotY !== 0 || state.rot.perspWeight !== 0) {
-  throw new Error(`a run must leave the face-on camera untouched, got ${JSON.stringify(state.rot)}`);
+// A whole run must not disturb the camera. The view has to be exactly where it was before the
+// Hash click — hashing is not permitted to rotate anything, and the opening view has to survive a
+// run so a second Hash click looks like the first. Stronger than checking for 0/0: this also
+// catches a run that moves the camera and puts it back.
+if (state.rot.rotX !== camBeforeRun.rotX || state.rot.rotY !== camBeforeRun.rotY ||
+    state.rot.perspWeight !== camBeforeRun.perspWeight) {
+  throw new Error(`a run must leave the camera exactly where it was: ${JSON.stringify(camBeforeRun)} -> ${JSON.stringify(state.rot)}`);
 }
-if (state.faces !== state.boxes) {
-  throw new Error(`still face-on after a run, so exactly ${state.boxes} faces should be drawn, got ${state.faces}`);
+if (state.faces !== facesBeforeRun) {
+  throw new Error(`the camera did not move, so the same ${facesBeforeRun} faces should be drawn after the run, got ${state.faces}`);
 }
 if (state.phases !== 125) throw new Error(`expected 125 controller phases for a one-rate-block input, found ${state.phases}`);
 const roundCounterText = await page.locator('#round-counter').innerText();

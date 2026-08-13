@@ -2297,7 +2297,10 @@ function sha3MakeLanes() {
 function sha3LaneAt(cx, cy) { return sha3.lanes[cx * 5 + cy]; }
 
 // Byte k of a 64-bit lane = bits [8k, 8k+8), read out of the 16-char big-endian hex the trace
-// carries. k=0 (the LSB byte) is the sub-cube at the front of the lane.
+// carries. k=0 is the LSB byte and sits at the lane's -z end; k=7 (the MSB byte) sits at +z,
+// which is the end NEAREST the camera — so the face-on opening view is showing each lane's most
+// significant byte. (This comment used to say k=0 was "at the front", which was written for the
+// old oblique camera and is ambiguous now that there is a square-on view.)
 function sha3HexToByteSlices(hex) {
   const out = new Array(SHA3_SUBS_PER_LANE);
   for (let k = 0; k < SHA3_SUBS_PER_LANE; k++) out[k] = parseInt(hex.substr(14 - 2 * k, 2), 16) || 0;
