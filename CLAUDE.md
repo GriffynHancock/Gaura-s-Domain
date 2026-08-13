@@ -56,6 +56,17 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
 - **Serve locally:** `python3 -m http.server 8787` from the repo root, then open
   `http://localhost:8787/public/crypto/<name>/`. **Path quirk:** locally you need the `/public/` prefix; in
   production `public/` is the site root so the path is `/crypto/<name>/`. Don't be fooled by a local 404.
+- **Serve from the tree you're actually testing — verify it, don't assume it.** When working in a git
+  worktree (`.worktrees/<name>/`), `python3 -m http.server` must be started from THAT worktree's root.
+  A worktree is a second working tree of the same repo, so a server rooted in the main checkout serves
+  a *different* `index.html` at an identical-looking URL, returns 200, and gives no hint anything is
+  wrong. Worse, if the port is already taken by an older backgrounded server, the new one fails to bind
+  (an error easily lost if you redirected output to a log) and your requests silently hit the OLD tree.
+  This has burned several sessions, once producing a convincing *fake* test failure: the stale page
+  lacked a debug field, so `undefined % 360` → `NaN`, and `new Set([NaN ×25]).size === 1` reported
+  "only 1 distinct angle across 25 lanes" — a plausible wrong answer rather than a crash, which read
+  exactly like a real regression. **Always confirm before trusting a result:**
+  `curl -s "$URL/index.html" | md5` vs `md5 -q public/crypto/hash/index.html`.
 - **Browser caches the served file** during iteration — append a cache-buster (`?v=2`) when reloading to test edits.
 - **Animation verification trap:** the Chrome-MCP/automation tab is *backgrounded*, so CSS transitions AND
   `requestAnimationFrame` are paused there. `getComputedStyle`/`getBoundingClientRect` then read the
