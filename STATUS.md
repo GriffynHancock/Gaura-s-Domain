@@ -15,66 +15,103 @@ Spine: **recognise → identify → decode/crack → submit.**
 | 4 | XOR | 🚧 **in progress** (demo+C1–C3 done, C4 left, not deployed) | `public/crypto/xor/` → `/crypto/xor/` |
 | — | Live Kali demo (CyberChef + archive crack) | ⬜ presenter prep | n/a |
 
-## Module 3 — Hashing (live, `/crypto/hash`) — post-deploy juice/legibility pass (2026-08-13)
-Real-user feedback after the redesign above shipped: SHA-3 read as "twitchy, blurred, fighting to
-animate" and "a single flat plane." Both reproduced and measured before touching anything — ρ's
-twist (300ms hold) and π's slide (220ms hold) overlapped 5×–75× at every slider position (the two
-effects meant to be most distinct were permanently smeared); separately, the 25 lane elements'
-pseudo-3D depth turned out to be **zero, not shallow** — `opacity`/`filter` on `.lane` were silently
-forcing `transform-style:flat` on its 3D context (new CLAUDE.md gotcha). Fixed: SHA-3 got its own
-speed function decoupled from MD5's (full 24-round run now ~12.5s at default speed, per the user's
-"slow default, full run, real slider" choice over two faster/thinner alternatives), and `.lane`'s
-pulse moved to leaf-level child elements so the parent stays a clean 3D context — 25 elongated bars
-now, not flat tiles (independently verified via pixel/shade analysis, not just code review). Also
-added MD5 "juice" on request (Balatro-score-counter reference): block cards wiggle+flash in sync
-with their inner register-box pulses on every step, the whole run ramps ~50% faster start-to-finish,
-wiggle amplitude grows with progress. Both pieces independently reviewed and empirically verified
-(monkey-patched speed functions, MutationObserver-counted wiggle events, rendered-transform proofs)
-rather than trusted from the implementer reports. Deferred/parked: showing each lane's actual
-content changing per round (real signal, bigger scope — trace-schema extension) and using a colour
-gradient for ρ's rotation amount (user's own idea) — both in `docs/ideas-backlog.md`.
+## Module 3 — Hashing (live, `/crypto/hash`)
 
-## Module 3 — Hashing (live, `/crypto/hash`) — visualization redesign (2026-08-13)
-Rebuilt the SHA-3 and MD5 diagrams after user feedback that the original build (below) was
-functionally correct but visually thin — a flat rotating panel for SHA-3, plain stage-boxes for
-MD5. New build: SHA-3 renders as a real 5×5 grid of 25 lane cuboids (verified against FIPS 202 —
-Keccak-f[1600] state is 5×5×64 bits, not the "16×16×4" initially misremembered), rate/capacity
-shown as 17 gold/8 dark lanes at their real lane-aligned boundary (not a gradient approximation),
-θ/ρ/π/χ/ι each render as genuinely distinct sub-animations (θ flashes all 25, ρ twists each lane's
-own tick mark by its own real offset, π slides lanes to their real permuted grid slot, χ highlights
-one representative row, ι flashes lane (0,0) with the round constant), live "round N/24" counter.
-MD5 replaced its 4-round-box diagram with a live register view — A/B/C/D hex values, active F/G/H/I
-function highlighted, M[g]/s[i]/K[i] shown, step counter — and multi-block inputs now render as a
-Z-axis "deck of cards" stack with real state hand-off between blocks (not a hardcoded IV per card).
-Input box shows actual resolved content per preset (not just its label); the MD5 collision preset
-split into two selectable presets with a "shares this digest with message N" cross-reference.
-Built via subagent-driven-development, 9 tasks (`docs/superpowers/plans/2026-08-12-hash-visualization-redesign.md`,
-spec: `docs/superpowers/specs/2026-08-12-hash-visualization-redesign.md`). Final whole-branch review
-caught 1 Critical (θ and ρ were visually identical — the redesign's headline goal) + 5 Important bugs
-(a CSS `transition` shorthand silently killing the pulse-decay animation for the rest of the page's
-life once π ever fired; the lane grid occluding its own legend and round counter; blocks 1+ showing
-the raw MD5 IV instead of the real handed-off state; block labels occluded in the stack; A/B/C/D
-rendering as a broken vertical column) — all fixed and independently re-verified (fresh Playwright
-measurements, an independent MD5 reimplementation cross-checked against `node:crypto`, mutation-testing
-the two touched test files to confirm no assertion was weakened) before merge.
+**Current state.** An avalanche-effect + internals visualization, not a puzzle ramp — no scored
+challenges yet (idea logged in `docs/ideas-backlog.md`). From-scratch, trace-instrumented MD5 and
+SHA3-256/Keccak, both verified digest-for-digest against Node's `crypto` and Python's `hashlib`
+across padding boundaries. **Not** `SubtleCrypto` — the Web Crypto API supports neither MD5 nor
+SHA-3, and exposes only final digests, not the per-round internals the animation needs. The page
+says so explicitly, with searchable keywords, so nobody concludes browsers lack real crypto.
 
-## Module 3 — Hashing, original build (2026-08-12)
-Avalanche-effect + internals visualization, not a puzzle ramp — no scored challenges yet (one
-idea logged in `docs/ideas-backlog.md`). From-scratch, trace-instrumented MD5 and SHA3-256/Keccak
-(no native SubtleCrypto — it lacks both, and internal-round instrumentation needs a hand-rolled
-implementation either way). One row: input (7 arrow-cycled presets, custom text first) →
-algorithm toggle + Hash + live speed slider → output (digest + fixed bit-length label). Below:
-an always-visible idle structural diagram — MD5 (Merkle–Damgård chain, real 16-op inner loop,
-block-chaining hand-off called out as the length-extension weak point) or SHA-3 (2D pad/absorb →
-rotatable CSS-3D cube for the permutation state, rate/capacity color-coded, real 24-round loop →
-2D squeeze/output) — light travels through it as it hashes, top-up-not-reset brightness pulses.
-History log (last 5, content-hash IDs so re-hashing the same input never false-flags) +
-dedicated MD5 collision demo panel, both using the real published Wang/Rescorla 2004 collision
-pair. Built via `docs/superpowers/plans/2026-08-12-hash-visualization.md` (10-task subagent-driven
-build); final whole-branch review caught a real Critical bug — SHA3-256 produced a wrong digest
-for any input where `length % 136 === 135` (a padding-merge edge case none of the standard test
-vectors happen to hit) — fixed and independently re-verified with a boundary-spanning length sweep
-before merge. Spec: `docs/superpowers/specs/2026-08-12-hash-visualization-design.md`.
+One row: input (8 arrow-cycled presets incl. custom text, Cyrillic false-friend, whitespace-chips,
+public-domain text, a 56-block cat photo, and both halves of the real Wang/Rescorla MD5 collision
+pair) → algorithm toggle + Hash + live speed slider + step-through → output. Below: a per-algorithm
+diagram, a history log (content-hash IDs, so re-hashing the same input never false-flags), and a
+dedicated MD5 collision panel.
+
+**MD5 side.** Merkle–Damgård chain with a live register view — A/B/C/D hex values, the active
+F/G/H/I function highlighted, `M[g]`/`s[i]`/`K[i]`, and a step counter. Multi-block inputs render as
+a Z-axis "deck of cards" stack with the real state hand-off between blocks (block N's actual final
+A/B/C/D seeds block N+1 — not a hardcoded IV per card). The Pad box shows how many bytes of padding
+were actually added; it never disappears, because Merkle–Damgård *always* pads.
+
+**SHA-3 side — a Canvas 2D renderer, not CSS.** Three CSS-3D attempts failed for structural
+reasons, not polish (see the CSS 3D gotcha in `CLAUDE.md`, plus `docs/research/3d-rendering-options.md`
+for why Three.js/Zdog were weighed and declined). Now: 25 lanes × 8 sub-cubes = 200 closed boxes,
+axonometric projection, painter's-algorithm depth sort, backface culling, DPR-aware, themed from the
+page's own CSS custom properties. Starts **face-on** so it reads as the flat 5×5 grid of the printed
+Keccak diagrams, then reveals its depth on drag (with a one-shot 5° scroll hint for anyone who
+doesn't find it). Rate/capacity is drawn as 17 gold / 8 dark lanes at their real lane-aligned
+boundary; capacity starts genuinely all-zero and visibly fills as data diffuses in — the sponge
+lesson. Drag rotation is direct-manipulation on **both** axes for every pointer type.
+
+**The phase controller** runs θ→ρ→π→χ→ι strictly sequentially, one at a time, with five colour-coded
+indicator boxes. Each phase sweeps its **real FIPS 202 axis** — θ +x as a plane, χ −x as five
+staggered per-row races, ρ along z per-lane, π an x-y swirl, ι a point at lane (0,0). (Note χ is +x,
+not y: a Keccak row is *indexed by* y but *runs along* x. Nothing sweeps along y, because no Keccak
+step propagates along y.) π transits in two stages — rows push radially out from the metacube
+centre, then fall onto their destinations — with an 8.6° swirl on the outward direction because a
+pure radial path provably collides (lane (1,3)→(3,1) runs straight through the centre where
+(3,2)→(2,2) has landed). Lanes move in 5 groups keyed on source row, which is itself a fact about π:
+it sends source row *y* into destination column *y*.
+
+**Juice + safety.** Count-based multiplicative escalation (`1.1^n` for MD5, uncapped but contained),
+per-card off-centre pivots, translation, reddening. **Temporal aliasing**: past a threshold, apparent
+motion slows, freezes and reverses like a filmed wheel — geometry aliases early (calibrated so the
+default slider is the peak), colour later, and the divergence is deliberate. A one-line on-page note
+says outright that the reversal is a shutter illusion and SHA-3 never runs backwards.
+A **photosensitivity governor** measures real flash pace and clamps luminance excursion under
+WCAG 2.3.1's 3 flashes/second — worst constructible case measures 0 flashes/sec. It honours
+`prefers-reduced-motion`. **This is safety-critical for a room of teenagers: do not weaken it.**
+
+**Step-through** (tick box + STEP / AGAIN under the speed slider): SHA-3 steps one phase, MD5 one
+trace event. SHA-3's AGAIN snapshots and restores state, because its phases mutate permanently
+(π composes slots, ρ accumulates spin) — without that, "repeat" would silently advance.
+
+Run durations: slider 1 ≈ 195s, 50 ≈ 8.1s, 100 ≈ 1.8s, plus a REAL TIME toggle that collapses a run
+to ~22ms and displays the machine's measured per-block time (~1.8µs MD5, ~74µs SHA-3). That readout
+carries an explicit "not a fair race" caveat — the gap is a JS BigInt artefact, not a property of the
+algorithms.
+
+**Source annotation.** The file carries a top-of-file explainer and consistent `[EXACT]` /
+`[FAIRLY ACCURATE]` / `[ANALOGY]` tags throughout, so a reader can tell which visuals are the real
+algorithm and which are teaching aids.
+
+### Test suite — 16 scripts in `tools/`, run them all before merging anything
+`test_md5_trace` · `test_keccak_trace` · `verify_task3_lane_grid` · `verify_task4_sha3_animation` ·
+`verify_task5_md5_registers` · `verify_task6_block_stack` · `verify_task7_input_box` ·
+`verify_task8_collision` · `verify_task9_full_integration` · `verify_task_wiggle_juice` ·
+`verify_flash_safety` · `verify_sha3_aliasing` · `verify_step_through` · `verify_sha3_touch_drag` ·
+`verify_pi_pacing`
+
+The two `test_*` are pure Node (digest parity + trace schema). The rest are Playwright and need a
+served page: `HASH_MODULE_URL="http://localhost:<port>/public/crypto/hash/"`. **Read the serving
+gotcha in `CLAUDE.md` first** — testing a stale checkout has produced a convincing *fake* failure
+more than once. `verify_flash_safety` is slow (~4 min) and is the one that must never be relaxed.
+
+### Known gaps / deliberately parked
+- **Lane-grouping drift**: after round 0, a box's on-screen slot follows its own accumulated π-orbit
+  while its *value* is applied by canonical index, so θ's plane-shake and χ's row-highlight can group
+  boxes that aren't the true mathematical row/column. Tagged `[ANALOGY]` at those sites rather than
+  claimed accurate. Worth a real fix.
+- **The absorb padding lesson**: during absorb the one bright near-face cube is always x=1,y=3,z=7 =
+  `0x80`, the multi-rate pad's terminating bit. Correct, and arguably the best incidental lesson on
+  the page — but nothing tells the student that's what they're seeing.
+- Evenness of π's group stagger is pinned at zero escalation; a long run's escalation pushes it back
+  into the aliased region partway through (by design, but not "even for the whole run").
+- `keccak256WithTrace` is misleadingly named — it computes real FIPS-202 SHA3-256, not pre-standard
+  Keccak-256. Digests are correct; only the identifier is off.
+
+### Build history (condensed)
+Built 2026-08-12 via `docs/superpowers/plans/2026-08-12-hash-visualization.md` (10-task
+subagent-driven build); final review caught a Critical SHA3-256 padding bug (`length % 136 === 135`).
+Redesigned 2026-08-13 via `.../2026-08-12-hash-visualization-redesign.md` after the first visuals
+were judged too thin; that review caught θ and ρ rendering *identically* — the redesign's headline
+goal — plus a CSS `transition` shorthand silently killing pulse decay page-wide. Then an iterative
+feedback loop through 2026-08-13/14 produced the Canvas rebuild, phase controller, aliasing, safety
+governor, step-through and π pacing described above. Specs in `docs/superpowers/specs/`, supporting
+research in `docs/research/`.
 
 ## Module 1 — Caesar set (live, `/crypto/ceasar`) — 6 puzzles
 Dial instrument(s) + alphabet slide-rule + dark mode + solved-ticks. Ramp:
@@ -148,8 +185,35 @@ Then **Module 3 Hashing** (SHA-256 avalanche + crack weak MD5 via embedded table
 - Repo **is** under git now (init 2026-06-25). Commit before large edits.
 
 ## Open / todo
-- [ ] **User: visual pass** — remove redundant inline text boxes, insert real presenter copy across both modules.
-- [ ] **User: swap placeholder reward URLs** (rickrolls) in the Caesar `REWARDS` map for real meme links.
-- [ ] **Module 4 XOR: build C4** (last challenge — spec'd + content node-verified), then user playtest → deploy.
-- [ ] Module 4: optional — make C1 byte-decode show the `⊕ key` step explicitly (user flagged, left for now).
-- [ ] (Optional) richer trollface / tune the Two Faces polyglot target if desired.
+
+**Waiting on the user**
+- [ ] **Multi-page feedback on the older modules** — the user said they were writing structured
+      (XML-tagged) feedback on Modules 1/2/4. It had not arrived when the session ended. Ask for it.
+- [ ] **Visual pass** — remove redundant inline text boxes, insert real presenter copy (Modules 1/2).
+- [ ] **Swap placeholder reward URLs** (rickrolls) in the Caesar `REWARDS` map for real meme links.
+
+**Next build work**
+- [ ] **Module 4 XOR: build C4** — the last challenge. Spec'd + content node-verified in
+      `docs/2026-06-26-module4-xor-spec.md`. Then user playtest → deploy. XOR is still undeployed.
+- [ ] **Desktop micro-themes for the Hashing page** — designed and researched, NOT built. Skin the
+      MD5 panel as Windows 95 and the SHA-3 panel as Windows 7, framed by a fake Proxmox top bar, so
+      "old and busted vs modern" lands without a word. Full specs incl. exact colours, bevel
+      construction, fonts and legal analysis: `docs/research/theme-1995-desktop.md` and
+      `theme-2015-desktop.md`. **Two decisions the user should make before building:** (a) the CS5
+      keygen joke — research recommends keeping the pirated-CS5 gag but dropping the literal
+      warez-tool depiction, since this is school-distributed material for minors; (b) the
+      Half-Life 3 `.zip.exe` gag is a genuine double-extension social-engineering lesson and should
+      probably be promoted from set dressing to a real callout.
+- [ ] **FNAC "lens" floating tool** — brainstorm PARKED mid-design with only Section 1 approved.
+      Resume from `docs/superpowers/specs/2026-08-12-fnac-lens-tool-design.md`, which lists exactly
+      what's decided and what isn't. Don't restart the design from scratch.
+
+**Hashing module — known gaps** (detail in the Module 3 section above)
+- [ ] Lane-grouping drift after round 0 (currently tagged `[ANALOGY]` rather than claimed accurate).
+- [ ] Surface the absorb-padding lesson — the lone bright cube is `0x80` and nothing says so.
+- [ ] Optional: rename `keccak256WithTrace` (it computes SHA3-256, not pre-standard Keccak-256).
+
+**Ideas parked in `docs/ideas-backlog.md`** (not scheduled)
+- Trophy wall + rarity tiers; hash-of-file-as-key challenge; ρ-rotation-as-colour-gradient;
+  the trollface → QR-polyglot → Snake puzzle box (needs its own research pass on whether a max-size
+  QR can even carry a runnable Snake, and on making the win-condition key unforgeable).
