@@ -23,6 +23,7 @@
 // committed state.
 import { chromium } from 'playwright';
 import crypto from 'node:crypto';
+import { assertPageBuild } from './assert_page_build.mjs';
 
 const BASE_URL = process.env.HASH_MODULE_URL || 'http://localhost:8787/public/crypto/hash/';
 const INPUT = 'crypto-101';
@@ -45,6 +46,10 @@ page.on('pageerror', err => consoleErrors.push(String(err)));
 
 await page.goto(BASE_URL + '?v=task4');
 await page.waitForFunction(() => !!window.__sha3Debug, { timeout: 5000 });
+// Prove we are testing the intended checkout before asserting anything about it — see
+// assert_page_build.mjs for the failure this prevents (a stale page turned a missing debug field
+// into a fake "the rho fix has regressed" report).
+await assertPageBuild(page, BASE_URL, ['lanes', 'alias', 'lane.spinTrue', 'lane.spinTarget']);
 await page.click('#algo-next'); // switch to SHA-3
 await page.fill('#input-custom', INPUT);
 await page.locator('#lane-canvas').scrollIntoViewIfNeeded();
@@ -181,17 +186,51 @@ console.log('OK  re-clicking Hash mid-run hard-cancelled the previous run (no le
 
 // ---- per-lane rho rotations differ from one another ----
 const lanes = await page.evaluate(() => window.__sha3Debug.lanes());
-// Read from spinTrue, the UNSCALED accumulated rho angle, rather than from spinTarget, which is
-// now the apparent (aliased) angle the renderer eases toward — see the TEMPORAL ALIASING block.
-// This is the stronger of the two readings: spinTrue is the [FAIRLY ACCURATE] picture of rho's
-// real bit-rotation, so asserting distinctness on it asserts the claim the animation is making,
-// not the claim the shutter is making. (This pass runs at slider 100, where the geometric alias
-// factor is small and negative, so the drawn angles are a scaled-down mirror of these.)
-const spinSet = new Set(lanes.map(l => Math.round((l.spinTrue % 360 + 360) % 360)));
+// ============================================================================================
+//  THE ORIGINAL COMPLAINT: "the dials always point to the same place"
+// ============================================================================================
+//
+// This is the guard on the project's headline visual fix, so it is now checked on BOTH of the two
+// angles the aliasing work introduced, because they can fail independently and only one of them
+// is what the viewer actually sees:
+//
+//   * spinTrue   — the UNSCALED accumulated rho angle. The [FAIRLY ACCURATE] claim the page makes
+//                  about rho's real bit-rotation. If this collapsed, the model is wrong.
+//   * spinTarget — the APPARENT angle the renderer eases toward, i.e. what is on screen once the
+//                  shutter/aliasing factor has been applied. If this collapsed, the picture is
+//                  wrong even though the model is right. THIS is the one the owner's complaint
+//                  was about.
+//
+// EIGHT is the ceiling for the true angles, not a shortfall. After exactly 24 rounds a lane has
+// turned 24 * offset * (360/64) = offset * 135 degrees, and gcd(135, 360) = 45, so every lane's
+// true angle lands on one of the 8 multiples of 45 degrees no matter what its offset is. That is
+// a property of Keccak's rho offsets and the round count, not of this code — do not "fix" it.
+// The APPARENT angles are not quantised that way (the alias factor is re-evaluated per round and
+// the escalation moves it), so they come out 24-25 distinct across the 25 lanes.
+//
+// Measured across the whole slider, on a completed one-block run: true 8 at every position;
+// apparent 25 / 24 / 25 / 25 / 25 at sliders 1 / 18 / 50 / 78 / 100.
+const norm = a => Math.round(((a % 360) + 360) % 360);
+const badTrue = lanes.filter(l => !Number.isFinite(l.spinTrue)).length;
+if (badTrue) throw new Error(`${badTrue} of 25 lanes have a non-numeric spinTrue — the page is not reporting the true rho angle at all`);
+const spinSet = new Set(lanes.map(l => norm(l.spinTrue)));
 if (spinSet.size < 5) {
-  throw new Error(`per-lane rho rotations are not distinct enough: only ${spinSet.size} distinct true angles across 25 lanes`);
+  throw new Error(`per-lane rho rotations are not distinct enough: only ${spinSet.size} distinct true angles across 25 lanes (8 is the maximum after 24 rounds)`);
 }
-console.log(`OK  per-lane rho rotations are genuinely different (${spinSet.size} distinct true angles across 25 lanes)`);
+// ...and the DRAWN angle, which is what "the dials all point the same way" is actually about.
+// Anchored at slider 100 where the geometric alias factor is well away from zero. It CAN
+// legitimately collapse at a setting where the factor passes exactly through zero — that is the
+// apparent freeze, and it is the point of the effect — which is why the invariant above is
+// stated on the true angle and this one is stated at a named speed.
+const aliasGeo = await page.evaluate(() => __sha3Debug.alias().geo);
+const drawnSet = new Set(lanes.map(l => norm(l.spinTarget)));
+if (!(Math.abs(aliasGeo) > 0.02)) {
+  throw new Error(`this check needs a speed where apparent motion is not frozen; alias factor is ${aliasGeo}`);
+}
+if (drawnSet.size < 5) {
+  throw new Error(`the DRAWN per-lane rho angles collapsed: only ${drawnSet.size} distinct across 25 lanes at slider 100 (alias factor ${aliasGeo.toFixed(3)}) — this is the "all the dials point to the same place" defect`);
+}
+console.log(`OK  per-lane rho rotations are genuinely different — ${spinSet.size} distinct TRUE angles (8 is the ceiling after 24 rounds) and ${drawnSet.size} distinct DRAWN angles across 25 lanes, at alias factor ${aliasGeo.toFixed(3)}`);
 
 // ---- lane contents are data-derived: a different input gives a different state ----
 const stateOf = ls => ls.map(l => l.bytes.join(',')).join(';');

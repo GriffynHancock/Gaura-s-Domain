@@ -23,6 +23,7 @@
 //      be co-located, including at the most retrograde warp.
 import { chromium } from 'playwright';
 import crypto from 'node:crypto';
+import { assertPageBuild } from './assert_page_build.mjs';
 
 const BASE_URL = process.env.HASH_MODULE_URL || 'http://localhost:8787/public/crypto/hash/';
 const INPUT = 'crypto-101';
@@ -40,6 +41,10 @@ const check = (label, ok, detail) => {
 
 await page.goto(BASE_URL + '?v=alias' + Date.now());
 await page.waitForFunction(() => !!window.__sha3Debug, { timeout: 8000 });
+// See assert_page_build.mjs: a server started from the wrong checkout serves an older page at a
+// URL that looks perfectly correct, and every assertion below would then be measuring nothing.
+await assertPageBuild(page, BASE_URL,
+  ['alias', 'lanes', 'lane.spinTrue', 'window.sha3AliasFactor', 'window.sha3AliasWarp', 'window.sha3FlashWave']);
 await page.click('#algo-next');   // SHA-3
 await page.locator('#lane-canvas').scrollIntoViewIfNeeded();
 
@@ -136,6 +141,113 @@ check('colour reaches its own aliasing limit too, at the very top of the slider'
       sweep[99].col < 0.5,
       `at slider 100 the colour factor is ${sweep[99].col.toFixed(3)} (geometry ${sweep[99].geo.toFixed(3)})`);
 console.log(`    slider ->  1: geo ${sweep[0].geo.toFixed(3)} col ${sweep[0].col.toFixed(3)} | 50: geo ${sweep[49].geo.toFixed(3)} col ${sweep[49].col.toFixed(3)} | 75: geo ${sweep[74].geo.toFixed(3)} col ${sweep[74].col.toFixed(3)} | 100: geo ${sweep[99].geo.toFixed(3)} col ${sweep[99].col.toFixed(3)}`);
+
+// ============================================================================================
+//  3b. THE DIRECTIONAL SWEEPS MUST SURVIVE THE ALIASING
+// ============================================================================================
+//
+// The owner calls the per-phase directional waves the most valuable thing in the visualisation
+// ("the directional waves of flashing especially need to be preserved, and seeing them disjoint
+// from the spinning would be interesting too"), so they get their own measurement here rather
+// than relying on the axis test in verify_task4 — that one samples sha3FlashWave on UNWARPED
+// progress, which is the right way to pin the axes but says nothing about what the renderer draws
+// once the colour shutter is in play.
+//
+// This measures the RENDER PATH: sha3Render's own expression, sha3FlashWave(type, sha3AliasWarp(
+// fP, sha3AliasCol()), L, k, widen), sampled across a whole phase at the fastest slider setting,
+// where the colour warp swings hardest. Three things have to hold:
+//   * the wave still SWEEPS — its centroid reaches both ends of its axis. Aliasing makes the
+//     traversal non-monotone (it can stall and back up mid-phase, which is the whole effect) but
+//     it must still cover the axis, or the sweep has stopped being a sweep.
+//   * it stays on the SAME axis. The warp reparametrises time; it must not leak into geometry.
+//   * the sweep is DISJOINT from the spin, which is the divergence the owner likes: at this
+//     setting the colour and geometry shutters are at different points on their curves.
+const sweeps = await page.evaluate(() => {
+  document.getElementById('speed-slider').value = '100';
+  const aCol = sha3AliasCol(), aGeo = sha3AliasGeo();
+  const lanes = sha3.lanes;
+  const K = SHA3_SUBS_PER_LANE;
+  const out = { aCol, aGeo, phases: {} };
+  for (const type of ['theta', 'rho', 'pi', 'chi', 'iota']) {
+    const track = [];
+    for (let i = 0; i <= 120; i++) {
+      const p = i / 120;
+      const w = sha3AliasWarp(p, aCol);          // exactly what sha3Render feeds sha3FlashWave
+      let sx = 0, sy = 0, tot = 0, lit = new Set();
+      for (const L of lanes) for (let k = 0; k < K; k++) {
+        const a = sha3FlashWave(type, w, L, k, 1);
+        if (a <= 1e-6) continue;
+        sx += a * L.cx; sy += a * L.cy; tot += a;
+        if (a > 0.25) lit.add(`${L.cx},${L.cy}`);
+      }
+      // rho is PER LANE by construction — every lane rides its own 64-bit ring at its own offset,
+      // so an assembly-wide depth centroid averages 25 out-of-step waves into nothing and says
+      // precisely zero about whether rho sweeps. Sample ONE lane, and on a CIRCULAR mean, because
+      // rho's wave wraps and an arithmetic centroid is biased to the middle whenever the band
+      // straddles the seam. (Same treatment the axis test in verify_task4 gives it.)
+      let zAng = null;
+      if (type === 'rho') {
+        const L0 = sha3LaneAt(2, 3);
+        let sn = 0, cs = 0;
+        for (let k = 0; k < K; k++) {
+          const a = sha3FlashWave('rho', w, L0, k, 1), th = 2 * Math.PI * (k / (K - 1));
+          sn += a * Math.sin(th); cs += a * Math.cos(th);
+        }
+        zAng = Math.atan2(sn, cs);
+      }
+      if (tot > 1e-6) track.push({ p, w, x: sx / tot, y: sy / tot, zAng, lanes: lit.size });
+    }
+    const span = key => ({ min: Math.min(...track.map(t => t[key])), max: Math.max(...track.map(t => t[key])) });
+    // How much of rho's ring the single sampled lane's wave actually travels, in turns: sum the
+    // absolute angular steps (shortest way round) over the phase.
+    let ringTurns = 0;
+    if (type === 'rho') {
+      for (let j = 1; j < track.length; j++) {
+        let d = track[j].zAng - track[j - 1].zAng;
+        while (d > Math.PI) d -= 2 * Math.PI;
+        while (d < -Math.PI) d += 2 * Math.PI;
+        ringTurns += Math.abs(d) / (2 * Math.PI);
+      }
+    }
+    // pi's swirl is measured on the same x-y centroid; z is not sampled because pi provably does
+    // not touch it (the wave function has no k term for pi — pinned in verify_task4).
+    out.phases[type] = { n: track.length, x: span('x'), y: span('y'), ringTurns,
+                         maxLanes: Math.max(...track.map(t => t.lanes)),
+                         // is the traversal non-monotone? (i.e. did the shutter make it back up)
+                         reversals: track.reduce((n, t, i) => n + (i > 1 &&
+                            Math.sign(t.x - track[i - 1].x) !== 0 &&
+                            Math.sign(t.x - track[i - 1].x) === -Math.sign(track[i - 1].x - track[i - 2].x) ? 1 : 0), 0) };
+  }
+  document.getElementById('speed-slider').value = '50';
+  return out;
+});
+const AX = 4;   // the lattice is 5 lanes across, so a full x/y sweep spans 0..4
+const th = sweeps.phases.theta, ch = sweeps.phases.chi, rh = sweeps.phases.rho,
+      pi = sweeps.phases.pi, io = sweeps.phases.iota;
+check('theta still sweeps the full x axis as a PLANE, under the colour shutter',
+      th.x.min < 0.6 && th.x.max > AX - 0.6 && (th.y.max - th.y.min) < 0.2 && th.maxLanes >= 5,
+      `x ${th.x.min.toFixed(2)}..${th.x.max.toFixed(2)}, y excursion ${(th.y.max - th.y.min).toFixed(3)}, up to ${th.maxLanes} lanes lit at once`);
+// chi runs as FIVE INDEPENDENT PER-ROW RACES, deliberately staggered so it cannot be mistaken for
+// a y sweep. The consequence is that its assembly-wide centroid does wander in y — different rows
+// are lit at different moments — so the meaningful statement is that x is traversed END TO END,
+// which a y-sweep could never do. (verify_task4 pins the x-versus-y distinction itself, on
+// unwarped progress; this only has to show the traversal survives the shutter.)
+check('chi still sweeps the full x axis end to end (five staggered per-row races)',
+      ch.x.min < 0.8 && ch.x.max > AX - 0.8,
+      `x ${ch.x.min.toFixed(2)}..${ch.x.max.toFixed(2)} (y centroid wanders ${(ch.y.max - ch.y.min).toFixed(2)} because the five rows race independently, by design)`);
+check('rho still travels the 64-bit ring along z, per lane, and moves the lattice not at all',
+      rh.ringTurns > 0.8 && (rh.x.max - rh.x.min) < 0.25 && (rh.y.max - rh.y.min) < 0.25,
+      `lane (2,3)'s wave travels ${rh.ringTurns.toFixed(2)} turns of its ring across the phase; assembly x excursion ${(rh.x.max - rh.x.min).toFixed(3)}, y ${(rh.y.max - rh.y.min).toFixed(3)}`);
+check('pi still swirls in x-y',
+      (pi.x.max - pi.x.min) > 0.5 && (pi.y.max - pi.y.min) > 0.5,
+      `x excursion ${(pi.x.max - pi.x.min).toFixed(2)}, y excursion ${(pi.y.max - pi.y.min).toFixed(2)}`);
+check('iota is still a point flash on lane (0,0) only',
+      io.maxLanes === 1 && io.x.max < 1e-9 && io.y.max < 1e-9,
+      `${io.maxLanes} lane lit, centroid held at (${io.x.max.toFixed(3)}, ${io.y.max.toFixed(3)})`);
+check('...and the sweep is visibly DISJOINT from the spin (the divergence the owner asked for)',
+      Math.abs(sweeps.aCol - sweeps.aGeo) > 0.03 && Math.sign(sweeps.aCol) !== 0,
+      `at slider 100 the colour shutter is at ${sweeps.aCol.toFixed(3)} while the geometry shutter is at ${sweeps.aGeo.toFixed(3)}`);
+console.log(`    theta reverses direction ${th.reversals}x mid-sweep under the shutter, chi ${ch.reversals}x — the wave stalls and backs up, but still covers its whole axis`);
 
 // ============================================================================================
 //  4a. THE WARP — exact endpoints, bounded, and NO TWO LANES EVER CO-LOCATED
