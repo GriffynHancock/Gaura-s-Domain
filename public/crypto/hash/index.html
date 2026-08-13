@@ -2430,6 +2430,8 @@ const SHA3_PACE_FULL_MS = 45;    // ...at this spacing, full tweening/smoothing/
 // "slider 1 is never attenuated" guarantee is untouched: there is nothing to release from,
 // because a run reached from rest has no attenuation in force to begin with.
 const SHA3_PACE_RELEASE_MS = 600;
+// ...and how recently the previous run must have been painting for a release to apply at all.
+const SHA3_PACE_RELEASE_IDLE_MS = 400;
 const sha3Pace = {
   last: 0, ema: 1e9, relFrom: 0, relUntil: 0,
   note(now) {
@@ -2443,8 +2445,14 @@ const sha3Pace = {
   },
   reset() {
     // relFrom is read BEFORE the average is cleared — it is what the attenuation was, not what it
-    // becomes. Zero on a run reached from rest, so nothing is released in that case.
-    this.relFrom = this.share();
+    // becomes. And it only applies when the previous run was STILL IN FLIGHT: that is the whole
+    // case this exists for (Hash pressed over a run that is still going), and it is the only case
+    // where the attenuation being released is a live measurement rather than a stale one. A run
+    // started from a lattice that has been sitting still has nothing to release, so it opens
+    // completely un-attenuated exactly as it always did — which is what keeps the slow end's
+    // "the governor never engages at slider 1" guarantee intact.
+    const idle = performance.now() - this.last;
+    this.relFrom = (this.last && idle < SHA3_PACE_RELEASE_IDLE_MS) ? this.share() : 0;
     this.relUntil = performance.now() + SHA3_PACE_RELEASE_MS;
     this.last = 0; this.ema = 1e9;
   },
@@ -2610,7 +2618,10 @@ function sha3SolveCaps() {
     let tlo = 0, thi = 1;
     for (let i = 0; i < 40; i++) {
       const m = (tlo + thi) / 2;
-      if (Math.abs(lumOf(mixRgb(brightest, col, m)) - L0) > SHA3_SAFE_TINT_EXCURSION) thi = m; else tlo = m;
+      // sha3TintAt, not mixRgb: the renderer renormalises the tint back onto the pre-tint
+      // luminance, so solving against a plain mix would solve for a tint the page never draws
+      // and hand back a cap far tighter than the drawn colours need.
+      if (Math.abs(lumOf(sha3TintAt(brightest, col, m)) - L0) > SHA3_SAFE_TINT_EXCURSION) thi = m; else tlo = m;
     }
     if (tlo < tintCap) tintCap = tlo;
   }
@@ -2757,6 +2768,28 @@ function mixRgb(a, b, t) { return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+
 // edge identity channel in sha3Render). Not a photometric measurement: relLum, which gamma-decodes
 // first, is what the flash governor and the offline analysis use for anything safety-bearing.
 function lumaProxy(c) { return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
+// Mix `c` toward `hue` by `t`, then scale the result back onto c's own apparent brightness — a
+// CHROMA-ONLY tint. Used for the phase tint and for the box outlines, both of which have to carry
+// identity without spending any of the luminance budget the flash governor bounds. See the call
+// sites for the measurements that made this necessary in each case.
+// Matched on relLum — the same gamma-decoded quantity WCAG defines a transition in, and the same
+// one the governor and the offline pixel analysis measure — not on the cheap linear proxy. The
+// proxy was tried first and is not good enough here: a 0.62-deep tint matched on it still moved
+// real relative luminance by enough to register as a transition, which is precisely the failure
+// this is supposed to remove. A short Newton-ish bisection on the scale factor costs a handful of
+// pow() calls per cube per frame and buys a tint that is invisible to the flash detector.
+function sha3TintAt(c, hue, t) {
+  const m = mixRgb(c, hue, t);
+  const L0 = relLum(c[0], c[1], c[2]);
+  let lo = 0, hi = 2;
+  for (let i = 0; i < 12; i++) {
+    const k = (lo + hi) / 2;
+    const l = relLum(Math.min(255, m[0] * k), Math.min(255, m[1] * k), Math.min(255, m[2] * k));
+    if (l > L0) hi = k; else lo = k;
+  }
+  const k = (lo + hi) / 2;
+  return [Math.min(255, m[0] * k), Math.min(255, m[1] * k), Math.min(255, m[2] * k)];
+}
 function rgbCss(c, mul) {
   const m = mul === undefined ? 1 : mul;
   const cl = v => Math.max(0, Math.min(255, Math.round(v * m)));
@@ -3273,7 +3306,25 @@ function sha3Render(opts) {
       if (!L.hiS) L.hiS = new Float64Array(SHA3_SUBS_PER_LANE);
       L.hiS[k] = smooth >= 1 ? hiRaw : L.hiS[k] + (hiRaw - L.hiS[k]) * smooth;
       const hi = L.hiS[k];
-      if (fTint > 0) base = mixRgb(base, fTintCol, fTint);
+      // THE PHASE TINT, applied at CONSTANT LUMINANCE.
+      //
+      // This is what lets the tint be as dominant as it now is. A plain mix toward a phase hue
+      // moves luminance as well as chroma — teal and oxblood are not equally bright, and the
+      // hue cross-fades from one phase to the next — so at depth 0.62 the tint became a
+      // luminance oscillation once per phase in its own right. Measured: at slider 25, with the
+      // phases arriving a comfortable 353ms apart, the tint alone drove the governor's luminance
+      // detector past its 3Hz trip point inside the first second, and the governor then clamped
+      // the tint back to about its OLD depth. The prominence the owner asked for existed only at
+      // the very slow end, and the machinery that took it away was measuring something real.
+      //
+      // Renormalising the mix back onto the pre-tint luminance removes the cause rather than
+      // arguing with the limiter: the tint now changes only WHICH colour a cube is, never how
+      // bright it is, so it cannot produce a luminance transition at any depth or any rate. That
+      // also restores the file's own stated split — hue and brightness on separate channels, with
+      // the travelling wavefront the only thing that moves luminance — which the deep tint had
+      // quietly broken. sha3SolveCaps models the same renormalisation, so the solved tint cap
+      // describes what is actually drawn.
+      if (fTint > 0) base = sha3TintAt(base, fTintCol, fTint);
       // THE EDGE IDENTITY CHANNEL. The fill above is now washed hard toward the phase hue, which
       // compresses the rate/capacity warmth gap by (1-t). The hairline outline is pulled back
       // toward the lane's OWN untinted material instead, so it retains SHA3_EDGE_IDENTITY of the
@@ -3288,10 +3339,7 @@ function sha3Render(opts) {
       // Scaling the rim back onto the fill's own luminance makes this a pure CHROMA channel: it
       // says which family the box belongs to and contributes nothing whatever to how bright
       // anything is, so it costs the photosensitivity governor exactly zero.
-      const edgeMix = mixRgb(base, laneCol, SHA3_EDGE_IDENTITY);
-      const edgeY = lumaProxy(edgeMix);
-      const kEdge = edgeY > 1e-6 ? lumaProxy(base) / edgeY : 1;
-      const edge = [edgeMix[0] * kEdge, edgeMix[1] * kEdge, edgeMix[2] * kEdge];
+      const edge = sha3TintAt(base, laneCol, SHA3_EDGE_IDENTITY);
       // Read-only instrumentation for the regression scripts (same role as facesDrawn/lastBlur):
       // the material colour and highlight of this lane's middle cube, AFTER the phase tint, plus
       // the outline colour drawn from it, so a test can prove the rate/capacity split survives
@@ -3821,9 +3869,15 @@ function sha3Play(trace, onDone) {
     // owns the release, and it must always be able to reach a genuinely opaque wipe.
     if (sha3.wipeA === undefined) sha3.wipeA = 1;
     const wipeTarget = blurAlpha > 0 ? blurAlpha : 1;
-    sha3.wipeA = wipeTarget >= sha3.wipeA
-      ? wipeTarget
-      : sha3.wipeA + (wipeTarget - sha3.wipeA) * (1 - Math.exp(-dt / SHA3_BLUR_ATTACK_TAU));
+    // ...and ONLY while the run is opening (sha3.resetEase). Filtering it for the whole run was
+    // tried and made things worse mid-run: every pi phase starts a fresh trail from an opaque
+    // wipe, and holding the wipe near-opaque for the first few frames of pi stops it smearing
+    // the transit's own geometry change, which measured as a LARGER step than not filtering at
+    // all. At a re-click the filter is a no-op by construction — wipeA is already deep, because
+    // it persists across runs, so there is nothing to ramp.
+    sha3.wipeA = (sha3.resetEase > 0 && wipeTarget < sha3.wipeA)
+      ? sha3.wipeA + (wipeTarget - sha3.wipeA) * (1 - Math.exp(-dt / SHA3_BLUR_ATTACK_TAU))
+      : wipeTarget;
     blurAlpha = sha3.wipeA >= 0.995 ? 0 : sha3.wipeA;   // 0 is how sha3Render spells "opaque"
     sha3Render({ blur: blurAlpha });
 
