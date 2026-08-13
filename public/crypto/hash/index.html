@@ -1,3 +1,78 @@
+<!--
+  ============================================================================================
+  WHAT THIS PAGE IS
+  ============================================================================================
+  This is a browser-based teaching tool about hashing: turning any input (text, a picture, a
+  whole file) into a short, fixed-length fingerprint. Type or pick something on the left, choose
+  MD5 or SHA-3 (a 128-bit and a 256-bit hash algorithm — "128/256-bit" just means the fingerprint
+  is always that many bits long, however long the input was), press Hash, and watch the internal
+  steps play out as an animation: the input gets padded out to a round number of bits, cut into
+  fixed-size chunks, and each chunk is chewed through many rounds of bit-shuffling arithmetic
+  that combines it with a running "state" carried over from the chunk before it. The two
+  algorithms shown are genuinely different families under the hood — MD5 (1992, broken, kept
+  here specifically so you can see it break: scroll to the collision demo) and SHA-3 (2015,
+  currently considered strong) — so the two animations look different on purpose, not because
+  one is a simplified version of the other.
+
+  HOW REAL THIS IS. Every digest (the hex string in the Output box) shown on this page is
+  computed by a from-scratch JavaScript implementation of the real, specified algorithm — MD5
+  per RFC 1321, SHA-3-256 per FIPS 202 — written out in full below and run live by your browser's
+  JS engine. Every digest here has been checked against Python's hashlib and Node's crypto library
+  while this page was built, including tricky boundary cases (inputs that land exactly on a
+  padding boundary). Given the same input twice, you always get the same fingerprint; change even
+  one character, and the fingerprint comes out looking completely unrelated — that
+  unpredictable-looking scrambling is the "avalanche effect" and is a deliberate design goal of
+  every real hash function, not a side effect.
+
+  WHY THIS PAGE DOESN'T USE THE BROWSER'S OWN CRYPTO. To be clear, browsers do ship a real,
+  fast, audited cryptography library built in — it's called the Web Crypto API, and its hashing
+  corner is an object called SubtleCrypto (the actual call is `crypto.subtle.digest()`); search
+  either of those two terms if you want to read the real spec yourself. It genuinely does hashing
+  (SHA-1, SHA-256, SHA-384, SHA-512), plus encryption, digital signing and key generation, and
+  it's the thing you would actually reach for in production code — never hand-rolled JavaScript
+  like the code in this file. This page doesn't call it for two reasons that both matter: first,
+  it simply doesn't support the two algorithms this page teaches — MD5 was deliberately left out
+  of the spec because it's broken, and SHA-3 was never added at all; second, even for an algorithm
+  it DOES support, SubtleCrypto only ever hands back the finished digest — it has no way to expose
+  the round-by-round internal state (the register values, the lane grid) that this page's
+  animation needs to show. Writing the algorithms out by hand is the right call for a teaching
+  visualization that needs to show its own working, and the wrong call for anything that actually
+  needs to keep secrets safe — for that, always use the browser's real Web Crypto API (or an
+  equivalent audited library), never a hand-rolled implementation like this one.
+
+  WHAT'S EXACT VS. WHAT'S A TEACHING PICTURE. Not everything you see is literally the maths.
+  Three tags appear throughout this file's comments (and are used consistently, so you can search
+  for them):
+    [EXACT]          — this is the real specified algorithm/constant/value, computed for real.
+                        Nothing is faked or approximated; it is exactly what the standard defines.
+    [FAIRLY ACCURATE] — a deliberate, clearly-labelled simplification of something real, made for
+                        legibility. The page always says in plain text where the simplification
+                        is (e.g. "one drawn cube stands for 8 real bits", "this highlight shows
+                        one representative row per round"); it is never silently implied.
+    [ANALOGY]        — presentation only: colour, motion, shake/wiggle, timing/pacing, camera
+                        angle, "juice" (the escalating flashiness the longer a hash runs). None of
+                        this is part of any specification. It exists to make the invisible bit-math
+                        legible and satisfying to watch, and it carries no cryptographic meaning by
+                        itself — it is game-feel and legibility engineering layered on top of exact
+                        math, not part of that math.
+  A quick map: the bit-level arithmetic (padding lengths, round constants, shift amounts, the
+  Keccak permutation's rho/pi/theta/chi/iota formulas, the real published MD5 collision pair) is
+  [EXACT]. The geometry used to DRAW the SHA-3 internal state (a 5x5 grid of 64-bit "lanes", each
+  drawn as a stack of 8 small cubes instead of 64) is [FAIRLY ACCURATE] — real, but coarsened for
+  legibility, and stated as such on the page. The wiggle, glow, colour ramp, camera shake, and
+  pacing that make the animation feel alive as a hash runs longer are [ANALOGY] — real hashing has
+  none of that; it is silent, instant (microseconds — this page even measures and displays that),
+  and invisible.
+
+  STRUCTURE OF THIS FILE. One dependency-free static HTML file: inline <style> for all visual
+  design, then markup for the controls (Input / Algorithm / Output boxes), the two animated
+  diagrams (one for MD5, one for SHA-3 — only one is shown at a time), a hash-history log, an MD5
+  collision demonstration, and a "real time" benchmark panel; then one inline <script> holding (in
+  order) the two real algorithm implementations, the preset/input system, the history log, the
+  shared animation-timing engine, the MD5 diagram renderer, the SHA-3 Canvas 2D renderer and its
+  animation-phase controller, the hashing-speed benchmark, and the collision-demo wiring.
+  ============================================================================================
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,6 +84,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root{
+    /* Base warm-editorial colour tokens: bone/paper background, oxblood accent, amber gold,
+       green "ok". [ANALOGY] — house style, carries no meaning about the maths. */
     --bg:#e7dec9; --panel:#efe7d3; --panel2:#e2d8be; --edge:#cdc09f;
     --ink:#241f17; --dim:#7c7259;
     --accent:#b23a26; --gold:#a9772a; --ok:#3f7d52;
@@ -17,7 +94,10 @@
        renderer's per-phase highlight. Three are reused straight from the existing palette
        (rho=gold, pi=accent/oxblood, chi=ok/green); theta and iota are the two genuinely new
        hues the palette didn't already carry, chosen to sit in the same muted, warm-editorial
-       register rather than as pure saturated primaries. Redefined in the dark block below. */
+       register rather than as pure saturated primaries. Redefined in the dark block below.
+       [ANALOGY] — which named step gets which colour is an arbitrary legibility choice; SHA-3
+       itself has no colours. WHICH FIVE STEPS EXIST, and that exactly one runs at a time in a
+       fixed order (theta, rho, pi, chi, iota, 24 times), is [EXACT] — see keccakF1600WithTrace. */
     --ph-theta:#2c6f80; --ph-rho:#a9772a; --ph-pi:#b23a26; --ph-chi:#3f7d52; --ph-iota:#7a4e9c;
     --disp:"Fraunces",Georgia,serif; --ui:"Hanken Grotesk",system-ui,sans-serif;
     --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
@@ -142,11 +222,16 @@
     gap:4px; min-width:180px; filter:brightness(1);
     transition:border-color .2s, box-shadow .2s, filter 1.2s ease-out}
   .stage-box .sample{font-family:var(--mono); font-size:.72rem; color:var(--dim); min-height:1.2em; word-break:break-all}
+  /* .active = "this stage of the algorithm is happening right now" — [FAIRLY ACCURATE]: the
+     stage boundary itself (pad / split / one block or round / output) is real and drawn from the
+     trace, but the glowing-ring flash is a legibility cue, not something the algorithm does. */
   .stage-box.active{border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
     animation:hashPulse .6s ease-out}
   /* "top up, don't reset" pulse (Task 6): add .pulse for a fast brightness spike, then remove it
      two frames later so the box's own slower base transition above carries brightness back down —
-     re-triggering mid-decay just restarts the decay from wherever brightness currently is. */
+     re-triggering mid-decay just restarts the decay from wherever brightness currently is.
+     [ANALOGY] — a UI convention used everywhere in this file for "something just changed here";
+     it has nothing to do with the maths. Every ".pulse" rule below shares this same idea. */
   .stage-box.pulse{filter:brightness(1.7); transition:filter .06s ease-out}
   /* Glow-saturation escalation, scoped to the block chain so the Pad/Split/Output stage boxes
      (which are .active as well as .pulse, and whose .active ring must survive a pulse) keep
@@ -296,6 +381,11 @@
   .phase-box.active .ph-name{ color:var(--ph-col); }
   .cube-legend{ font-family:var(--mono); font-size:.62rem; color:var(--dim); display:flex; gap:10px;
     flex-wrap:wrap; justify-content:center; }
+  /* Gold = "rate" lanes (the 17 lanes the input is actually XORed into and the output is read
+     back out of — the part of the state that's ever exposed to the outside world), grey/dim =
+     "capacity" lanes (the 8 lanes that are never written to or read from directly — SHA-3's
+     hidden security margin). [EXACT] which 17 of the 25 lanes are which — see KECCAK_RATE_LANES,
+     derived from the real 136-byte rate. The gold/grey colour choice itself is [ANALOGY]. */
   .legend-rate::before{ content:'■ '; color:var(--gold); }
   .legend-capacity::before{ content:'■ '; color:var(--dim); }
   .round-counter{ font-family:var(--mono); font-size:.7rem; color:var(--dim); }
@@ -366,7 +456,16 @@
       one bit, and the whole fingerprint changes beyond recognition.</p>
   </header>
 
+  <!-- The three control boxes: WHAT to hash, WHICH algorithm, and WHAT CAME OUT. Nothing here
+       runs any hashing itself — these just gather the bytes and settings that get handed to the
+       real algorithm functions (md5WithTrace / keccak256WithTrace, in the script below) once
+       "Hash" is clicked. -->
   <div class="hash-row">
+    <!-- Input: either free-typed text (#input-custom) or one of the fixed PRESETS (letters,
+         look-alike Cyrillic letter, invisible whitespace, a public-domain text file, a photo, or
+         the two real MD5-collision messages) cycled with the arrows and shown read-only in
+         #input-preset-display. Whatever is selected here becomes the exact byte sequence fed to
+         the real hash function — see getActiveInputBytes() below. -->
     <div class="box" id="input-box">
       <div class="box-title">Input</div>
       <button class="arrow-btn" id="input-prev" aria-label="Previous input preset">&#9664;</button>
@@ -374,6 +473,10 @@
       <div id="input-preset-display" class="preset-display"></div>
       <button class="arrow-btn" id="input-next" aria-label="Next input preset">&#9654;</button>
     </div>
+    <!-- Algorithm picker (MD5 or SHA-3) and the button that starts a real hash + its animation.
+         #speed-slider only changes how slowly the ANIMATION plays afterwards — it does not touch
+         the actual computation, which always runs first, all at once, well under a millisecond
+         (see the "Real time" panel near the bottom of the page, which measures this directly). -->
     <div class="box" id="algo-box">
       <div class="box-title">Algorithm</div>
       <button class="arrow-btn" id="algo-prev" aria-label="Previous algorithm">&#9664;</button>
@@ -382,6 +485,10 @@
       <button id="hash-btn">Hash</button>
       <input type="range" id="speed-slider" min="1" max="100" value="50" aria-label="Animation speed">
     </div>
+    <!-- Output: the real digest (fingerprint) computed by md5WithTrace/keccak256WithTrace, its
+         bit length, and (only for the two collision-demo presets) a note that this input shares
+         its digest with another one. This text is written by JS only once the animation
+         finishes — it is the true result, not a placeholder that gets swapped in for effect. -->
     <div class="box" id="output-box">
       <div class="box-title">Output</div>
       <div id="output-digest">&mdash;</div>
@@ -390,7 +497,17 @@
     </div>
   </div>
 
+  <!-- The two animated diagrams. Only one is visible at a time (showDiagramFor toggles
+       display:none); which one is showing follows the Algorithm picker above. Both diagrams
+       reuse some of the same element ids (hash-box-pad / hash-box-output) for stages that mean
+       the same conceptual thing in either algorithm — deliberate, see pulseBox's comment in the
+       script for how the code copes with looking up a duplicate id safely. -->
   <div class="animation-box" id="animation-box">
+    <!-- MD5 diagram: Pad -> Split into 512-bit blocks -> a Z-stacked deck of block cards (one per
+         real 512-bit chunk, rendered by renderMd5BlockChain) -> Output state. Each card shows
+         MD5's four 32-bit working registers A/B/C/D and which of the four round functions
+         F/G/H/I is currently active — this is the real per-round state, not a mock-up; see
+         updateMd5RegisterView. [EXACT] stage sequence and register values. -->
     <div class="diagram" id="diagram-md5">
       <div class="stage-box" id="hash-box-pad"><span class="box-title">Pad</span><span class="sample"></span></div>
       <div class="flow-arrow"></div>
@@ -401,6 +518,11 @@
       <div class="flow-arrow"></div>
       <div class="stage-box" id="hash-box-output"><span class="box-title">Output state</span><span class="sample"></span></div>
     </div>
+    <!-- SHA-3 diagram: Pad -> Split into rate-blocks ("absorb" — see #cube-note below for what
+         rate/capacity mean) -> the 3D lattice of the internal state, animated round by round ->
+         Squeeze (reading the digest back out) -> Output. The lattice is a Canvas 2D scene, not
+         DOM/CSS 3D — see the "SHA3_..." constants and sha3Render in the script for why, and for
+         the [EXACT]/[FAIRLY ACCURATE]/[ANALOGY] breakdown of exactly what the geometry shows. -->
     <div class="diagram" id="diagram-sha3" style="display:none">
       <div class="stage-box" id="hash-box-pad"><span class="box-title">Pad</span><span class="sample"></span></div>
       <div class="flow-arrow"></div>
@@ -410,15 +532,36 @@
         <!-- Task 7 populates one absorb-flow arrow per real rate-block here -->
       </div>
       <div class="cube-wrap" id="cube-wrap">
+        <!-- The animated internal "state": SHA-3 keeps 1600 bits of scratch space (organised as a
+             5x5 grid of 64-bit "lanes") that it mixes for 24 rounds per block of input. This
+             canvas draws that state as a lattice of small cubes; brightness of a cube = how many
+             of the 8 real bits it stands for are 1 (see the honesty note below the canvas). -->
         <canvas id="lane-canvas" width="560" height="360"
           aria-label="The Keccak state: 5 by 5 lanes of 64 bits, drawn as a lattice of small cubes. Drag to rotate."></canvas>
+        <!-- Gold vs grey = rate vs capacity, the two halves of the state. Rate lanes are the ones
+             the input is actually XORed into and the digest is read back out of; capacity lanes
+             are never touched directly by input or output — they're SHA-3's hidden security
+             margin. [EXACT] which lanes are which (17 rate / 8 capacity, matching the real
+             136-byte rate for SHA3-256); the colour choice itself is [ANALOGY]. -->
         <div class="cube-legend">
           <span class="legend-rate">rate — exposed (17 lanes)</span>
           <span class="legend-capacity">capacity — hidden (8 lanes)</span>
         </div>
         <!-- Honesty note, required on the page and not just in a code comment: the state really is
              5x5x64 bits. We draw 8 cubes per lane, not 64, and each drawn cube stands for 8 real
-             bits — that reduction is stated here, never silently implied. -->
+             bits — that reduction is stated here, never silently implied.
+             [FAIRLY ACCURATE]: the 8-cubes-per-lane simplification is exactly what it says — real,
+             but coarsened, and disclosed. The rho-rotation and pi-shuffle CLAIMS in this text are
+             [EXACT] (see keccakF1600WithTrace / KECCAK_RHO_OFFSETS / KECCAK_PI_LANE_MAP): pi truly
+             is an order-24 permutation of the 25 lane positions (its underlying 2x2 matrix over
+             the integers mod 5 has multiplicative order exactly 24 — not a coincidence of this
+             implementation, a property of the standard's pi step). What the note does NOT claim,
+             and which is worth knowing: the visual mapping from "which lane is drawn where on
+             screen" can drift out of alignment with "which 5 lanes make up a real mathematical
+             row/column" after the first round, because each drawn box keeps following its own
+             accumulated on-screen path rather than snapping back to a strict grid every round —
+             see the θ/χ comments on sha3StartPhase in the script for the full explanation; this is
+             flagged [ANALOGY] there and in this task's report, not asserted as true onscreen. -->
         <div class="cube-note" id="cube-note">
           The real state is <strong>5 × 5 lanes × 64 bits</strong> = 1600 bits. Each lane is drawn here as
           <strong>8 small cubes</strong>, so <strong>one cube = 8 real bits</strong>: bright = mostly 1s, dark = mostly 0s.
@@ -427,6 +570,14 @@
           <br>π shuffles the 25 lanes every round. Its shuffle happens to come full circle after exactly 24 rounds,
           so the lattice ends a run back in its starting arrangement — it went all the way around, it was not undone.
         </div>
+        <!-- The five named steps of one Keccak-f round, lit up one at a time in the fixed order
+             theta -> rho -> pi -> chi -> iota, 24 times per rate-block absorbed. In plain terms:
+             theta mixes each column of the grid into every lane in it; rho rotates each lane's own
+             64 bits by a fixed, lane-specific amount; pi moves every lane to a new grid position;
+             chi is the only NON-LINEAR step (the one step you can't undo by just XORing something
+             back — this is most of where a hash's one-way-ness comes from); iota breaks any
+             leftover symmetry between rounds by XORing a different constant into one lane each
+             round, so round 3 doesn't just look like round 1 repeated. [EXACT] — real Keccak-f. -->
         <div class="phase-row" id="sha3-phase-row">
           <div class="phase-box" id="phase-theta" style="--ph-col:var(--ph-theta)">
             <span class="ph-glyph">θ</span><span class="ph-name">theta</span><span class="ph-what">mix columns</span></div>
@@ -448,8 +599,19 @@
     </div>
   </div>
 
+  <!-- Rolling log of the last 5 hashes run on this page (any algorithm, any input), newest
+       first. Its real teaching job is to make hash COLLISIONS visible: if two different inputs
+       land in this list with the exact same algorithm+digest, that is flagged. Populated by
+       renderHistory() in the script; see fnvId() there for an important caveat — the "different
+       input" check used here is a fast, NON-cryptographic identifier and isn't part of the hash
+       demo itself. -->
   <div id="history-list"></div>
 
+  <!-- The MD5 collision demo: two DIFFERENT real byte strings (published by Wang & Rescorla,
+       2004/2005) that MD5 maps to the exact same 128-bit digest. [EXACT] — both messages and both
+       digests are the real published collision, recomputed live by this page's own MD5
+       implementation, not hard-coded results. This is the concrete payoff of "MD5 is broken":
+       a real attacker can build two different files that hash identically. -->
   <details class="collision-panel">
     <summary>MD5 collision demo — two different real messages, one digest</summary>
     <div class="collision-cols">
@@ -466,6 +628,12 @@
     <div id="collision-verdict"></div>
   </details>
 
+  <!-- Real-time speed switch: measures how long this page's own MD5/SHA-3 code actually takes to
+       run on THIS machine, with the animation/trace switched off, and reports that alongside how
+       long the on-screen animation just took — so the reader can see, as a real measured ratio,
+       just how much the animation is slowing things down for legibility. [EXACT] measurement of
+       this page's own JS; NOT a benchmark of optimised/hardware hashing, which is faster still —
+       the panel's own text says so. See runHashBenchmark/renderRealTimeReadout in the script. -->
   <div class="realtime-panel">
     <div class="rt-head">
       <span class="rt-title">Real time</span>
@@ -487,10 +655,47 @@
   </div>
 </div>
 <script>
+// ============================================================================================
+// ALGORITHM CORE — the real, from-scratch MD5 and SHA-3-256 implementations. Everything in this
+// section is [EXACT]: real algorithms, real constants, computed for real, checked against
+// Python's hashlib / Node's crypto during development. Nothing here is faked or looked up from a
+// table of pre-computed answers. `noTrace` (used by the speed benchmark far below) only turns off
+// the extra bookkeeping that feeds the animation — it never changes the arithmetic, and the two
+// modes are asserted to produce identical digests.
+//
+// (tools/extract_hash_core.mjs pulls this whole section out of the page by searching for the
+// literal text of this section's opening function and the literal text of the theme-toggle
+// comment two sections down, so its own test suite can run it in Node — do not duplicate either
+// of those two literal marker strings anywhere else in this file, or extraction silently grabs
+// the wrong range.)
+// ============================================================================================
+
+// strToBytes: turn a JS text string into the actual sequence of bytes a hash function eats — text
+// isn't bytes until you pick an ENCODING; this uses UTF-8, the same encoding (near enough)
+// everything on the modern web uses, so typing an emoji or accented letter hashes the same bytes
+// it would anywhere else. hexToBytes: the reverse direction, for byte strings given as hex (used
+// for the fixed-hex presets and the MD5 collision demo below). toHex32: format one 32-bit MD5
+// working-register value as 8 lowercase hex digits, least-significant byte first (see the
+// little-endian note further down) — this is what turns raw 32-bit numbers into the hex text
+// you see in the register boxes and the final digest.
 function strToBytes(s) { return [...new TextEncoder().encode(s)]; }
 function hexToBytes(h) { const a=[]; for (let i=0;i<h.length;i+=2) a.push(parseInt(h.substr(i,2),16)); return a; }
 function toHex32(w) { let s=''; for (let i=0;i<4;i++) s += ((w>>>(8*i))&0xff).toString(16).padStart(2,'0'); return s; }
 
+// ---- MD5 (RFC 1321) ----
+// Merkle–Damgård construction: chop the padded message into 512-bit blocks, and feed each block
+// through 64 rounds of bit-mixing that update four 32-bit "registers" (A/B/C/D), carrying the
+// output registers of one block in as the STARTING registers of the next. That hand-off is the
+// whole reason MD5 (and every hash built this way) is vulnerable to a "length-extension attack":
+// if you know a message's final registers, you already have everything you need to keep hashing
+// MORE data onto the end of it without ever seeing the original message — the state that would
+// normally be secret is sitting there in the clear as the "digest". See the on-page stack-caption
+// text near the MD5 diagram, and md5WithTrace's inner blk loop below.
+//   K       — 64 constants, one per round, each literally sin(i)-derived per the spec (a cheap,
+//             reproducible way to get "random-looking" numbers with no hidden structure/backdoor).
+//   S       — how many bits each round's result is bit-rotated by; also spec-fixed.
+//   a0..d0  — the algorithm's fixed starting values (the "IV" — initialisation vector) for the
+//             very first block only. [EXACT] — RFC 1321 section 3.3, verbatim.
 function md5WithTrace(bytes, noTrace) {
   const K = [];
   for (let i = 0; i < 64; i++) K.push(Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32) >>> 0);
@@ -499,7 +704,17 @@ function md5WithTrace(bytes, noTrace) {
              4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,
              6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
   let a0=0x67452301,b0=0xefcdab89,c0=0x98badcfe,d0=0x10325476;
+  // `trace` is the animation's script: every meaningful thing this run of the real algorithm did,
+  // recorded in order as it happens, so the UI further down can replay it slowly instead of
+  // re-deriving anything itself. See the trace-event-schema comment further below for the shape
+  // of each entry. Nothing in `trace` feeds back into the maths above it — it's pure bookkeeping.
   const trace = [];
+  // PADDING (why every hash needs it): MD5 only knows how to process data in fixed 512-bit
+  // chunks, so a message of any other length has to be stretched to a multiple of 512 bits first.
+  // The recipe (spec-fixed): append a single 1-bit (the 0x80 byte does that, since 0x80 =
+  // 10000000 in binary), then as many 0-bits as needed, then the ORIGINAL message length in bits
+  // as a fixed 8-byte number at the very end. Recording the length is what stops two messages
+  // that differ only by trailing zero bytes from padding out to look identical.
   const origLenBits = BigInt(bytes.length) * 8n;
   const msg = [...bytes, 0x80];
   while (msg.length % 64 !== 56) msg.push(0);
@@ -525,6 +740,12 @@ function md5WithTrace(bytes, noTrace) {
       M.push((msg[o] | (msg[o+1]<<8) | (msg[o+2]<<16) | (msg[o+3]<<24)) >>> 0);
     }
     let A=a0,B=b0,C=c0,D=d0;
+    // 64 rounds per block, split into 4 groups of 16 that each use a different mixing function
+    // (F/G/H/I — the diagram's func-row lights up whichever is active). Each round: pick one
+    // 32-bit word M[g] out of this block's 16, combine it with the current registers through F/
+    // G/H/I plus a round constant K[i], bit-rotate the result by a fixed amount S[i], and rotate
+    // the four registers (A<-D<-C<-B<-new value) — this rotate-and-replace is what spreads every
+    // input bit's influence across all four registers over the 64 rounds. [EXACT] per RFC 1321.
     for (let i = 0; i < 64; i++) {
       const round = Math.floor(i/16) + 1;
       if (i % 16 === 0 && !noTrace) trace.push({ boxId:`block-${blk}-r${round}`, kind:'activate', sample:`round ${round}` });
@@ -536,19 +757,48 @@ function md5WithTrace(bytes, noTrace) {
       F = (F + A + K[i] + M[g]) >>> 0;
       A = D; D = C; C = B;
       B = (B + ((F << S[i]) | (F >>> (32 - S[i])))) >>> 0;
+      // TRACE EVENT SCHEMA (MD5): `boxId` names which visible diagram element this event belongs
+      // to, so the UI can find and update it purely by id lookup without knowing anything about
+      // the algorithm; `kind` is 'activate' (this stage/step is now the current one) or 'flow'
+      // (state handing off between stages, e.g. one block's output becoming the next block's
+      // input); `sample` is a short human-readable readout for that box. Everything else on this
+      // particular event (step/round/func/mIndex/shift/k/regs) is extra detail specific to a
+      // single MD5 round, consumed by updateMd5RegisterView further down to drive the live
+      // A/B/C/D register readout, the active-function highlight, and the M[g]/shift/K readout.
       if (!noTrace) trace.push({
         boxId:`block-${blk}-r${round}-loop`, kind:'activate', sample: toHex32(B),
         step: i, round, func: funcName, mIndex: g, shift: S[i], k: toHex32(K[i]),
         regs: { A: toHex32(A), B: toHex32(B), C: toHex32(C), D: toHex32(D) }
       });
     }
+    // The block's four output registers are ADDED onto the values they started this block with
+    // (not replaced) — this is the "chaining" that carries state from one block to the next, and
+    // (together with the padded length) is what makes the final digest depend on every bit of the
+    // whole message, not just the last block.
     a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0;
   }
+  // The digest is simply the last block's four final registers, written out as hex, back to back
+  // — 4 x 32 bits = 128 bits total, MD5's fixed output size regardless of input length.
   const digest = [a0,b0,c0,d0].map(toHex32).join('');
   if (!noTrace) trace.push({ boxId:'output', kind:'activate', sample: digest });
   return { digest, trace };
 }
 
+// ---- SHA-3 / Keccak-f[1600] (FIPS 202) ----
+// SHA-3 is built completely differently from MD5: instead of chaining four small registers, it
+// keeps one big 1600-bit scratchpad (the "state", organised as 5x5 "lanes" of 64 bits each — see
+// the canvas renderer section far below) and repeatedly (a) XORs a chunk of input directly into
+// part of that scratchpad, then (b) scrambles the WHOLE scratchpad through a fixed 24-round
+// permutation before repeating with the next chunk of input. This "soak up input, scramble,
+// repeat, then read answers back out the same way" design is called a SPONGE construction —
+// "absorbing" input, then "squeezing" output, both through the same permutation.
+
+// keccakRoundConstants: derives the 24 real round constants Keccak-f mixes in during its iota
+// step (one per round), following the spec's bit-generator recipe exactly (an LFSR — "linear
+// feedback shift register", a simple bit-shuffling loop that produces a long, non-repeating,
+// reproducible sequence of bits with no hidden trapdoor) rather than hard-coding the 24 answers —
+// so the numbers are DERIVED here exactly as the standard defines them, not just pasted in.
+// [EXACT] per FIPS 202 section 3.2.5.
 function keccakRoundConstants() {
   function rc(t) {
     if (t % 255 === 0) return 1;
@@ -572,7 +822,21 @@ function keccakRoundConstants() {
   return RC;
 }
 const KECCAK_RC = keccakRoundConstants();
+// How far (in bits, 0-63) each of the 25 lanes gets rotated by rho — a fixed, per-lane amount
+// specified by the standard (row x, column y below), never the same for any two lanes. This
+// asymmetry is deliberate: it's part of what stops the state from having any exploitable
+// symmetry between lanes. [EXACT] per FIPS 202 (equivalently, Keccak's reference "rotation
+// offsets" table).
 const KECCAK_RHO_OFFSETS = [[0,36,3,41,18],[1,44,10,45,2],[62,6,43,15,61],[28,55,25,21,56],[27,20,39,8,14]];
+// pi's move rule: the lane currently at grid position (x,y) moves to (y, 2x+3y mod 5). This is a
+// FIXED reshuffling of the 25 lane positions, run every round; the whole point is to spread each
+// lane's bits out to a position it wasn't at before, so theta's "mix by column" in the NEXT round
+// touches a genuinely different combination of original data each time. [EXACT] per FIPS 202.
+// A worked, checkable fact about this specific permutation: applying it repeatedly returns every
+// lane to its start after exactly 24 rounds (not sooner, except for the one lane at (0,0), which
+// pi never moves) — the on-page cube-note states this, and it is a real, provable property of
+// this exact map, not a rounding coincidence: the map is linear over the integers mod 5, and its
+// characteristic behaviour gives it multiplicative order exactly 24.
 const KECCAK_PI_LANE_MAP = [];
 for (let x = 0; x < 5; x++) {
   KECCAK_PI_LANE_MAP.push([]);
@@ -583,9 +847,14 @@ for (let x = 0; x < 5; x++) {
     KECCAK_PI_LANE_MAP[x].push([y, (2*x + 3*y) % 5]);
   }
 }
+// All 25 (x,y) lane-grid coordinates, in a flat list — used wherever an event needs to say "this
+// touches every lane" (e.g. theta, which really does mix every one of the 25 lanes every round).
 const ALL_25_LANES = [];
 for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) ALL_25_LANES.push([x, y]);
 const KECCAK_MASK64 = (1n << 64n) - 1n;
+// rol64: rotate a 64-bit value left by n bits, wrapping the bits that fall off the top back in at
+// the bottom (a "ring" rotation — no bits are lost, they just move around in a circle). This is
+// literally what rho does to a lane, and is also used inside theta's own mixing formula.
 function rol64(x, n) { n = BigInt(n % 64); return ((x << n) | (x >> (64n - n))) & KECCAK_MASK64; }
 function laneHex(x) { return x.toString(16).padStart(16,'0'); }
 
@@ -614,8 +883,21 @@ for (let i = 0; i < 17; i++) {
   KECCAK_RATE_LANES.add(`${x},${y}`);
 }
 
+// keccakF1600WithTrace: the real Keccak-f[1600] permutation — the 24-round scrambling function
+// that SHA-3 runs on its 1600-bit state every time it absorbs a block of input or needs more
+// output. `state` is mutated in place and also returned; `trace` is appended to exactly the way
+// md5WithTrace above appends to its own trace. [EXACT] throughout this function — every XOR,
+// rotation and permutation below is the literal FIPS 202 definition of theta/rho/pi/chi/iota, not
+// a simplified stand-in. What IS a simplification is how much of that state the on-page ANIMATION
+// chooses to light up per step (documented step-by-step below) — the underlying state array these
+// steps operate on always has the real, full values.
 function keccakF1600WithTrace(state, trace, noTrace) {
   for (let rnd = 0; rnd < 24; rnd++) {
+    // THETA, in plain terms: for each of the 5 columns (fixed x, all 5 values of y), XOR all 5
+    // lanes in it together to get one "parity" value C[x]. Then for each lane, XOR in a
+    // correction D[x] built from the NEIGHBOURING columns' parities (one rotated by 1 bit) — so
+    // every lane ends up depending on two whole columns' worth of other lanes, not just itself.
+    // This is the step that gives a single flipped input bit influence over many lanes at once.
     const C = [];
     for (let x = 0; x < 5; x++) C.push(state[x][0]^state[x][1]^state[x][2]^state[x][3]^state[x][4]);
     const D = [];
@@ -628,6 +910,12 @@ function keccakF1600WithTrace(state, trace, noTrace) {
       lv: laneSnapshot(state)
     });
 
+    // RHO + PI, done together here (this is a common, equivalent way to write Keccak-f — rho and
+    // pi are still two separate, real steps; only the CODE is fused, not the maths). RHO, in
+    // plain terms: bit-rotate each 64-bit lane by its own fixed amount (KECCAK_RHO_OFFSETS) — a
+    // lane's bits are a ring, and rho spins that ring. PI, in plain terms: move each lane
+    // (rotated value and all) to a new grid position, (x,y) -> (y, 2x+3y mod 5) — a fixed
+    // reshuffle of WHERE each 64-bit value sits, no bits inside any lane change. [EXACT].
     const B = [[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n]];
     for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
       const nx = y, ny = (2*x + 3*y) % 5;
@@ -655,6 +943,12 @@ function keccakF1600WithTrace(state, trace, noTrace) {
       lanes: ALL_25_LANES
     });
 
+    // CHI, in plain terms: for each row (fixed y, all 5 values of x), combine each lane with the
+    // NEXT TWO lanes in that row using AND/NOT/XOR. This is the ONE step in the whole round that
+    // isn't just XOR/rotate/reshuffle — AND is genuinely non-linear (you can't undo it by
+    // XORing something back the way you can undo the other four steps), and that non-linearity
+    // is where most of a hash's one-way-ness — "easy to compute forward, practically impossible
+    // to reverse" — actually comes from. [EXACT].
     for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
       state[x][y] = (B[x][y] ^ ((~B[(x+1)%5][y]) & B[(x+2)%5][y])) & KECCAK_MASK64;
     }
@@ -662,7 +956,11 @@ function keccakF1600WithTrace(state, trace, noTrace) {
     // assignment immediately above — that math is unchanged and still runs on the full state.
     // Spotlighting only row y=0 here is a deliberate UI legibility simplification (25 lanes
     // self-mixing at once reads as noise, not as "a row mixing") — it affects which lanes
-    // visually pulse, not the underlying computation.
+    // visually pulse, not the underlying computation. [FAIRLY ACCURATE]: WHICH FIVE REAL LANES
+    // (canonical grid position y=0, all x) get the glow is exact. Whether those five glowing
+    // boxes still visually SIT together as a row on screen at the moment they glow is a separate
+    // question about the renderer's own bookkeeping, answered (and flagged) at sha3StartPhase's
+    // pi branch further down in this file — short version: only guaranteed for round 0.
     if (!noTrace) trace.push({
       boxId:`lane-r${rnd}-chi`, kind:'activate',
       sample: 'row y=0 self-mixed (representative — chi runs on every row every round)',
@@ -670,6 +968,10 @@ function keccakF1600WithTrace(state, trace, noTrace) {
       lv: laneSnapshot(state)
     });
 
+    // IOTA, in plain terms: XOR one of the 24 round constants derived above into just ONE lane
+    // (position 0,0). Small step, important job: without it, all 24 rounds would apply the exact
+    // same theta/rho/pi/chi recipe, and certain symmetric inputs could stay symmetric all the way
+    // through — iota makes every round subtly different from every other round. [EXACT].
     state[0][0] ^= KECCAK_RC[rnd];
     if (!noTrace) trace.push({
       boxId:`lane-r${rnd}-iota`, kind:'activate',
@@ -683,16 +985,41 @@ function keccakF1600WithTrace(state, trace, noTrace) {
   return state;
 }
 
+// keccak256WithTrace: runs the full sponge — pads the input, XORs it in "rate-block" by
+// rate-block ("absorb"), running the real 24-round permutation between blocks, then reads the
+// digest back out ("squeeze"). Default parameters (suffix 0x06, rateBytes 136, outBytes 32) are
+// the real FIPS-202 SHA-3-256 parameters, and the whole computation is [EXACT] SHA3-256.
+//
+// NAMING NOTE (verify/report item, not changed here): this function's NAME says "keccak256",
+// which in common usage (e.g. Ethereum) refers to a slightly different, PRE-STANDARD padding —
+// the original Keccak submission used a 0x01 domain-separation byte, whereas the byte actually
+// used here, `suffix = 0x06` (the default below), is the FIPS-202-standardised SHA-3 padding.
+// The UI (algorithm name "SHA-3", "256-bit / 64 hex chars") and the digest itself are both
+// correct SHA3-256 throughout — only this internal function identifier carries the older,
+// slightly-misleading name. Left as-is rather than renamed: this exact name is called directly,
+// by string, from tools/test_keccak_trace.mjs, so renaming it would require updating that test.
 function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32, noTrace) {
   let state = [];
   for (let x = 0; x < 5; x++) state.push([0n,0n,0n,0n,0n]);
   const trace = [];
+  // Padding here is SHA-3's "multi-rate" scheme: append the domain-separation suffix byte, then
+  // zero-fill up to a multiple of the rate, then OR a single 1-bit into the very last byte's top
+  // position. (Unlike MD5's padding, this scheme never needs to record the input's length
+  // explicitly — the 10*1 pattern itself is unambiguous to reverse.)
   if (!noTrace) trace.push({ boxId:'pad', kind:'activate', sample:`+0x${suffix.toString(16)}, multi-rate pad` });
   const msg = [...bytes, suffix];
   while (msg.length % rateBytes !== 0) msg.push(0);
   msg[msg.length - 1] |= 0x80;
   const numBlocks = msg.length / rateBytes;
   if (!noTrace) trace.push({ boxId:'absorb-split', kind:'activate', sample:`${numBlocks} rate-block(s) x ${rateBytes*8} bits` });
+  // ABSORB: XOR each rate-block of the (now-padded) input directly into the first 17 lanes of the
+  // state (rateBytes=136 bytes = 17 lanes x 8 bytes), run the real 24-round permutation, repeat
+  // for the next block. The remaining 8 "capacity" lanes are NEVER written to directly by input —
+  // they only ever change as a side effect of the permutation mixing everything together. That
+  // split (rate = exposed to input/output, capacity = never touched directly) is the whole
+  // security argument of a sponge: an attacker who only ever sees rate-lane values can't work
+  // backwards to the hidden capacity lanes, and it's the capacity that makes forging a second
+  // input with the same digest infeasible.
   for (let i = 0; i < msg.length; i += rateBytes) {
     const blockIdx = i / rateBytes;
     const block = msg.slice(i, i + rateBytes);
@@ -713,6 +1040,13 @@ function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32
     });
     state = keccakF1600WithTrace(state, trace, noTrace);
   }
+  // SQUEEZE: once all input has been absorbed, read the digest bytes straight back out of the
+  // same 17 rate lanes (never the 8 hidden capacity lanes). For SHA3-256's fixed 32-byte output
+  // this loop only ever runs once (32 bytes fits easily inside one 136-byte rate-block, so the
+  // `if` below — run the permutation again for MORE output — never fires here); it's written
+  // generally because the same sponge shape can also produce a variable-length output (SHAKE),
+  // which this page doesn't expose, if ever more digest bytes were asked for than one rate-block
+  // holds.
   if (!noTrace) trace.push({ boxId:'squeeze', kind:'flow', sample:'reading rate -> output' });
   let out = [];
   while (out.length < outBytes) {
@@ -742,6 +1076,13 @@ function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32
 const COLLISION_MSG_1_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab58712467eab4004583eb8fb7f8955ad340609f4b30283e488832571415a085125e8f7cdc99fd91dbdf280373c5bd8823e3156348f5bae6dacd436c919c6dd53e2b487da03fd02396306d248cda0e99f33420f577ee8ce54b67080a80d1ec69821bcb6a8839396f9652b6ff72a70';
 const COLLISION_MSG_2_HEX = 'd131dd02c5e6eec4693d9a0698aff95c2fcab50712467eab4004583eb8fb7f8955ad340609f4b30283e4888325f1415a085125e8f7cdc99fd91dbd7280373c5bd8823e3156348f5bae6dacd436c919c6dd53e23487da03fd02396306d248cda0e99f33420f577ee8ce54b67080280d1ec69821bcb6a8839396f965ab6ff72a70';
 
+// The fixed catalogue of things you can hash without typing them yourself, each teaching a
+// different point: `letter-a` vs `letter-cyrillic-a` look nearly identical on screen but are
+// different bytes (different digest) — a hash cares about bytes, not appearance; `whitespace`
+// hashes text that LOOKS blank but isn't; `pubtext`/`cat` show a hash working over a much bigger,
+// real file, fetched over the network; `collision-msg1`/`collision-msg2` are the two real MD5
+// collision messages used by the collision-demo panel further down. `kind` tells
+// getActiveInputBytes() below how to turn each preset into actual bytes.
 const PRESETS = [
   { id: 'custom', label: 'Custom', kind: 'custom' },
   { id: 'letter-a', label: 'Letter: a', kind: 'fixed', text: 'a' },
@@ -893,6 +1234,17 @@ renderInputBox();
 // ---- history log ----
 let historyLog = []; // {algo, digest, id, label}, newest first, max 5
 
+// fnvId: a fast 32-bit "fingerprint" (FNV-1a) used ONLY to tell two history entries' inputs apart
+// cheaply, so renderHistory() below can distinguish "you hashed the same input twice" (boring,
+// not flagged) from "two DIFFERENT inputs produced the same digest" (a real collision — flagged).
+// IMPORTANT: this is NOT one of the two real hash algorithms this page teaches, and it is not
+// cryptographically secure in any sense — it exists purely as bookkeeping for this history UI.
+// [ANALOGY]/utility code, not part of the hashing demonstration. Worth knowing: because it's only
+// 32 bits and non-cryptographic, two genuinely different inputs could in principle collide under
+// fnvId itself; if that ever happened, a real MD5/SHA-3 collision between them would be
+// (incorrectly) treated as "the same input re-hashed" and NOT flagged — astronomically unlikely
+// to happen by chance with the handful of items this page's history ever holds, but worth noting
+// as a limitation of the bookkeeping, not of the two real algorithms being taught.
 function fnvId(bytes) {
   let h = 2166136261 >>> 0;
   for (const b of bytes) { h ^= b; h = Math.imul(h, 16777619); }
@@ -1009,15 +1361,28 @@ renderAlgorithmBox();
 // The SHA-3 state renderer + animation controller are built further down (initSha3Canvas).
 
 // ---- Task 6: shared animation engine ----
+//
+// playTrace turns a recorded `trace` (from md5WithTrace) into an actual on-screen animation: wait
+// getSpeedMs() milliseconds, fire the next event via onEvent(), repeat until the trace is
+// exhausted, then call onDone(). Purely a playback engine — it knows nothing about hashing.
+// [ANALOGY]: everything about the PACING here (getSpeedMs) is presentation, chosen for
+// legibility/feel; the CONTENT being played back (each trace event) is the real recorded
+// computation. SHA-3 does NOT use this function — see sha3Play further down, which paces itself
+// in whole animation "phases" rather than individual trace events, because its held visual
+// effects (a rho twist, a pi slide) need a start-to-finish duration rather than a per-event delay.
 
 let currentRunId = 0;
 
-// getSpeedMs and onEvent are both called as (idx, total) / (ev, idx, total) — idx is the event
-// about to play, total is trace.length, so a speed/effect function can derive "how far through
-// this run are we" (0 at the first event, ~1 at the last) for progress-ramped effects (MD5's
-// speed-up-by-50%-across-the-run and its wiggle-amplitude ramp). This is shared plumbing: adding
-// the extra args costs SHA-3 nothing since getSha3SpeedMs()'s own signature/formula is untouched
-// and JS silently ignores extra call args a function doesn't declare.
+// CORRECTION (this comment used to describe a design this file no longer has): getSpeedMs and
+// onEvent are called as (idx, total) / (ev, idx, total) for historical/shared-signature reasons,
+// but as of the current MD5 pacing model (see MD5_JUICE_RATE / md5SpeedMsForN / md5Juice further
+// down), neither getMd5SpeedMs nor updateMd5RegisterView actually reads idx or total — MD5's
+// speed-up and wiggle-amplitude ramp are both driven by md5Juice.n (a running count of CHAINED
+// BLOCKS triggered so far, updated as events play), not by "how far through the trace are we".
+// The two are usually close but not identical (n advances once per register update within a
+// block, not once per raw trace event) and the block-count-based version is the one actually in
+// effect. The extra (idx, total) arguments are harmless to keep passing — JS silently ignores
+// call arguments a function doesn't declare — so nothing was removed, only mis-described.
 function playTrace(trace, getSpeedMs, onEvent, onDone) {
   const myRunId = ++currentRunId;
   let idx = 0;
@@ -1041,7 +1406,10 @@ function playTrace(trace, getSpeedMs, onEvent, onDone) {
 // "top up, don't reset" pulse: add .pulse (fast transition in), then remove it two frames
 // later so the box's own slower base transition (see the CSS above) carries it back down —
 // re-triggering mid-decay just restarts from wherever the brightness currently is, because
-// that's how CSS transitions naturally interpolate from current computed value.
+// that's how CSS transitions naturally interpolate from current computed value. Plain English:
+// pulseBox is what makes a diagram box visibly flash and update its little text sample the
+// instant that stage of the real algorithm happens. [ANALOGY] — the flash itself is a legibility
+// cue; WHICH box flashes and WHEN is driven directly by the real recorded trace event.
 //
 // SCOPED, not global, lookup: MD5's and SHA-3's diagrams both use the shared boxId convention
 // (`pad`, `output`, etc mean the same conceptual stage in either algorithm), so both diagrams'
@@ -1069,6 +1437,12 @@ function pulseBox(boxId, sample) {
 // dynamically-created block, so this function works unmodified once Task 6 lands.
 // ============================================================================================
 //  JUICE ESCALATION (MD5) — count-based and multiplicative, NOT percentage-based
+//  [ANALOGY] in full: none of what follows (rotation/wiggle, colour ramp, glow, speed-up) is any
+//  part of the MD5 specification or a property of real hashing. It's a pure legibility/game-feel
+//  device: the longer a hash runs (more chained 512-bit blocks), the more visibly "worked up" the
+//  animation gets, so a big input (many blocks) reads as visibly bigger work than a small one.
+//  Real MD5 does not get more energetic on a longer input — it just does more of the same
+//  identical arithmetic, silently, in microseconds either way (see the Real-time panel).
 // ============================================================================================
 //
 //  The escalation counter `n` is the number of CHAINED BLOCKS that have triggered so far, as an
@@ -1131,6 +1505,11 @@ function md5JuiceFor(n, sign) {
   };
 }
 
+// updateMd5RegisterView: for every real MD5 round event, updates that block's on-screen A/B/C/D
+// register values, highlights which of the F/G/H/I mixing functions just ran, and updates the
+// M[]/shift/K readout and step counter — i.e. this is what makes the register boxes actually show
+// the true running state of the algorithm as it executes, not a mock display. [EXACT] values;
+// the flash/wiggle it also triggers alongside them is [ANALOGY] (see the juice block above).
 function updateMd5RegisterView(ev, idx, total) {
   const m = /^block-(\d+)-r\d+-loop$/.exec(ev.boxId);
   if (!m || !ev.regs) return;
@@ -1191,6 +1570,9 @@ function updateMd5RegisterView(ev, idx, total) {
 // visually behind earlier ones. Every render clears and rebuilds #md5-block-chain from scratch
 // (no static block-group-0 to preserve anymore — Task 5's markup for block 0 is now generated
 // here too, identically to blocks 1+).
+// [EXACT] numBlocks and every register value later written into these cards; [ANALOGY] the deck-
+// of-cards Z-stack visual itself — CSS 3D card geometry, per-card colour, and the wiggle handled
+// elsewhere are all presentation choices, not part of MD5.
 function renderMd5BlockChain(numBlocks) {
   const chain = document.getElementById('md5-block-chain');
   chain.innerHTML = '';
@@ -1347,6 +1729,10 @@ function pulseBoxOrCube(boxId, sample) {
 //  drawing all 64 would put 1600 cubes on screen at roughly 3 px each, which is neither legible
 //  nor honest about which bit is which. Each cube's brightness is the real popcount of the byte
 //  it stands for, so the picture is a true (if coarse-grained) view of the actual state.
+//  ("Popcount" = population count = how many of a byte's 8 bits are set to 1 — a byte with more
+//  1-bits is drawn brighter.) SUMMARY: the 8-cubes-per-lane coarsening is [FAIRLY ACCURATE] (real
+//  data, reduced resolution, disclosed on-page); the camera, cube geometry/shading, lift/fan-out
+//  arc used for the pi rearrangement below, and all colour/motion choices are [ANALOGY].
 const SHA3_SUBS_PER_LANE = 8;                                   // cubes drawn per lane
 const SHA3_BITS_PER_SUB = 64 / SHA3_SUBS_PER_LANE;              // = 8 real bits per drawn cube
 const SHA3_CELL = 1.0;        // world-unit pitch between lane centres in x and y
@@ -1435,6 +1821,12 @@ function sha3SpeedIntensity() {
 //   theta mixes COLUMNS  -> the five x-planes shake (offset along y)
 //   chi   mixes ROWS     -> the five y-planes shake (offset along x)
 //   rho / pi / iota      -> whole-assembly only (camera shake), since those steps act globally
+// [ANALOGY], and specifically the grouping this picks is by each box's CURRENT SCREEN SLOT (see
+// sha3Render's use of `sha3.planeAxis === 'x' ? L.sx : L.sy`) rather than by the box's fixed real
+// identity (cx,cy) — so past round 0 the five boxes that visibly shake together for a given theta
+// event are not guaranteed to be the same five lanes theta's real maths actually just mixed. See
+// the FINDING note on sha3MakeLanes above for the full explanation; this is presentation, not the
+// underlying computation, which theta/chi always run correctly and completely regardless.
 function sha3ShakeAxisFor(type) { return type === 'theta' ? 'x' : type === 'chi' ? 'y' : null; }
 
 function sha3TriggerShake(type) {
@@ -1492,6 +1884,23 @@ function rgbCss(c, mul) {
 //          never reset mid-run. Integers (not accumulated pixel offsets) so repeated pi can
 //          never drift the lattice out of its 5x5 footprint.
 //   fx,fy  the rendered slot, a float that eases toward sx,sy during pi's transit.
+//
+// FINDING (report item, not fixed — a labelling issue, not a bug): a box's VALUE is always exact
+// — sha3ApplyLaneValues below writes each round's real state[x][y] into the box with that exact
+// (cx,cy) identity, every round, so whatever a box displays is always the true current content of
+// its own fixed real-state slot. Its SCREEN POSITION, however, is computed differently: pi moves
+// a box from wherever it CURRENTLY sits (sx,sy) to a new slot, round after round, so by round 2 a
+// box's on-screen position is the orbit of its own original index under repeated pi — not
+// necessarily where the real math's row/column groupings are for that round. Concretely: chi's
+// highlight below lights the 5 boxes whose IDENTITY is (0,0)..(4,0) — a real row — but after round
+// 1 those 5 boxes are generally scattered across different screen slots, not sitting together as
+// a visual row. Same issue for theta's plane-shake, which groups by CURRENT SLOT rather than by
+// real column identity. So: the VALUES and the ROUND-BY-ROUND MATHS are [EXACT]; which 25 lanes
+// exist and what data each one holds is always right; but "these glowing/shaking boxes visually
+// sit together the way the real theta/chi grouping does" only holds for round 0 (and again at any
+// round that is a multiple of pi's order-24 cycle) — flag those specific groupings [ANALOGY] for
+// rounds after the first, not [FAIRLY ACCURATE]. pi's own animation (the rearrangement itself) is
+// unaffected by this and stays [EXACT] — it is exactly this repeated-pi orbit that is being drawn.
 function sha3MakeLanes() {
   const lanes = [];
   for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
@@ -1528,6 +1937,14 @@ function sha3ApplyLaneValues(lv) {
 }
 
 // ---- projection ----
+// [ANALOGY] — this whole section (through the end of sha3Render) is standard 3D-graphics
+// plumbing: converting the abstract "5x5 grid of 64-bit lanes" into pixels the eye reads as a
+// rotatable solid lattice. None of it is part of SHA-3; it exists purely so the [FAIRLY ACCURATE]
+// data (which cube is bright, which is dark) is legible at all. The MATHS used to do the drawing
+// (rotation matrices, perspective divide, Lambert shading, painter's-algorithm depth sort) is
+// itself completely standard and correct 3D geometry — it's just geometry about a picture, not
+// about hashing.
+//
 // Axonometric: rotate about Y, then about X, then a weak perspective divide. This is a genuine
 // coordinate system — boxes are defined as centre + half-extents in world units and everything
 // downstream (occlusion, shading, hit order) falls out of the maths rather than being hand-tuned.
@@ -1631,6 +2048,11 @@ function sha3Render(opts) {
       // Sub-cube brightness IS the real data: the popcount of the 8 bits this cube stands for.
       // An all-zero lane (a capacity lane before anything has diffused into it) is therefore
       // genuinely dark, and lights up only once the permutation has actually stirred data in.
+      // [EXACT] at rest, once L.bytes has finished easing to L.bytesTarget (the true byte). MID-
+      // TRANSITION it is [ANALOGY]: L.bytes is an in-flight blend on its way toward the real
+      // value (see sha3Ambient's kFill easing below), and the popcount of a blended, non-integer
+      // byte is not the same thing as a blend of two real popcounts — the brightness DURING the
+      // fade is a smooth visual guess, not a bit-accurate reading, of the byte at that instant.
       const density = popcount8(Math.round(L.bytes[k])) / 8;
       // The floor (0.22, not 0) keeps a trace of the lane's own hue even when the lane is all
       // zeroes, so rate (gold) and capacity (grey) stay tellable apart at rest and the legend
@@ -1654,6 +2076,9 @@ function sha3Render(opts) {
   // Painter's algorithm: farthest first. Exactly correct here — the boxes are rigid, convex and
   // never interpenetrate (guaranteed by SHA3_CUBE < pitch for the spin, and by pi's staggered
   // lift shelves for the transit), so for any two, one is strictly nearer along the view axis.
+  // (Plain English: draw distant cubes first, nearer ones over the top, like an old-school
+  // painter working back-to-front — cheap, and correct here because these particular cubes are
+  // guaranteed to never overlap or poke through each other.)
   items.sort((a, b) => a.depth - b.depth);
 
   let faces = 0;
@@ -1665,7 +2090,11 @@ function sha3Render(opts) {
       const nx = f.n[0] * it.cs - f.n[1] * it.sn;
       const ny = f.n[0] * it.sn + f.n[1] * it.cs;
       const n = sha3RotateVec(nx, ny, f.n[2], cam);
-      if (n.z <= 0.0001) continue;                     // backface cull
+      if (n.z <= 0.0001) continue;                     // backface cull: skip faces pointing away from the camera — they're hidden behind the cube itself, so drawing them would waste time and could paint over a face that should be visible
+      // Lambert shading: a face pointing more directly at the (fixed, invented) light source is
+      // drawn brighter, one facing away is drawn darker — the everyday "things facing the sun look
+      // brighter" rule, done with a dot product. Purely cosmetic; it's what makes the cubes read
+      // as solid 3D objects instead of flat coloured squares.
       const lambert = Math.max(0, n.x*SHA3_LIGHT[0] + n.y*SHA3_LIGHT[1] + n.z*SHA3_LIGHT[2]);
       const shade = 0.52 + 0.48 * lambert;
       const q = f.idx.map(i => it.corners[i]);
@@ -1718,6 +2147,12 @@ function sha3RequestRender() {
 //               and is free to still be settling after its phase has handed off. The rho "dials"
 //               are exactly this: rho sets each lane's spin TARGET, and the spin keeps easing
 //               toward it independently. Same for the per-cube fill and the glow decay.
+//
+//  Plain-English summary: real SHA-3 doesn't have "phases" that take visible time at all — the 24
+//  rounds run silently, back to back, in a few microseconds. This controller exists purely so a
+//  human can watch one step happen, then the next, without them blurring together. [ANALOGY]:
+//  the pacing/holding/easing described here. [EXACT]: the SEQUENCE of steps being paced (theta,
+//  rho, pi, chi, iota, 24 times, per real absorbed block) comes straight from the real trace.
 const SHA3_PHASE_BASE  = { theta:300, rho:420, pi:560, chi:320, iota:220, box:320 };
 // Floors, per phase rather than one global minimum: at the fast end of the slider a uniform
 // scale would push pi under two frames, and a snapping pi is precisely the failure mode this
@@ -1790,6 +2225,13 @@ function sha3StartPhase(ph, now) {
     const L = sha3LaneAt(x, y);
     if (L) L.glow = Math.min(1, L.glow + 0.9);   // top up, don't reset
   });
+  // theta/chi/iota's real work has already happened (in keccakF1600WithTrace, before any of this
+  // animation code runs) — `pulse` here just makes the relevant boxes glow to draw the eye to
+  // where it happened, and (for theta/chi) applies the fresh values via sha3ApplyLaneValues
+  // above. [FAIRLY ACCURATE]/[ANALOGY] split noted where each event is built, in
+  // keccakF1600WithTrace — see the FINDING note on sha3MakeLanes for how the SCREEN GROUPING of
+  // these glows can drift from the real row/column after round 0, even though which 25 (or 5, or
+  // 1) canonical lanes are glowing is always exactly correct.
   if (ph.type === 'theta' || ph.type === 'chi' || ph.type === 'iota') {
     pulse(ev.lanes);
   } else if (ph.type === 'rho') {
@@ -1798,12 +2240,16 @@ function sha3StartPhase(ph, now) {
     // r/64 of a turn is a literal picture of the step rather than a decoration. Because the
     // offsets differ per lane and accumulate every round, the 25 lanes are never all pointing
     // the same way — which was the "the dials always point to the same place" complaint.
+    // [FAIRLY ACCURATE]: the ANGLE is a real, exact picture of rho's bit-rotation amount; the
+    // choice to show it as a spinning cube (rather than, say, a number) is [ANALOGY].
     sha3.lanes.forEach(L => {
       L.spinTarget += (KECCAK_RHO_OFFSETS[L.cx][L.cy] % 64) * (360 / 64);
     });
   } else if (ph.type === 'pi') {
     // Permute SLOTS, composing with wherever each lane already is. This mutation is permanent —
-    // there is no timer that puts anything back.
+    // there is no timer that puts anything back. [EXACT]: this is literally applying pi's real
+    // (x,y)->(y,2x+3y mod 5) rule to each box's current screen position, every round — see the
+    // FINDING on sha3MakeLanes for what this composition does and doesn't guarantee visually.
     sha3.lanes.forEach((L, i) => {
       L.prevSx = L.sx; L.prevSy = L.sy;
       const [nx, ny] = KECCAK_PI_LANE_MAP[L.sx][L.sy];
@@ -2080,6 +2526,13 @@ function md5SpeedMsForN(n) {
 // is a phase, not a trace event. getMd5SpeedMs above is untouched and MD5 still runs through
 // playTrace exactly as before.
 
+// onHashClick: the whole pipeline the "Hash" button triggers, top to bottom — grab the currently
+// selected input as real bytes, run the real algorithm (computing the WHOLE digest immediately,
+// not incrementally as the animation plays — the animation is a replay of an already-finished
+// computation, not the computation happening live in slow motion), then hand the recorded trace
+// to the appropriate player (playTrace for MD5, sha3Play for SHA-3) to animate it and finally
+// display the true digest. [EXACT] computation and result; [ANALOGY] everything about how it's
+// shown afterwards.
 async function onHashClick() {
   // algo/label MUST be read synchronously here, before the only await in this function — NOT
   // after it. getActiveInputBytes() does a real `await fetch(...)` for the pubtext/cat presets
@@ -2184,6 +2637,12 @@ document.getElementById('hash-btn').onclick = onHashClick;
 //  test_keccak_trace.mjs still assert digest parity, and the two paths are asserted to produce
 //  identical digests. The copy on the page is still explicit that this is a browser JS
 //  implementation and that native/hardware hashing is faster again.
+//  [EXACT]: this is a genuine, real-clock measurement of THIS page's own JS running in THIS
+//  browser, not a made-up or table-driven number. Its LIMITS are also stated plainly on the page
+//  itself (see the .rt-note text near the panel): it is not a fair race between MD5 and SHA-3
+//  (SHA-3 uses 64-bit numbers, which JS can only emulate slowly; MD5's 32-bit numbers run at full
+//  native speed), and it is slower than optimised/hardware hashing, so treat it as an upper bound
+//  on real hashing time, useful for the order of magnitude rather than a precise figure.
 const REALTIME_STEP_MS = 0.0005;   // per-event spacing in real-time mode: drains in one frame
 const hashBench = { md5PerBlockUs: null, sha3PerBlockUs: null, done: false };
 const lastRun = { algo: null, blocks: 0, ms: 0 };
@@ -2267,6 +2726,14 @@ else setTimeout(runHashBenchmark, 700);
 // ---- collision demo panel ----
 // COLLISION_MSG_1_HEX / COLLISION_MSG_2_HEX now live earlier in the file, next to PRESETS
 // (public/crypto/hash/index.html, just above the PRESETS array) — reused here, not duplicated.
+//
+// This is the concrete "MD5 is broken" payoff: two DIFFERENT real byte strings that MD5 maps to
+// the SAME 128-bit output. [EXACT] — both messages and the fact that they collide are the real,
+// published Wang/Rescorla MD5 collision, and the digests are computed live by this page's own
+// md5WithTrace, not hard-coded to look identical. This does NOT mean MD5's maths is broken in the
+// sense of being wrong — MD5 still deterministically maps every input to some 128-bit output; the
+// break is that an attacker can DELIBERATELY CONSTRUCT two different inputs landing on the same
+// output, which defeats using MD5 to prove "this file hasn't been swapped for a different one".
 
 document.getElementById('collision-run-btn').onclick = () => {
   const b1 = hexToBytes(COLLISION_MSG_1_HEX), b2 = hexToBytes(COLLISION_MSG_2_HEX);
