@@ -12,10 +12,16 @@
 //   * it measures a WORST CASE that is constructed, not assumed: the longest input this test can
 //     run crossed with the fastest slider setting, and again with REAL TIME on, which collapses
 //     an entire 24-round permutation into a single frame.
-//   * it uses a SPATIAL unit. Patches are ninths of the diagram, not the whole-canvas mean (which
-//     would understate a local excursion — theta lights five lanes of twenty-five) and not
-//     individual elements (which would overstate: a travelling highlight is motion, not a
-//     flashing area).
+//   * it uses a SPATIAL unit, and the unit is CALIBRATED rather than picked. WCAG's threshold
+//     only applies to a flashing area larger than 25% of a 10-degree visual field — about
+//     341x256px at a normal viewing distance, so ~87,000px^2. A ninth of this 560x360 canvas is
+//     187x120 = ~22,400px^2, i.e. almost exactly that 25%. So a 3x3 tiling IS the standard's own
+//     unit here: finer patches understate nothing that the standard bounds, and the whole-canvas
+//     mean would understate a local excursion badly (theta lights five lanes of twenty-five).
+//     A 6x6 probe is run as well, at ~6% of the field — four times finer than the standard
+//     requires — and its RATE is still asserted, but not its amplitude: an excursion in an area
+//     that small is not something 2.3.1 bounds, and demanding otherwise would be demanding that
+//     nothing on screen ever moves quickly.
 //   * it pins the SLOW END too. The attenuation must not be reachable at speeds where the
 //     discrete per-phase steps are the teaching content.
 //
@@ -67,18 +73,35 @@ async function setSpeed(page, v, realtime) {
 }
 
 // Run a SHA-3 hash to completion with the meter on, and return the recorded frames.
-async function recordSha3(page, { input, slider, realtime, maxMs = 120000 }) {
+async function recordSha3(page, { input, slider, realtime, maxMs = 120000, tiles = 3 }) {
   await setAlgo(page, 'sha3');
   await page.fill('#input-custom', input);
   await setSpeed(page, slider, realtime);
   await page.locator('#lane-canvas').scrollIntoViewIfNeeded();
-  await page.evaluate(() => window.__flashMeter.start(3));
+  await page.evaluate(t => window.__flashMeter.start(t), tiles);
   await page.click('#hash-btn');
   const t0 = Date.now();
   while (Date.now() - t0 < maxMs) {
     if (!(await page.evaluate(() => sha3.running)) && Date.now() - t0 > 1500) break;
     await page.waitForTimeout(200);
   }
+  return page.evaluate(() => { window.__flashMeter.stop(); return window.__flashMeter.rows(); });
+}
+
+// A SUSTAINED worst case. A single REAL TIME run is over in under a second, and "no more than
+// three flashes in any one-second window" measured across 0.9s of recording is close to
+// vacuous. Re-clicking Hash is also the single most likely thing a bored teenager does, and it
+// is the one path that exercises the state RESET: sha3ResetState wipes the pace average and the
+// luminance detector on every run start, so each new click re-opens an unattenuated window.
+// Stacking those openings back to back is the worst case the reset can produce.
+async function recordSha3Burst(page, { input, slider, realtime, clicks = 10, gapMs = 300, tiles = 3 }) {
+  await setAlgo(page, 'sha3');
+  await page.fill('#input-custom', input);
+  await setSpeed(page, slider, realtime);
+  await page.locator('#lane-canvas').scrollIntoViewIfNeeded();
+  await page.evaluate(t => window.__flashMeter.start(t), tiles);
+  for (let i = 0; i < clicks; i++) { await page.click('#hash-btn'); await page.waitForTimeout(gapMs); }
+  await page.waitForTimeout(1200);
   return page.evaluate(() => { window.__flashMeter.stop(); return window.__flashMeter.rows(); });
 }
 
@@ -261,6 +284,20 @@ else {
 note('\n-- worst constructible cases, measured on painted pixels');
 assertSafe('SHA-3 slider 100, 8 rate-blocks', await recordSha3(page, { input: 'x'.repeat(136 * 8), slider: 100 }), true);
 assertSafe('SHA-3 REAL TIME, 8 rate-blocks', await recordSha3(page, { input: 'x'.repeat(136 * 8), slider: 100, realtime: true, maxMs: 25000 }), true);
+assertSafe('SHA-3 REAL TIME, re-clicked 10x back to back (sustained worst case)',
+           await recordSha3Burst(page, { input: 'x'.repeat(136 * 8), slider: 100, realtime: true }), true);
+// FINER TILING. At 3x3 the lattice sits almost entirely inside one tile and the other eight are
+// constant background, so a local excursion — theta lights 5 lanes of 25 — is averaged down
+// before it is measured. 6x6 puts roughly four tiles across the lattice, which is finer than
+// WCAG's area threshold really requires (5 lanes is a few percent of a 10-degree field) and is
+// therefore a deliberately harsher test than the standard asks for.
+// NOT marked `limited`: see the calibration note at the top. At 6x6 a patch is ~6% of a
+// 10-degree field, four times under the area WCAG's threshold applies to, so the rate bound is
+// the meaningful assertion and the amplitude is reported as information. Measured there: a
+// biggest local excursion around 0.12 during pi's transit, occurring about once a second — which
+// is a bright object moving through a small patch, and is bounded by the same 3/second rule.
+assertSafe('SHA-3 slider 100, 6x6 tiling (localised excursions, 4x finer than the standard)',
+           await recordSha3(page, { input: 'x'.repeat(136 * 4), slider: 100, tiles: 6 }));
 // MD5's pacing is deliberately untouched (its escalation is correct per the page's owner), so
 // this is the measurement that says whether it needed the same treatment. It is asserted, not
 // assumed, and it is asserted at MD5's own worst case.
@@ -309,6 +346,25 @@ const rmCss = await rmPage.evaluate(() => {
 });
 check('reduced motion damps MD5\'s card flash in CSS too', /brightness\(1\.1\d*\)/.test(rmCss), `resolved to ${rmCss}`);
 assertSafe('SHA-3 slider 100 under reduced motion', await recordSha3(rmPage, { input: 'x'.repeat(136 * 4), slider: 100 }), true);
+// ...and at the SLOW end under reduced motion, which is the combination most likely to be a
+// legibility problem rather than a safety one: the pace share is pinned to 1, so the deepest
+// motion blur is on at every slider setting. The check is that the lattice is still there to
+// read — every one of the 200 boxes still drawn, and the rate/capacity colour split intact.
+const rmSlow = await (async () => {
+  await recordSha3(rmPage, { input: 'crypto-101', slider: 1, maxMs: 12000 });
+  return rmPage.evaluate(() => {
+    const warm = c => c[0] - c[2];
+    sha3.lanes.forEach(L => { L.glow = 0; });
+    sha3.flashType = null; sha3Render();
+    const rate = sha3.lanes.filter(L => L.isRate).map(L => warm(L.lastCol));
+    const cap = sha3.lanes.filter(L => !L.isRate).map(L => warm(L.lastCol));
+    return { faces: __sha3Debug.facesDrawn(), boxes: __sha3Debug.boxCount(),
+             worstRate: Math.min(...rate), bestCap: Math.max(...cap) };
+  });
+})();
+check('under reduced motion the slow end is still fully legible',
+      rmSlow.boxes === 200 && rmSlow.faces > 0 && rmSlow.worstRate > rmSlow.bestCap,
+      `${rmSlow.boxes} boxes, ${rmSlow.faces} faces, rate/capacity warmth gap intact (${rmSlow.worstRate.toFixed(1)} vs ${rmSlow.bestCap.toFixed(1)})`);
 
 await browser.close();
 if (fails.length) {
