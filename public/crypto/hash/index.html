@@ -2119,10 +2119,180 @@ const SHA3_FLASH_GAIN_MIN = 0.30;  // peak brightness at the fastest phases
 const SHA3_FLASH_FAST_MS  = 45;    // at/below this phase duration, gain is at its floor
 const SHA3_FLASH_SLOW_MS  = 170;   // at/above this phase duration, gain is full
 
+// FEED-FORWARD ONLY. This is the term that knows what is ABOUT to be drawn, from the pacing the
+// controller just resolved. It is not the safety guarantee and it is not, on its own, a
+// measurement — see THE LUMINANCE GOVERNOR below for the closed loop that is, and which
+// multiplies this. It survives as the feed-forward half because a measurement cannot attenuate a
+// flash that has not happened yet: without it the first excursion of a burst goes out at full
+// amplitude, and only the second one is measured.
 function sha3FlashGain(durMs) {
   if (!(durMs > 0)) return SHA3_FLASH_GAIN_MIN;   // REAL TIME mode: zero-length phases
   const t = (durMs - SHA3_FLASH_FAST_MS) / (SHA3_FLASH_SLOW_MS - SHA3_FLASH_FAST_MS);
   return SHA3_FLASH_GAIN_MIN + (1 - SHA3_FLASH_GAIN_MIN) * Math.max(0, Math.min(1, t));
+}
+
+// ============================================================================================
+//  THE LUMINANCE GOVERNOR — the closed loop, and the actual safety guarantee
+// ============================================================================================
+//
+//  WHY THIS EXISTS AT ALL. The gain above is keyed to a phase's nominal duration, which is a
+//  PROXY for how fast light on the screen changes. Proxies have holes, and this one had several:
+//    * it knows about the slider and the escalation, but not about REAL TIME mode folding a
+//      whole permutation into one frame, nor about a slow machine dropping frames, nor about
+//      several phases landing on the same paint;
+//    * it only multiplies `hi`. The PHASE TINT was deliberately left speed-independent, so the
+//      one channel that pulses 0 -> depth -> 0 on every single phase was never attenuated by
+//      anything. On a long input at a low slider setting that is most of the flicker you see,
+//      which is exactly the "it isn't dimming when it speeds up" report;
+//    * one phase is not one flash. WCAG 2.3.1 counts EXCURSIONS OF RELATIVE LUMINANCE, not
+//      events, so anything counting phases is measuring the wrong quantity in both directions.
+//
+//  WHAT THIS MEASURES. Every rendered frame, sha3Render accumulates the mean colour of the cubes
+//  it drew into the same 3x3 spatial tiling the flash meter uses, and feeds it here. This runs
+//  WCAG's own general-flash state machine on those nine series live: a transition is a change in
+//  relative luminance of at least SHA3_GOV_THRESHOLD, a flash is a pair of OPPOSING transitions,
+//  and the rate is flashes per second in the worst tile. Nothing in it refers to the slider, to
+//  a phase, or to a duration — it responds to whatever actually happened on screen, whatever the
+//  cause.
+//
+//  THE THRESHOLD IS 0.06, NOT WCAG'S 0.10, ON PURPOSE. The governor must act while excursions
+//  are still legal, not once they are already violations, so it counts smaller ones. Same reason
+//  the trip rate is 2.0Hz rather than 3: acting at the limit is not a limiter.
+//
+//  HOW IT REACTS IN TIME. Attack is instant (a rate estimate can rise on a single frame, and one
+//  completed pair is enough to imply a rate, so the clamp is on within ~2 excursions — inside
+//  WCAG's own allowance of three). Release is slow (SHA3_GOV_RELEASE_MS), which is what stops
+//  the loop from oscillating: attenuate, flashing stops, rate reads zero, attenuation lifts,
+//  flashing resumes. A fast release would BE a flash generator.
+//
+//  AND THE HARD PART: the rate estimate decides HOW MUCH to attenuate, but the guarantee is the
+//  CLAMP, not the curve. Once tripped, no cube's own luminance may swing by more than
+//  SHA3_SAFE_EXCURSION between its dark and bright states, and the phase tint may not shift a
+//  cube's luminance by more than SHA3_SAFE_TINT_EXCURSION. Those two caps are solved NUMERICALLY
+//  against the palette actually in use (sha3SolveCaps, re-solved on every theme change) rather
+//  than being tuned constants that happen to work in one theme. A tile is an average of capped
+//  cubes plus background, so a capped cube excursion bounds the tile excursion — and the pixel
+//  meter then confirms that on real frames rather than taking the argument's word for it.
+const SHA3_GOV_THRESHOLD = 0.06;    // luminance change the governor counts as a transition
+const SHA3_GOV_FREE_HZ   = 0.8;     // at/below this measured flash rate: nothing is attenuated
+const SHA3_GOV_TRIP_HZ   = 2.0;     // at/above it: full attenuation and both hard caps active
+const SHA3_GOV_RELEASE_MS = 1500;   // how long a measured rate keeps its grip after it subsides
+const SHA3_GOV_GAIN_MIN  = 0.25;    // the governor's own multiplier at full attenuation
+const SHA3_SAFE_EXCURSION = 0.045;  // hard cap on one cube's dark->bright luminance swing
+const SHA3_SAFE_TINT_EXCURSION = 0.02; // ...and on how far the phase tint may move its luminance
+const SHA3_SMOOTH_TAU_MS = 110;     // temporal smoothing at full attenuation (see the tweening block)
+const SHA3_POS_TAU_SCALE = 0.8;     // the position follower's time constant, as a share of the above
+const SHA3_LIFT_FLOOR_GAIN = 3;     // how hard an off-slot lane is held clear of the lattice
+const SHA3_BLUR_TAIL_MS = 260;      // how long a motion-blur trail takes to dissolve back to crisp
+
+const sha3Gov = {
+  det: [],        // per-tile WCAG transition detector
+  flashes: [],    // completed-flash timestamps, worst tile first — pruned to the last second
+  rate: 0,        // measured flashes/second, worst tile
+  held: 0,        // ...with the slow release applied; this is what drives the attenuation
+  gain: 1, hiCap: Infinity, tintCap: Infinity, tau: 0,
+  reset() { this.det = []; this.flashes = []; this.rate = 0; this.held = 0; this.apply(0); },
+  // One frame of measured tile colours.
+  feed(now, lums, dt) {
+    for (let i = 0; i < lums.length; i++) {
+      let d = this.det[i];
+      if (!d) d = this.det[i] = { ext: lums[i], dir: 0, times: [] };
+      const delta = lums[i] - d.ext;
+      if (Math.abs(delta) >= SHA3_GOV_THRESHOLD) {
+        const dir = delta > 0 ? 1 : -1;
+        // a flash is a PAIR of opposing transitions — the same rule the offline analysis uses
+        if (d.dir !== 0 && dir === -d.dir) d.times.push(now);
+        d.dir = dir; d.ext = lums[i];
+      } else if (d.dir > 0) { if (lums[i] > d.ext) d.ext = lums[i]; }
+      else if (d.dir < 0) { if (lums[i] < d.ext) d.ext = lums[i]; }
+      else d.ext = lums[i];
+      while (d.times.length && now - d.times[0] > 1000) d.times.shift();
+    }
+    let rate = 0;
+    for (const d of this.det) {
+      if (!d) continue;
+      // Two estimates, worst wins. The COUNT is WCAG's own (flashes in the last second); the
+      // INTERVAL between the last two is what makes a burst measurable before a whole second of
+      // it has been allowed to happen.
+      let r = d.times.length;
+      if (d.times.length >= 2) {
+        const gap = d.times[d.times.length - 1] - d.times[d.times.length - 2];
+        if (gap > 0) r = Math.max(r, 1000 / gap);
+      }
+      if (r > rate) rate = r;
+    }
+    this.rate = rate;
+    // instant attack, slow release
+    const decay = Math.exp(-Math.max(0, dt) / SHA3_GOV_RELEASE_MS);
+    this.held = Math.max(rate, this.held * decay);
+    this.apply(this.held);
+  },
+  apply(hz) {
+    const s = sha3GovShare(hz);
+    this.s = s;
+    this.gain = sha3GovGainForRate(hz);
+    const caps = sha3.caps || { hi: Infinity, tint: Infinity };
+    // Interpolating the CAP (not the signal) means the clamp arrives gradually rather than as a
+    // step — a clamp that snapped on would itself be a luminance transition.
+    this.hiCap = s <= 0 ? Infinity : caps.hi / s;
+    this.tintCap = s <= 0 ? Infinity : caps.tint / s;
+    this.tau = s * SHA3_SMOOTH_TAU_MS;
+  },
+};
+
+// PURE, so a test can pin the curve without an animation in flight (and so the curve can be
+// reasoned about without reasoning about the loop). `share` is how far the governor has tripped,
+// 0..1: 0 = untouched, 1 = full attenuation and both hard caps at their solved values.
+function sha3GovShare(hz) {
+  if (sha3ReduceMotion()) return 1;   // the OS-level accessibility setting pins it wide open
+  const span = SHA3_GOV_TRIP_HZ - SHA3_GOV_FREE_HZ;
+  return Math.max(0, Math.min(1, span > 0 ? (hz - SHA3_GOV_FREE_HZ) / span : 1));
+}
+function sha3GovGainForRate(hz) { return 1 - sha3GovShare(hz) * (1 - SHA3_GOV_GAIN_MIN); }
+
+// prefers-reduced-motion: an OS-level accessibility setting, read live (not cached) so a user who
+// turns it on mid-lesson gets it immediately. See the REDUCED MOTION block further down.
+let sha3RmQuery = null;
+function sha3ReduceMotion() {
+  if (!sha3RmQuery && typeof matchMedia === 'function') sha3RmQuery = matchMedia('(prefers-reduced-motion: reduce)');
+  return !!(sha3RmQuery && sha3RmQuery.matches);
+}
+
+// Solve the two hard caps against the palette in use. Bisection rather than algebra because
+// relative luminance is not linear in the sRGB channel values — and because solving it
+// numerically means a new theme, or an edited custom property, can never quietly invalidate a
+// constant that was hand-tuned against the old colours.
+function sha3SolveCaps() {
+  const P = sha3.palette;
+  if (!P) return;
+  // The brightest material a cube can have: a full-density rate lane. That is the worst case for
+  // an excursion, because `hi` is a MULTIPLIER — the brighter the material, the more luminance a
+  // given `hi` moves.
+  const brightest = mixRgb(mixRgb(P.bg, P.ink, 0.42), P.gold, 1.0);
+  const lumOf = c => relLum(c[0], c[1], c[2]);
+  const L0 = lumOf(brightest);
+  let lo = 0, hi = 4;
+  for (let i = 0; i < 40; i++) {
+    const m = (lo + hi) / 2;
+    const l = lumOf(brightest.map(v => Math.min(255, v * (1 + m))));
+    if (l - L0 > SHA3_SAFE_EXCURSION) hi = m; else lo = m;
+  }
+  const hiCap = lo;
+  // The tint cap is solved against whichever phase hue moves this material's luminance furthest,
+  // in either direction, so no phase can be the one that slips through.
+  let tintCap = 1;
+  for (const name of ['theta', 'rho', 'pi', 'chi', 'iota']) {
+    const col = P[name];
+    if (!col) continue;
+    let tlo = 0, thi = 1;
+    for (let i = 0; i < 40; i++) {
+      const m = (tlo + thi) / 2;
+      if (Math.abs(lumOf(mixRgb(brightest, col, m)) - L0) > SHA3_SAFE_TINT_EXCURSION) thi = m; else tlo = m;
+    }
+    if (tlo < tintCap) tintCap = tlo;
+  }
+  sha3.caps = { hi: hiCap, tint: tintCap };
+  sha3Gov.apply(sha3Gov.held);
 }
 
 // ---- motion blur vs speed ----
@@ -2141,10 +2311,20 @@ function sha3FlashGain(durMs) {
 // the escalation shortens phases too. Same anchors, so the two curves stay in step.
 const SHA3_BLUR_ALPHA_FAST = 0.20;  // shortest phases: a long trail (~5 frames of history)
 const SHA3_BLUR_ALPHA_SLOW = 0.42;  // longest phases: barely a smear
+const SHA3_BLUR_ALPHA_GOV  = 0.10;  // ...and once the MEASURED rate trips the governor: ~10 frames
 function sha3BlurAlpha(durMs) {
   if (!(durMs > 0)) return SHA3_BLUR_ALPHA_FAST;   // REAL TIME: as fast as it gets
   const t = (durMs - SHA3_FLASH_FAST_MS) / (SHA3_FLASH_SLOW_MS - SHA3_FLASH_FAST_MS);
   return SHA3_BLUR_ALPHA_FAST + (SHA3_BLUR_ALPHA_SLOW - SHA3_BLUR_ALPHA_FAST) * Math.max(0, Math.min(1, t));
+}
+// The blur the frame is actually drawn with: the duration-based value above, deepened by however
+// far the MEASURED governor has tripped. Lower alpha = less of the old frame erased = longer
+// trail, so `min` is "whichever asks for more blur wins". This is the third thing the same
+// measurement drives (gain, smoothing, blur), which is deliberate — they are three views of one
+// decision, and keying them to one input is what stops them from disagreeing.
+function sha3BlurAlphaNow(durMs) {
+  const s = sha3ReduceMotion() ? 1 : (sha3Gov.s || 0);
+  return Math.min(sha3BlurAlpha(durMs), SHA3_BLUR_ALPHA_SLOW + (SHA3_BLUR_ALPHA_GOV - SHA3_BLUR_ALPHA_SLOW) * s);
 }
 
 // Raised cosine: 1 at the crest, easing to 0 at +/- width. Smooth at both ends, so a cube fades in
@@ -2231,6 +2411,9 @@ function sha3ReadPalette() {
     theta: get('--ph-theta', '#2c6f80'), rho: get('--ph-rho', '#a8446a'),
     pi: get('--ph-pi', '#b23a26'), chi: get('--ph-chi', '#3f7d52'), iota: get('--ph-iota', '#7a4e9c'),
   };
+  // The safety caps are properties of the COLOURS, so they are re-solved whenever the colours
+  // change (theme toggle, first paint). See sha3SolveCaps.
+  sha3SolveCaps();
 }
 // Handles #rgb / #rrggbb / rgb()/rgba() — the only forms the page's own custom properties use.
 function parseCssColor(str) {
@@ -2461,7 +2644,10 @@ const flashMeter = {
       const c = cnt[i] || 1;
       tilesOut.push([sum[i * 3] / c, sum[i * 3 + 1] / c, sum[i * 3 + 2] / c]);
     }
-    this.rows.push({ t: performance.now(), tiles: tilesOut });
+    // `ph` is diagnostic only: when a measured excursion turns out to be too big, the first
+    // question is always "during which phase", and answering it from the recording is far
+    // cheaper than re-running with a new probe.
+    this.rows.push({ t: performance.now(), tiles: tilesOut, ph: sha3.active ? sha3.active.type : null });
   },
   // MD5: per-frame resolved style of every flashing card, composited back into the SAME 3x3
   // spatial tiling the canvas meter uses. Per-ELEMENT series would be the wrong unit — one card
@@ -2552,8 +2738,52 @@ function sha3Render(opts) {
 
   // Zoom out slightly while lanes are lifted, so pi's transit arc (which rises above the whole
   // lattice by design — see SHA3_LIFT) still fits inside the canvas.
+  // Temporal smoothing constant for this frame, shared by every filter below. ZERO whenever the
+  // governor is not tripped, and zero whenever the controller is not running — so a drag, an
+  // idle repaint, sha3Stop's final crisp frame and every static test render all snap straight to
+  // their target exactly as they did before any of this existed. `smooth` of 1 means "no
+  // filtering at all".
+  const sdt = sha3.dt || 16.7;
+  const smooth = (sha3.running && sha3Gov.tau > 0) ? 1 - Math.exp(-sdt / sha3Gov.tau) : 1;
+  // ==========================================================================================
+  //  THE POSITION FOLLOWER — tweened interframes, so speed turns into a twist rather than a stutter
+  // ==========================================================================================
+  //
+  //  The phase controller is a state machine: it computes where every lane SHOULD be for this
+  //  phase's progress, and at slow speeds those states are what you want to see, one at a time,
+  //  legibly. At the fast end a phase gets ~20ms — one frame — so each state was arriving as a
+  //  snap, and a rapid sequence of snaps is a stutter, not motion. (It also, being a big
+  //  single-frame change in where the bright cubes are, was the single largest measured
+  //  luminance step in the whole animation — bigger than any flash. Continuous motion is a
+  //  safety fix as much as an aesthetic one.)
+  //
+  //  So the controller now drives TARGETS (fx, fy, lift) and the renderer draws FOLLOWERS
+  //  (rx, ry, rlift) that ease toward them. The follower's time constant is zero unless the
+  //  measured governor has tripped, so the slow end is bit-identical to before: at any speed
+  //  where the phases are legible on their own, nothing is smoothed at all. As speed rises the
+  //  follower lags further, phases start overlapping in what is drawn, and the assembly reads as
+  //  one continuous twisting flow — which is what it physically IS; the discrete phases were
+  //  always a teaching device laid over a permutation that does not pause between steps.
+  //
+  //  THE LIFT FLOOR is what keeps this legal. The painter's-algorithm depth sort is only correct
+  //  because boxes never interpenetrate, and a lagging box is by definition not in its slot. So
+  //  a lane that has not arrived is held clear of the lattice plane in proportion to how far off
+  //  it is — the same fanned-out transit regime pi already uses, just triggered by distance
+  //  rather than by phase progress. It relaxes continuously to zero as the lane arrives, so
+  //  there is no moment where the lift drops out from under a box that is still moving.
+  const posTau = sha3Gov.tau > 0 ? sha3Gov.tau * SHA3_POS_TAU_SCALE : 0;
+  const posK = (sha3.running && posTau > 0) ? 1 - Math.exp(-sdt / posTau) : 1;
+  for (const L of sha3.lanes) {
+    if (L.rx === undefined || posK >= 1) { L.rx = L.fx; L.ry = L.fy; L.rlift = L.lift; continue; }
+    L.rx += (L.fx - L.rx) * posK;
+    L.ry += (L.fy - L.ry) * posK;
+    const off = Math.max(Math.abs(L.rx - L.sx), Math.abs(L.ry - L.sy));
+    const floor = Math.min(1, off * SHA3_LIFT_FLOOR_GAIN);
+    L.rlift += (Math.max(L.lift, floor) - L.rlift) * posK;
+    if (L.rlift < floor) L.rlift = floor;   // a guarantee, not a target: never eased into
+  }
   let maxLift = 0;
-  for (const L of sha3.lanes) if (L.lift > maxLift) maxLift = L.lift;
+  for (const L of sha3.lanes) if (L.rlift > maxLift) maxLift = L.rlift;
   // The camera is exactly where the user last dragged it. There is no jitter term: the
   // whole-assembly shake that used to be added here is gone (see NO SHAKE above).
   const rx = sha3.rotX * Math.PI / 180;
@@ -2570,7 +2800,11 @@ function sha3Render(opts) {
   // The active phase's travelling wavefront and its hue. Hoisted out of the per-cube loop: the
   // phase, its progress and its colour are the same for all 200 cubes in a frame; only the
   // position sampled from the wave differs.
-  const fType = sha3.flashType, fP = sha3.flashP, fGain = sha3.flashGain;
+  const fType = sha3.flashType, fP = sha3.flashP;
+  // The gain applied to brightness is now a PRODUCT of the two halves described above: the
+  // feed-forward term the controller resolved at phase start (sha3.flashGain), and the governor's
+  // own measured-rate multiplier. Neither one alone is the guarantee — sha3Gov.hiCap below is.
+  const fGain = sha3.flashGain * sha3Gov.gain;
   const fCol = fType ? P[fType] : null;
   const fEsc = sha3.flashEsc;
   const fWiden = 1 + SHA3_WIDEN * fEsc;
@@ -2585,15 +2819,39 @@ function sha3Render(opts) {
   // the object appeared to fade, when what should happen is that the same fully-coloured object
   // flashes more gently. So: `hi` (brightness) is gain-scaled, `fTint` (hue) is not. Tint depth
   // now depends only on the escalation, which is a property of the INPUT, not of playback speed.
-  const fTint = fType ? (SHA3_TINT_MIN + (SHA3_TINT_MAX - SHA3_TINT_MIN) * fEsc)
+  //
+  // TWO THINGS CHANGED HERE FOR SAFETY, both of them about the tint being a flashing channel in
+  // its own right. It pulses 0 -> depth -> 0 within EVERY phase, so at speed it is a luminance
+  // oscillation that the old brightness-only gain never touched.
+  //   1. its depth is clamped by sha3Gov.tintCap once the governor trips, so a tint can never
+  //      move a cube's luminance by more than SHA3_SAFE_TINT_EXCURSION;
+  //   2. the resolved tint COLOUR and AMOUNT are both low-pass filtered (below), so consecutive
+  //      phases cross-fade continuously through each other instead of each one snapping its hue
+  //      up and back down. Holding the depth steady instead would not have helped — it would
+  //      only move the transition to the phase boundary, where teal and oxblood differ in
+  //      luminance just as much.
+  const fTintRaw = fType ? (SHA3_TINT_MIN + (SHA3_TINT_MAX - SHA3_TINT_MIN) * fEsc)
                         * sha3Band(fP - 0.5, 0.5) : 0;
+  const fTintTarget = Math.min(fTintRaw, sha3Gov.tintCap);
+  if (fCol) {
+    if (!sha3.tintColS || smooth >= 1) sha3.tintColS = fCol.slice();
+    else sha3.tintColS = mixRgb(sha3.tintColS, fCol, smooth);
+  }
+  sha3.tintAmtS = (sha3.tintAmtS === undefined || smooth >= 1)
+    ? fTintTarget : sha3.tintAmtS + (fTintTarget - sha3.tintAmtS) * smooth;
+  const fTint = sha3.tintAmtS;
+  const fTintCol = sha3.tintColS || fCol;
+  // Per-tile accumulation for the governor: mean drawn colour of the cubes in each ninth of the
+  // canvas. Same spatial unit as the offline pixel meter, so the live loop and the proof are
+  // measuring the same quantity. Cheap — nine running sums, no readback.
+  const govN = 3, govSum = new Float64Array(govN * govN * 3), govCnt = new Float64Array(govN * govN);
   for (const L of sha3.lanes) {
     const spin = L.spin * Math.PI / 180;
     const cs = Math.cos(spin), sn = Math.sin(spin);
     // A lane's world position is now exactly its slot plus pi's transit lift — nothing else. The
     // per-plane shake offset that used to be added here is gone; the lattice holds still.
-    const wx = (L.fx - 2) * SHA3_CELL;
-    const wy = (2 - L.fy) * SHA3_CELL + L.lift * (SHA3_LIFT_BASE + L.liftShelf);
+    const wx = (L.rx - 2) * SHA3_CELL;
+    const wy = (2 - L.ry) * SHA3_CELL + L.rlift * (SHA3_LIFT_BASE + L.liftShelf);
     const laneCol = L.isRate ? P.gold : P.dim;
     for (let k = 0; k < SHA3_SUBS_PER_LANE; k++) {
       const wz = (k - (SHA3_SUBS_PER_LANE - 1) / 2) * SHA3_SUB_PITCH;
@@ -2629,8 +2887,17 @@ function sha3Render(opts) {
       // active phase" actually means), and the wavefront carries direction through brightness
       // alone. `laneCol` and the density mix above are untouched either way.
       const wave = fType ? sha3FlashWave(fType, fP, L, k, fWiden) : 0;
-      const hi = (wave * SHA3_FLASH_AMP + L.glow * SHA3_AFTERGLOW_AMP) * fGain;
-      if (fTint > 0) base = mixRgb(base, fCol, fTint);
+      // THE HARD CLAMP. `hi` is the whole brightness excursion — travelling wavefront plus the
+      // residual afterglow, which at speed sits pinned near 1 and is therefore mostly a DC
+      // offset rather than a flash, but still eats headroom. Both are inside the cap, so the cap
+      // bounds the sum and not just the part that moves.
+      let hiRaw = Math.min((wave * SHA3_FLASH_AMP + L.glow * SHA3_AFTERGLOW_AMP) * fGain, sha3Gov.hiCap);
+      // ...then the same one-pole smoothing the tint gets, per sub-cube. At rest / when the
+      // governor is idle, `smooth` is 1 and this is exactly `hi = hiRaw`.
+      if (!L.hiS) L.hiS = new Float64Array(SHA3_SUBS_PER_LANE);
+      L.hiS[k] = smooth >= 1 ? hiRaw : L.hiS[k] + (hiRaw - L.hiS[k]) * smooth;
+      const hi = L.hiS[k];
+      if (fTint > 0) base = mixRgb(base, fTintCol, fTint);
       // Read-only instrumentation for the regression scripts (same role as facesDrawn/lastBlur):
       // the material colour and highlight of this lane's middle cube, AFTER the phase tint, so a
       // test can prove the rate/capacity hue split survives every phase's wash.
@@ -2647,6 +2914,17 @@ function sha3Render(opts) {
         depthSum += p.z;
       }
       items.push({ corners, depth: depthSum / 8, base, hi, cs, sn, k });
+      // Governor sample: this cube's drawn colour, binned by where it landed on screen. 0.78 is
+      // a representative Lambert shade — the loop below draws each visible face at its own
+      // shade, and re-deriving that here would cost more than it is worth for a control signal
+      // whose job is only to notice CHANGE. The offline pixel meter is what checks the result.
+      let mx = 0, my = 0;
+      for (const c of corners) { mx += c.sx; my += c.sy; }
+      const gx = Math.max(0, Math.min(govN - 1, Math.floor((mx / 8) / (w / govN))));
+      const gy = Math.max(0, Math.min(govN - 1, Math.floor((my / 8) / (h / govN))));
+      const gi = gy * govN + gx, gs = 0.78 * (1 + hi);
+      govSum[gi * 3] += base[0] * gs; govSum[gi * 3 + 1] += base[1] * gs; govSum[gi * 3 + 2] += base[2] * gs;
+      govCnt[gi]++;
     }
   }
   // Painter's algorithm: farthest first. Exactly correct here — the boxes are rigid, convex and
@@ -2694,6 +2972,19 @@ function sha3Render(opts) {
   sha3.framesDrawn++;
   sha3.lastBlur = !!blur;              // read-only instrumentation for the regression scripts
   sha3.lastBlurAlpha = blur ? blur : 0; // ...and the strength it was drawn at (0 = crisp wipe)
+  // Close the loop. Only while the controller is running: a single idle repaint has no
+  // before-frame to differ from, and feeding it one would let a drag or a theme toggle register
+  // as a flash.
+  if (sha3.running) {
+    const lums = [];
+    for (let i = 0; i < govN * govN; i++) {
+      const c = govCnt[i] || 1;
+      const cl = v => Math.max(0, Math.min(255, v / c));
+      lums.push(relLum(cl(govSum[i * 3]), cl(govSum[i * 3 + 1]), cl(govSum[i * 3 + 2])));
+    }
+    sha3.govLums = lums;
+    sha3Gov.feed(performance.now(), lums, sha3.dt || 16.7);
+  }
   if (flashMeter.on) flashMeter.sampleCanvas(sha3.canvas);
 }
 
@@ -2799,7 +3090,15 @@ function sha3ResetState() {
     L.sx = L.cx; L.sy = L.cy; L.fx = L.cx; L.fy = L.cy; L.prevSx = L.cx; L.prevSy = L.cy;
     L.lift = 0; L.liftShelf = 0; L.spin = 0; L.spinTarget = 0; L.glow = 0;
     L.bytes.fill(0); L.bytesTarget.fill(0);
+    L.rx = L.cx; L.ry = L.cy; L.rlift = 0;      // render followers start ON their targets
+    if (L.hiS) L.hiS.fill(0);
   });
+  // A new run starts from an un-attenuated, un-smoothed state: no measured history, no residual
+  // filter contents. Otherwise the tail of the last run's escalation would dim the first,
+  // legible, slow phases of the next one.
+  sha3Gov.reset();
+  sha3.tintAmtS = 0; sha3.tintColS = null;
+  sha3.blurTailUntil = 0; sha3.blurTailFrom = 0;
   sha3.phaseLog = [];
   sha3.roundsInBlock = 0; sha3.blocksDone = 0;
   sha3.flashType = null; sha3.flashP = 0; sha3.flashGain = 1; sha3.flashEsc = 0;
@@ -2943,6 +3242,7 @@ function sha3Ambient(dt) {
 // permanently until the user dragged or changed theme. Motion blur must never outlive motion.
 function sha3Stop() {
   sha3.running = false; sha3.active = null;
+  sha3.blurTailUntil = 0;   // the tail is part of motion; it must not outlive it either
   sha3.flashType = null;   // motion must never outlive motion — same rule as the blur below
   sha3SetPhaseIndicator(null);
   sha3Render();
@@ -2967,6 +3267,7 @@ function sha3Play(trace, onDone) {
     if (myRunId !== currentRunId) { sha3Stop(); return; }
     const dt = Math.min(120, now - last);
     last = now;
+    sha3.dt = dt;      // real frame delta — every temporal filter in the renderer is driven by it
     sha3Ambient(dt);
 
     if (sha3.active) {
@@ -3001,9 +3302,27 @@ function sha3Play(trace, onDone) {
     // ...and its STRENGTH rises with speed (sha3BlurAlpha: lower alpha = longer trail), so a fast
     // run smears rather than strobes. 0 when not blurring, which sha3Render treats as an opaque
     // wipe — so every "must be crisp" path (drag, idle, sha3Stop) is unaffected by construction.
+    // ...and it also turns on whenever the MEASURED governor has tripped, whatever the nominal
+    // duration says, because that is the case where a trail is doing safety work and not just
+    // looking right.
     const blurring = !!sha3.active &&
-      (sha3.active.type === 'pi' || sha3.active.dur <= 90);
-    sha3Render({ blur: blurring ? sha3BlurAlpha(sha3.active.dur) : 0 });
+      (sha3.active.type === 'pi' || sha3.active.dur <= 90 || sha3Gov.s > 0 || sha3ReduceMotion());
+    // THE TAIL. Switching straight from a deep trail back to an opaque wipe erases several
+    // frames of accumulated image in one frame, and that showed up in the pixel measurement as
+    // the single biggest luminance step of an entire run — a flash created by the anti-flash
+    // machinery. So the wipe alpha ramps back to opaque over SHA3_BLUR_TAIL_MS instead, and the
+    // trail dissolves. It still always reaches a genuinely opaque wipe (0 = crisp) well inside
+    // the settle window, so "motion blur must never outlive motion" is unchanged.
+    let blurAlpha = 0;
+    if (blurring) {
+      blurAlpha = sha3BlurAlphaNow(sha3.active.dur);
+      sha3.blurTailFrom = blurAlpha; sha3.blurTailUntil = now + SHA3_BLUR_TAIL_MS;
+    } else if (sha3.blurTailUntil && now < sha3.blurTailUntil) {
+      const t = 1 - (sha3.blurTailUntil - now) / SHA3_BLUR_TAIL_MS;
+      const a = sha3.blurTailFrom + (1 - sha3.blurTailFrom) * t;
+      blurAlpha = a >= 0.995 ? 0 : a;
+    }
+    sha3Render({ blur: blurAlpha });
 
     if (sha3.active || sha3.qi < sha3.queue.length) { requestAnimationFrame(frame); return; }
     // queue drained: fire onDone once, then keep painting briefly so the ambient easings settle
@@ -3134,6 +3453,18 @@ function initSha3Canvas() {
     // than just its presence.
     lastBlurAlpha: () => sha3.lastBlurAlpha || 0,
     blurAlphaFor: durMs => sha3BlurAlpha(durMs),
+    // THE LUMINANCE GOVERNOR — live state of the closed loop, plus the pure curve so a test can
+    // pin the shape without an animation running.
+    governor: () => ({
+      rate: sha3Gov.rate, held: sha3Gov.held, share: sha3Gov.s || 0, gain: sha3Gov.gain,
+      hiCap: sha3Gov.hiCap, tintCap: sha3Gov.tintCap, tau: sha3Gov.tau,
+      caps: sha3.caps, lums: (sha3.govLums || []).slice(), reduceMotion: sha3ReduceMotion(),
+      threshold: SHA3_GOV_THRESHOLD, freeHz: SHA3_GOV_FREE_HZ, tripHz: SHA3_GOV_TRIP_HZ,
+      safeExcursion: SHA3_SAFE_EXCURSION, safeTintExcursion: SHA3_SAFE_TINT_EXCURSION,
+    }),
+    govGainForRate: hz => sha3GovGainForRate(hz),
+    govShareForRate: hz => sha3GovShare(hz),
+    blurAlphaNowFor: durMs => sha3BlurAlphaNow(durMs),
     framesDrawn: () => sha3.framesDrawn,
     rotation: () => ({ rotX: sha3.rotX, rotY: sha3.rotY,
                        perspWeight: sha3PerspWeight(sha3.rotX, sha3.rotY) }),
