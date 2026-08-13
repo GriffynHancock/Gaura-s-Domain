@@ -556,11 +556,12 @@ for (let i = 1; i < runCurve.length; i++) {
     throw new Error(`the slider goes dead between ${runCurve[i - 1][0]} and ${runCurve[i][0]}: ${runCurve[i - 1][1]}ms -> ${runCurve[i][1]}ms`);
   }
 }
-// The slow end is legibility-critical and must NOT have been sped up by any of this. RAISED from
-// >25s to >60s: the owner's report was that 26s at slider 1 "is not slow enough, probably needs to
-// be 2.5x slower", so 2.5 x 26.0s = 65s is now the target and the old bound would no longer catch
-// a regression back toward it.
-if (!(runAt[1] > 60000)) throw new Error(`the slow end must stay slow enough to read (>60s), got ${runAt[1]}ms`);
+// The slow end is legibility-critical and must NOT have been sped up by any of this. RAISED again,
+// >60s to >150s: after the 65s build the owner reported the slowest setting was "nowhere near slow
+// enough, probably another two or four times slower", so SHA3_SCALE_SLOW went 2.25 -> 6.75 and the
+// measured one-rate-block run at slider 1 is now ~195s. The bound sits at the bottom of the
+// requested 2-4x band (2x of 65s = 130s, so >150s catches a regression to anything below ~2.3x).
+if (!(runAt[1] > 150000)) throw new Error(`the slow end must stay slow enough to read (>150s), got ${runAt[1]}ms`);
 // The default is the one the room sees first; it is unchanged on purpose.
 if (!(runAt[50] > 7000 && runAt[50] < 10000)) throw new Error(`the default (slider 50) should be unchanged at ~8.5s, got ${runAt[50]}ms`);
 // The fast end must be a real step change, not the old ~4.6s. It does NOT need to reach REAL

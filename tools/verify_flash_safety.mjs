@@ -55,7 +55,7 @@ async function newPage(opts = {}) {
   page.on('console', m => { if (m.type() === 'error' && (m.location().url || '').startsWith(origin)) fails.push('console error: ' + m.text()); });
   page.on('pageerror', e => fails.push('page error: ' + String(e)));
   await page.goto(BASE_URL + '?v=flashsafety' + Date.now());
-  await page.waitForFunction(() => !!window.__sha3Debug && !!window.__flashMeter, { timeout: 8000 });
+  await page.waitForFunction(() => !!window.__sha3Debug && !!window.__flashMeter && !!window.__stepDebug, { timeout: 8000 });
   return page;
 }
 
@@ -304,6 +304,17 @@ await page.evaluate(() => {
   requestAnimationFrame(tick);
 });
 await page.fill('#input-custom', 'x'.repeat(136 * 2));
+// SLIDER 38, not 32, not 25. RECALIBRATED AGAIN, for the same reason and by the same arithmetic
+// as the 25 -> 32 move recorded below: the slow half has been restretched a second time (owner:
+// "the slowest sha3 ... is nowhere near slow enough, probably another two or four times slower"),
+// SHA3_SCALE_SLOW went 2.25 -> 6.75, and every position on the slow half moved with it. The
+// effective phase scale this case is calibrated to (0.596) sits at slider 38 on the new curve —
+// solve 0.28 * (6.75/0.28)^((50-v)/49) = 0.596 and you get v = 38.4. Left at the OLD slider 32
+// the run is 1.5x slower than this case intends, so 40s of run reaches fewer rounds, escalates
+// less, and the late attenuation lands at 0.414 instead of the >0.5 the case is asserting —
+// a calibration miss, not a safety regression (the early/late DIRECTION was unchanged).
+//
+// The original note, kept because the same argument is what justifies both moves:
 // SLIDER 32, not 25. RECALIBRATED, not relaxed: this case needs a setting slow enough that the
 // opening of the run is genuinely legible, so that any attenuation measured later can only have
 // come from the escalation. The slow half of the slider has since been restretched to make the
@@ -314,7 +325,7 @@ await page.fill('#input-custom', 'x'.repeat(136 * 2));
 // against the same 0.07 counting threshold, i.e. identical to what this build measures at its
 // slider 25 (0.0778). Nothing about the page's behaviour at a given effective speed changed; the
 // number that names that speed did.
-await setSpeed(page, 32, false);
+await setSpeed(page, 38, false);
 // Start from rest: this case is about the escalation WITHIN one run, so the previous case's
 // attenuation must not still be releasing into its opening samples (see SHA3_PACE_RELEASE_MS).
 await settleSha3(page);
@@ -341,7 +352,7 @@ else {
   const earlyGain = Math.min(...early.map(e => 1 - e.paceShare * 0.75));
   const earlyPace = Math.max(...early.map(e => e.paceMs));
   const latePace = Math.min(...late.map(e => e.paceMs), 1e9);
-  console.log(`    slider 32, ${esc.length} frames: measured phase spacing ${earlyPace.toFixed(0)}ms -> ${latePace.toFixed(0)}ms`);
+  console.log(`    slider 38, ${esc.length} frames: measured phase spacing ${earlyPace.toFixed(0)}ms -> ${latePace.toFixed(0)}ms`);
   console.log(`      attenuation share ${earlyShare.toFixed(3)} -> ${lateShare.toFixed(3)}, gain ${earlyGain.toFixed(3)} -> ${lateGain.toFixed(3)}`);
   check('at a FIXED low slider, the attenuation responds to the escalation alone',
         earlyShare < 0.1 && lateShare > 0.5 && lateGain < 0.85 && earlyGain > 0.95,
@@ -387,6 +398,57 @@ assertSafe('SHA-3 slider 78, 4 rate-blocks (peak aliasing warp swing)',
            await recordSha3(page, { input: 'x'.repeat(136 * 4), slider: 78 }), true);
 assertSafe('SHA-3 slider 100, 6x6 tiling (localised excursions, 4x finer than the standard)',
            await recordSha3(page, { input: 'x'.repeat(136 * 4), slider: 100, tiles: 6 }));
+
+// ============================================================================================
+//  4b. STEP MODE — a new path that ARMS A FLASH ON DEMAND, as fast as a human (or a held key) can
+// ============================================================================================
+//
+// WHY THIS IS ITS OWN CASE. Every case above measures a run pacing ITSELF; the flash rate is
+// whatever the controller chose, and the governor is measuring it. Step mode hands the arming
+// trigger to the user: each STEP arms a fresh phase wavefront, and each REDO re-arms the SAME
+// one from p = 0. A held arrow key auto-repeats at the OS rate (~30/s) and a mashed button is not
+// much slower, so this is the one path where a person can request flashes faster than any run
+// would produce them. The page's defence is a minimum interval between accepted requests
+// (STEP_MIN_INTERVAL_MS) plus rejection of key auto-repeat; this case checks the defence on
+// painted pixels rather than trusting the arithmetic.
+//
+// REDO at the SLOW end is the harsher of the two and is the reason both are run: a slow phase is
+// seconds long, so re-arming it every ~220ms restarts the wavefront from the near edge over and
+// over without it ever completing — a sustained, deliberately repetitive excursion that no
+// self-paced run generates.
+async function recordStepMash(page, { slider, kind, ms = 12000, tiles = 3 }) {
+  await setAlgo(page, 'sha3');
+  await page.fill('#input-custom', 'x'.repeat(136 * 2));
+  await setSpeed(page, slider, false);
+  await page.locator('#lane-canvas').scrollIntoViewIfNeeded();
+  await settleSha3(page);
+  await page.evaluate(() => __stepDebug.set(true));
+  await page.click('#step-next');
+  await page.waitForFunction(() => __stepDebug.state().live, { timeout: 8000 });
+  // Walk a few phases in so the mashing lands on the permutation, not on the pad/absorb boxes.
+  for (let i = 0; i < 4; i++) { await page.evaluate(() => __stepDebug.step()); await page.waitForTimeout(120); }
+  await page.evaluate(t => window.__flashMeter.start(t), tiles);
+  // Hammer the REAL entry point (requestStep — the same one the buttons and the keyboard use)
+  // once per animation frame, i.e. ~60 requests a second against a limiter that should accept
+  // about four and a half.
+  await page.evaluate(([k, dur]) => new Promise(res => {
+    const t0 = performance.now();
+    const tick = () => {
+      __stepDebug.request(k);
+      if (performance.now() - t0 < dur) requestAnimationFrame(tick); else res();
+    };
+    requestAnimationFrame(tick);
+  }), [kind, ms]);
+  const rows = await page.evaluate(() => { window.__flashMeter.stop(); return window.__flashMeter.rows(); });
+  await page.evaluate(() => { __stepDebug.set(false); currentRunId++; });
+  await page.waitForTimeout(400);
+  return rows;
+}
+note('\n-- step mode, driven as fast as the controls allow');
+assertSafe('SHA-3 step mode, REDO mashed at slider 1 (re-arming a slow phase over and over)',
+           await recordStepMash(page, { slider: 1, kind: 'redo' }));
+assertSafe('SHA-3 step mode, STEP mashed at slider 100 (fastest phases, armed at the limit)',
+           await recordStepMash(page, { slider: 100, kind: 'next' }));
 // MD5's pacing is deliberately untouched (its escalation is correct per the page's owner), so
 // this is the measurement that says whether it needed the same treatment. It is asserted, not
 // assumed, and it is asserted at MD5's own worst case.

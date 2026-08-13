@@ -212,6 +212,31 @@
   #hash-btn:disabled{opacity:.5; cursor:default}
   #speed-slider{flex:0 0 100%; accent-color:var(--accent)}
 
+  /* ---- STEP-THROUGH ("breakpoint") CONTROLS ----
+     They live in #algo-box, directly under the speed slider, because that box is already the
+     PLAYBACK cluster: Hash starts the run, the slider sets its pace, and stepping is the third
+     thing you do to a run in flight. The Input box (the other candidate the owner offered) holds
+     the thing being hashed, not how it plays. Everything here is full-width inside the box, so
+     on a phone — where .hash-row collapses to one column — the tick box and the two buttons are
+     the widest, lowest, most thumb-reachable things on the control cluster rather than a small
+     target tucked in a corner. Buttons are 44px tall for the same reason (Apple/Android minimum
+     touch target), and reuse the module's own tokens rather than introducing new colours. */
+  .step-switch{ flex:0 0 100%; display:flex; align-items:center; gap:8px; cursor:pointer;
+    font-family:var(--mono); font-size:.7rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--dim); margin-top:2px; }
+  .step-switch input{ accent-color:var(--accent); width:18px; height:18px; cursor:pointer; }
+  .step-controls{ flex:0 0 100%; display:flex; gap:8px; }
+  .step-controls[hidden]{ display:none; }
+  .step-controls button{ flex:1 1 0; min-height:44px; font-family:var(--mono); font-weight:700;
+    font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;
+    color:var(--ink); background:var(--panel2); border:1px solid var(--edge); border-radius:6px;
+    padding:8px 6px; }
+  .step-controls button:hover{ border-color:var(--accent); color:var(--accent); }
+  .step-controls button:active{ background:var(--edge); }
+  .step-readout{ flex:0 0 100%; font-family:var(--mono); font-size:.68rem; color:var(--gold);
+    min-height:1.2em; letter-spacing:.04em; }
+  .step-readout[hidden]{ display:none; }
+
   #output-digest{font-family:var(--mono); font-size:.82rem; color:var(--read-on); background:var(--read-bg);
     border:1px solid #000; border-radius:5px; padding:12px 10px; word-break:break-all;
     box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset; min-height:1.6em}
@@ -544,6 +569,21 @@
       <button class="arrow-btn" id="algo-next" aria-label="Next algorithm">&#9654;</button>
       <button id="hash-btn">Hash</button>
       <input type="range" id="speed-slider" min="1" max="100" value="50" aria-label="Animation speed">
+      <!-- STEP MODE — breakpoints for the animation. Ticking this holds the run at the end of
+           every sub-cycle (SHA-3: one phase, theta/rho/pi/chi/iota; MD5: one trace event, which
+           for the main loop is one of the 64 steps = one register update) until STEP is pressed.
+           AGAIN replays the sub-cycle you are standing on, from its start, without advancing —
+           the "I missed that, show me again" button. Keyboard: right-arrow / space to step,
+           left-arrow / R to replay (see the step controller in the script). -->
+      <label class="step-switch" for="step-toggle">
+        <input type="checkbox" id="step-toggle">
+        <span>Step mode</span>
+      </label>
+      <div class="step-controls" id="step-controls" hidden>
+        <button id="step-next" type="button" aria-label="Advance one sub-cycle">Step &#9654;</button>
+        <button id="step-redo" type="button" aria-label="Replay the current sub-cycle">&#8635; Again</button>
+      </div>
+      <div class="step-readout" id="step-readout" hidden aria-live="polite"></div>
     </div>
     <!-- Output: the real digest (fingerprint) computed by md5WithTrace/keccak256WithTrace, its
          bit length, and (only for the two collision-demo presets) a note that this input shares
@@ -1514,6 +1554,93 @@ renderAlgorithmBox();
 
 let currentRunId = 0;
 
+// ============================================================================================
+//  STEP MODE — breakpoints for the animation
+// ============================================================================================
+//
+//  WHAT ONE STEP IS, per algorithm, and why:
+//    * SHA-3 — ONE PHASE. The controller's unit of time already IS a phase (theta, rho, pi, chi,
+//      iota, plus the handful of pad/absorb/squeeze "box" events around the permutation), each
+//      with a start, a held visual and a commit. Stepping in any other unit would mean splitting
+//      or joining phases, i.e. inventing a second unit that nothing else in the file uses. A
+//      coarser "one whole round" step was considered and deliberately NOT built: five presses of
+//      the same button is a round, the phase chips and the round counter both say where you are,
+//      and a second button would double the control surface to save four taps.
+//    * MD5 — ONE TRACE EVENT. For the part anyone wants to watch, that is one of the 64 steps of
+//      a block: exactly one A/B/C/D register update, one M[g]/s/K readout, one active-function
+//      highlight. The other candidate unit was a round of 16 steps, but a round is only a change
+//      of WHICH nonlinear function is running — a student watching a round go by sees sixteen
+//      register updates flash past and learns nothing a single step doesn't teach better. The
+//      non-loop events (pad, split, output) are steps of their own, so stepping walks the whole
+//      pipeline end to end rather than starting abruptly inside the compression function.
+//
+//  HOW IT IS DRIVEN, and why it is not driven from the buttons. The buttons never touch the
+//  animation: they set a REQUEST which whichever rAF loop is live consumes on its next frame.
+//  That keeps currentRunId the single cancellation point for everything — a STEP pressed after an
+//  algorithm switch is consumed by nothing, because the loop that would have consumed it already
+//  retired at its `myRunId !== currentRunId` guard. Driving events straight from the handler
+//  would have meant a second, unguarded path into the animation.
+//
+//  MINIMUM INTERVAL. Every step ARMS A FRESH PHASE FLASH, so a held-down arrow key (OS auto-repeat
+//  is ~30/s) or a mashed button is a genuine photosensitivity path — one this page's governor
+//  would eventually attenuate, but only after the first excursions had already gone out. Requests
+//  closer together than STEP_MIN_INTERVAL_MS are dropped, which puts a hard 4.5Hz ceiling on
+//  arming rate before any measurement is involved; `e.repeat` is rejected outright on top of that.
+//  verify_flash_safety.mjs measures the mashed case on painted pixels.
+const STEP_MIN_INTERVAL_MS = 220;
+const stepper = {
+  on: false,
+  req: null,          // 'next' | 'redo', consumed by the live player's frame loop
+  runId: -1,          // the run currently holding, or -1 for "nothing is stepping"
+  index: 0, total: 0, label: '',
+  lastAt: -1e9,
+  // A player takes ownership of the stepper for the duration of its run.
+  attach(runId, total) {
+    this.runId = runId; this.total = total; this.index = 0; this.label = '';
+    // Opening a run in step mode presents its FIRST sub-cycle immediately rather than sitting on
+    // a blank lattice waiting to be told to start — "step" should always mean "show me one more",
+    // including the first time.
+    this.req = this.on ? 'next' : null;
+    this.render();
+  },
+  release(runId) { if (this.runId === runId) { this.runId = -1; this.render(); } },
+  isLive() { return this.runId >= 0 && this.runId === currentRunId; },
+  peek() { return this.req; },
+  take() { const r = this.req; this.req = null; return r; },
+  // Returns false if the request was refused (rate limit). The caller uses that to decide
+  // whether a "nothing is running, so start a run" fallback should fire.
+  request(kind) {
+    const now = performance.now();
+    if (now - this.lastAt < STEP_MIN_INTERVAL_MS) return false;
+    this.lastAt = now;
+    this.req = kind;
+    return true;
+  },
+  mark(index, label) { this.index = index; this.label = label; this.render(); },
+  render() {
+    const el = document.getElementById('step-readout');
+    if (!el) return;
+    el.hidden = !this.on;
+    if (!this.on) return;
+    if (!this.isLive()) { el.textContent = this.index ? `${this.label} · done` : 'press Step to begin'; return; }
+    el.textContent = `${this.index}/${this.total} · ${this.label}`;
+  },
+};
+
+// The human-readable position, per algorithm. Deliberately built from the same trace event /
+// queue item the animation is drawing, so the readout cannot drift from what is on screen.
+const SHA3_PHASE_GLYPH = { theta:'θ', rho:'ρ', pi:'π', chi:'χ', iota:'ι' };
+function sha3StepLabel(ph) {
+  if (!ph) return '';
+  if (SHA3_PHASE_GLYPH[ph.type]) return `round ${ph.round + 1}/24 · ${SHA3_PHASE_GLYPH[ph.type]} ${ph.type}`;
+  return String((ph.ev && ph.ev.boxId) || ph.type);
+}
+function md5StepLabel(ev, trace) {
+  const m = /^block-(\d+)-r(\d+)-loop$/.exec(ev.boxId || '');
+  if (!m || ev.step === undefined) return String(ev.boxId || '');
+  return `step ${ev.step + 1}/64 · block ${Number(m[1]) + 1} · round ${Number(m[2]) + 1} · ${ev.func}`;
+}
+
 // CORRECTION (this comment used to describe a design this file no longer has): getSpeedMs and
 // onEvent are called as (idx, total) / (ev, idx, total) for historical/shared-signature reasons,
 // but as of the current MD5 pacing model (see MD5_JUICE_RATE / md5SpeedMsForN / md5Juice further
@@ -1528,8 +1655,35 @@ function playTrace(trace, getSpeedMs, onEvent, onDone) {
   const myRunId = ++currentRunId;
   let idx = 0;
   let lastTime = performance.now();
+  stepper.attach(myRunId, trace.length);
   function frame(now) {
-    if (myRunId !== currentRunId) return; // a newer run superseded this one — stop silently
+    if (myRunId !== currentRunId) { stepper.release(myRunId); return; } // superseded — stop silently
+    // STEP MODE. The loop keeps running (so it stays under the same currentRunId guard as always,
+    // and so un-ticking the box resumes instantly), but it advances only when a request arrives.
+    // A redo re-fires the event just played: every MD5 trace event carries ABSOLUTE state (the
+    // four register values after the step, the M/s/K indices, the step number), so re-firing one
+    // is an exact replay and cannot accumulate — which is why MD5 needs no snapshot machinery.
+    if (stepper.on) {
+      const req = stepper.take();
+      if (req === 'next' && idx < trace.length) {
+        onEvent(trace[idx], idx, trace.length);
+        idx++;
+        stepper.mark(idx, md5StepLabel(trace[idx - 1], trace));
+      } else if (req === 'redo' && idx > 0) {
+        onEvent(trace[idx - 1], idx - 1, trace.length);
+        stepper.mark(idx, md5StepLabel(trace[idx - 1], trace));
+      }
+      // ...and if step mode was ticked MID-RUN, no STEP has ever set the readout, so sync it to
+      // wherever the run had got to.
+      else if (stepper.index !== idx) stepper.mark(idx, idx ? md5StepLabel(trace[idx - 1], trace) : '');
+      // Re-anchor the clock every held frame, so un-ticking the box resumes from now rather than
+      // firing a catch-up burst for however long the run was paused.
+      lastTime = now;
+      if (idx < trace.length) { requestAnimationFrame(frame); return; }
+      stepper.release(myRunId);
+      onDone();
+      return;
+    }
     const stepMs = getSpeedMs(idx, trace.length);
     let elapsed = now - lastTime;
     while (elapsed >= stepMs && idx < trace.length) {
@@ -1539,7 +1693,7 @@ function playTrace(trace, getSpeedMs, onEvent, onDone) {
     }
     lastTime = now - elapsed;
     if (idx < trace.length) requestAnimationFrame(frame);
-    else onDone();
+    else { stepper.release(myRunId); onDone(); }
   }
   requestAnimationFrame(frame);
 }
@@ -1964,6 +2118,11 @@ const sha3 = {
   // flashEsc is the visual escalation, 0..1 (bounded `approach` of the uncapped intensity):
   // it widens the wavefront and deepens the phase tint as a long input grinds on.
   flashType: null, flashP: 0, flashGain: 1, flashEsc: 0,
+  // How many times the phase's wavefront SWEEPS across the assembly during that phase. 1 for
+  // every speed at or above the default (so nothing about the calibrated middle/fast end of the
+  // slider changes at all); >1 only at the slow end and in step mode, where a single sweep leaves
+  // a cube dark for most of the phase. See SHA3_FLASH_CYCLE_MS.
+  flashCycles: 1,
   // juice escalation state (see the SHA3 juice block below)
   roundsInBlock: 0, blocksDone: 0,
   // Counts down from SHA3_RESET_EASE_MS at the start of every run, so the render followers ease a
@@ -3181,7 +3340,9 @@ function sha3Render(opts) {
   // The active phase's travelling wavefront and its hue. Hoisted out of the per-cube loop: the
   // phase, its progress and its colour are the same for all 200 cubes in a frame; only the
   // position sampled from the wave differs.
-  const fType = sha3.flashType, fP = sha3.flashP;
+  // ...folded into the phase's repeat count FIRST (see THE WAVEFRONT CYCLES WITHIN ITS PHASE).
+  // flashCycles is 1 at every speed from the default upward, where this is the identity.
+  const fType = sha3.flashType, fP = sha3FlashPhaseP(sha3.flashP, sha3.flashCycles);
   // THE COLOUR/BRIGHTNESS SHUTTER. The travelling wavefront's POSITION along its axis is sampled
   // through its own, much later, aliasing threshold (SHA3_ALIAS_COL_HZ, 3x the geometric one), so
   // it keeps sweeping honestly through the whole range where the lattice's motion has already
@@ -3516,14 +3677,68 @@ const SHA3_PHASE_IDS = { theta:'phase-theta', rho:'phase-rho', pi:'phase-pi', ch
 // durations sum to 1820ms per round, and 1820 * 0.039 = 71ms, which is the sum of the new floors.
 // The floors therefore start binding right at the end of the travel instead of two-fifths of the
 // way through it, so every part of the slider does something.
+//
+// SLOW END, STRETCHED AGAIN (2.25 -> 6.75). The owner's later report on the 2.25 build: "the
+// slowest sha3 ... is nowhere near slow enough, probably another two or four times slower is
+// needed". 3x is the middle of that range, and it is applied the same way as last time — only
+// SHA3_SCALE_SLOW moves, so slider 50 and slider 100 are bit-for-bit the pacing they were
+// calibrated to. The curve stays geometric across the slow half; a 3x change at one end of a
+// geometric ramp just changes its per-unit ratio (1.049 -> 1.067 per slider unit), which is
+// exactly the kind of change a ratio control is supposed to absorb without going dead anywhere.
+// Measured result: ~195s for a one-rate-block run at slider 1 (tools/measure_sha3_durations.mjs).
 const SHA3_SCALE_MID  = 0.28;   // slider 50 (default) — unchanged
-const SHA3_SCALE_SLOW = 2.25;   // slider 1 — was 0.90; 2.5x slower, per the owner's report
+const SHA3_SCALE_SLOW = 6.75;   // slider 1 — was 2.25; another 3x slower, per the owner's report
 const SHA3_SCALE_FAST = 0.039;  // slider 100 — unchanged
 function sha3PhaseScale() {
   const v = readSpeedSlider();
   if (v >= 50) return SHA3_SCALE_MID * Math.pow(SHA3_SCALE_FAST / SHA3_SCALE_MID, (v - 50) / 50);
   return SHA3_SCALE_MID * Math.pow(SHA3_SCALE_SLOW / SHA3_SCALE_MID, (50 - v) / 49);
 }
+// ============================================================================================
+//  THE WAVEFRONT CYCLES WITHIN ITS PHASE — "the pulse cuts out early"
+// ============================================================================================
+//
+//  THE COMPLAINT, and why it was correct. Each phase arms ONE travelling wavefront and sweeps it
+//  across the assembly over the phase's whole duration. That sounds like full coverage, but no
+//  single CUBE is lit for the whole phase — a cube is lit only while the band is passing over it.
+//  Worked out from the band widths in sha3FlashWave: theta's band covers 2W/(1+2W) = 0.46 of the
+//  phase for a given cube, and chi's covers 0.36 of its own sub-window, which is itself only 0.78
+//  of the phase — about 0.28. So at the slow end, where a phase runs for seconds, a cube lights
+//  once near the start and then sits dark for most of the step you are trying to study. That is
+//  the "cuts out quite early" report, exactly.
+//
+//  THE FIX, and why it is a repeat rather than a longer band. Widening the band would light more
+//  of the assembly at once, which destroys the one thing the wavefront is for: it carries the
+//  DIRECTION of the step (theta's +x plane, chi's -x per-row races, and so on). Repeating the
+//  same sweep keeps the direction and gives the eye several passes to read it — which is what was
+//  asked for ("multiple cycles where it is still visible").
+//
+//  ONE CYCLE PER ~SHA3_FLASH_CYCLE_MS, ROUNDED, NEVER BELOW ONE. Two consequences, both wanted:
+//    * at slider 50 and above, every phase is far shorter than the period, so cycles is exactly 1
+//      and the calibrated middle and fast ends of the slider are unchanged bit for bit;
+//    * the sustained SWEEP RATE is bounded by construction. The worst case is a phase just over
+//      1.5 periods long, which rounds to 2 cycles of 0.75 * SHA3_FLASH_CYCLE_MS — 1.67Hz. That is
+//      deliberately set against SHA3_GOV_FREE_HZ (2.0), the rate below which the luminance
+//      governor attenuates nothing: the slow end must NOT become a speed at which the page dims
+//      itself, because the discrete per-phase steps are the teaching content there (and
+//      verify_flash_safety.mjs asserts exactly that).
+//
+//  AMPLITUDE IS CONTINUOUS ACROSS THE SEAM, so a repeat introduces no new luminance step: every
+//  wave in sha3FlashWave is either ring-based (rho, pi — already wrapping) or reaches zero
+//  amplitude at both p=0 and p=1 (theta and chi's band has left the far edge; iota's triangle
+//  closes). The join is 0 -> 0 in all five cases.
+const SHA3_FLASH_CYCLE_MS = 800;
+function sha3FlashCyclesFor(durMs) {
+  if (!(durMs > 0)) return 1;
+  return Math.max(1, Math.round(durMs / SHA3_FLASH_CYCLE_MS));
+}
+// Progress fed to sha3FlashWave: the phase's own 0..1 progress folded into `cycles` repeats.
+// p >= 1 is pinned to 1 rather than wrapping to 0 so a finished phase ends on a finished sweep.
+function sha3FlashPhaseP(p, cycles) {
+  if (!(cycles > 1)) return p;
+  return p >= 1 ? 1 : (p * cycles) % 1;
+}
+
 function sha3PhaseDuration(type) {
   // REAL TIME: a real Keccak permutation takes microseconds, so the honest duration is zero and
   // the controller drains the whole queue inside a single frame (see sha3Play).
@@ -3600,6 +3815,7 @@ function sha3ResetState() {
   sha3.phaseLog = [];
   sha3.roundsInBlock = 0; sha3.blocksDone = 0;
   sha3.flashType = null; sha3.flashP = 0; sha3.flashGain = 1; sha3.flashEsc = 0;
+  sha3.flashCycles = 1;
   sha3SetPhaseIndicator(null);
 }
 
@@ -3611,6 +3827,65 @@ function sha3BuildQueue(trace) {
 }
 
 const sha3Ease = t => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+
+// ============================================================================================
+//  STEP MODE'S REDO — replay by RESTORE, not by undo
+// ============================================================================================
+//
+//  SHA-3's phases MUTATE state permanently, and that is on purpose: pi composes its permutation
+//  onto wherever each lane already is, rho ADDS to each lane's spin, theta/chi write fresh lane
+//  values. Simply calling sha3StartPhase again would therefore not replay the phase — it would
+//  apply it a SECOND time, permuting the lattice twice and doubling the round's rotation, which
+//  is both wrong on screen and a genuine divergence from the trace.
+//
+//  Nor is there an honest "undo": pi's map is invertible but rho's accumulation and theta's value
+//  writes are not, not without keeping the old values — at which point you have a snapshot
+//  anyway. So the snapshot IS the mechanism. It is taken immediately before a phase starts and
+//  restored immediately before it is replayed, which makes a redo bit-identical to the first play
+//  by construction rather than by an argument about which mutations commute.
+//
+//  phaseLog is truncated as part of the restore. It is the recording every SHA-3 test reads (the
+//  theta->rho->pi->chi->iota-per-round assertion in verify_task4 among them), so a redo must
+//  leave one record per DISTINCT sub-cycle, not one per playback. That also makes phaseLog the
+//  exact oracle for "STEP appends one, REDO appends none".
+//  TAKEN ON EVERY PHASE, NOT ONLY IN STEP MODE, and written as two flat Float64Arrays for that
+//  reason. Snapshotting only while the box is ticked sounds cheaper but is wrong: ticking the box
+//  mid-phase would then leave the phase you are standing on with no snapshot, and its REDO would
+//  either be dead or would re-apply the mutation. Two typed-array allocations per phase is
+//  nothing next to the per-frame work the renderer already does, and it makes the invariant
+//  simple — every phase that has started has a restore point.
+const SHA3_SNAP_SCALARS = 15;   // per lane, see the write order below
+function sha3TakeSnapshot() {
+  const n = sha3.lanes.length, subs = SHA3_SUBS_PER_LANE;
+  const a = new Float64Array(n * SHA3_SNAP_SCALARS), b = new Float64Array(n * subs * 2);
+  for (let i = 0; i < n; i++) {
+    const L = sha3.lanes[i], o = i * SHA3_SNAP_SCALARS;
+    a[o] = L.sx; a[o+1] = L.sy; a[o+2] = L.fx; a[o+3] = L.fy;
+    a[o+4] = L.prevSx; a[o+5] = L.prevSy; a[o+6] = L.lift; a[o+7] = L.liftShelf;
+    a[o+8] = L.glow; a[o+9] = L.spin; a[o+10] = L.spinTarget; a[o+11] = L.spinTrue;
+    a[o+12] = L.rx; a[o+13] = L.ry; a[o+14] = L.rlift;
+    const p = i * subs * 2;
+    for (let k = 0; k < subs; k++) { b[p+k] = L.bytes[k]; b[p+subs+k] = L.bytesTarget[k]; }
+  }
+  return { a, b, phaseLogLen: sha3.phaseLog.length, flashEsc: sha3.flashEsc,
+           roundsInBlock: sha3.roundsInBlock, blocksDone: sha3.blocksDone };
+}
+function sha3RestoreSnapshot(s) {
+  if (!s) return;
+  const n = sha3.lanes.length, subs = SHA3_SUBS_PER_LANE;
+  sha3.phaseLog.length = s.phaseLogLen;
+  sha3.roundsInBlock = s.roundsInBlock; sha3.blocksDone = s.blocksDone;
+  sha3.flashEsc = s.flashEsc;
+  for (let i = 0; i < n; i++) {
+    const L = sha3.lanes[i], o = i * SHA3_SNAP_SCALARS, a = s.a;
+    L.sx = a[o]; L.sy = a[o+1]; L.fx = a[o+2]; L.fy = a[o+3];
+    L.prevSx = a[o+4]; L.prevSy = a[o+5]; L.lift = a[o+6]; L.liftShelf = a[o+7];
+    L.glow = a[o+8]; L.spin = a[o+9]; L.spinTarget = a[o+10]; L.spinTrue = a[o+11];
+    L.rx = a[o+12]; L.ry = a[o+13]; L.rlift = a[o+14];
+    const p = i * subs * 2;
+    for (let k = 0; k < subs; k++) { L.bytes[k] = s.b[p+k]; L.bytesTarget[k] = s.b[p+subs+k]; }
+  }
+}
 
 function sha3StartPhase(ph, now) {
   ph.start = now;
@@ -3628,6 +3903,7 @@ function sha3StartPhase(ph, now) {
   sha3.flashType = SHA3_PHASE_IDS[ph.type] ? ph.type : null;
   sha3.flashP = 0;
   sha3.flashGain = sha3FlashGain(ph.dur);
+  sha3.flashCycles = sha3FlashCyclesFor(ph.dur);   // see THE WAVEFRONT CYCLES WITHIN ITS PHASE
   sha3.flashEsc = 1 - 1 / sha3Intensity();   // 0 at the very start, -> 1, never reaching it
   if (ev.lv) sha3ApplyLaneValues(ev.lv);
   if (ev.lv1) sha3LaneAt(0, 0).bytesTarget = sha3HexToByteSlices(ev.lv1);
@@ -3682,7 +3958,11 @@ function sha3StartPhase(ph, now) {
   } else if (ph.type === 'box') {
     pulseBoxOrCube(ev.boxId, ev.sample);
   }
-  if (ph.type === 'iota') {
+  // The round counter now advances on EVERY phase of a round, not only on its iota. It used to
+  // tick once per round, at the end — invisible at speed, but in step mode it meant standing on
+  // theta of round 7 while the page said "round 6 / 24", i.e. a position readout that was wrong
+  // for four fifths of every round. `ph.round + 1` is the round being worked on right now.
+  if (ph.round >= 0) {
     const counter = document.getElementById('round-counter');
     if (counter) counter.textContent = `round ${ph.round + 1} / 24`;
   }
@@ -3766,6 +4046,7 @@ function sha3Stop() {
   sha3.running = false; sha3.active = null;
   sha3.blurTailUntil = 0;   // the tail is part of motion; it must not outlive it either
   sha3.flashType = null;   // motion must never outlive motion — same rule as the blur below
+  sha3.flashCycles = 1;
   // ...and neither must the phase tint. It releases on SHA3_TINT_OFF_TAU during the settle
   // window, which is ~5 time constants long, so by here it is already near zero; this makes it
   // exactly zero so the resting lattice can never keep a residue of the last phase's hue.
@@ -3786,6 +4067,8 @@ function sha3Play(trace, onDone) {
   sha3.running = true;
   sha3.onDone = onDone;
   sha3.settleUntil = 0;
+  sha3.stepPhase = null; sha3.stepSnap = null;
+  stepper.attach(myRunId, sha3.queue.length);
   let last = performance.now();
   const runStart = last;
   sha3.runElapsed = 0;      // drives the phase tint's opening ramp (SHA3_TINT_ATTACK_MS)
@@ -3809,7 +4092,7 @@ function sha3Play(trace, onDone) {
     //
     // sha3.runId is the discriminator — sha3Play stamps it, so a newer run has already
     // overwritten it and this callback must simply retire without touching anything.
-    if (myRunId !== currentRunId) { if (sha3.runId === myRunId) sha3Stop(); return; }
+    if (myRunId !== currentRunId) { stepper.release(myRunId); if (sha3.runId === myRunId) sha3Stop(); return; }
     const dt = Math.min(120, now - last);
     last = now;
     sha3.dt = dt;      // real frame delta — every temporal filter in the renderer is driven by it
@@ -3817,6 +4100,19 @@ function sha3Play(trace, onDone) {
     if (sha3.resetEase > 0) sha3.resetEase = Math.max(0, sha3.resetEase - dt);
     sha3Ambient(dt);
 
+    // STEP MODE, PART 1: REDO. Handled before everything else so it covers both cases with one
+    // piece of code — replaying a phase that is still mid-animation, and replaying the one the
+    // run is currently HELD on. Restore first (see the REDO block above sha3StartPhase), then
+    // start the same queue item again exactly as the first play did.
+    if (stepper.on && stepper.peek() === 'redo' && sha3.stepPhase) {
+      stepper.take();
+      sha3RestoreSnapshot(sha3.stepSnap);
+      sha3.active = sha3.stepPhase;
+      sha3StartPhase(sha3.active, now);
+      sha3.flashP = 0;
+      if (!(sha3.active.dur > 0)) { sha3PhaseProgress(sha3.active, 1); sha3FinishPhase(sha3.active, now); sha3.active = null; }
+      stepper.mark(sha3.qi, sha3StepLabel(sha3.stepPhase));
+    }
     if (sha3.active) {
       const p = Math.min(1, (now - sha3.active.start) / sha3.active.dur);
       sha3.flashP = p;               // drives the directional wavefront in sha3Render
@@ -3833,13 +4129,26 @@ function sha3Play(trace, onDone) {
     // phase has a non-zero duration and the loop exits immediately, exactly as the `if` did.
     let guard = 0;
     while (!sha3.active && sha3.qi < sha3.queue.length && guard++ < 20000) {
+      // STEP MODE, PART 2: THE GATE. Without a request in hand the queue is not pulled at all,
+      // which is what "hold at a breakpoint" means here. Note this also fixes the REAL TIME
+      // interaction by construction: a zero-duration phase still costs one request, so the
+      // 20000-iteration drain loop cannot run away in step mode.
+      if (stepper.on && stepper.take() !== 'next') {
+        // Holding. Make sure the readout names where we are even when step mode was ticked
+        // mid-run, i.e. when no STEP has ever set it.
+        if (stepper.index !== sha3.qi) stepper.mark(sha3.qi, sha3StepLabel(sha3.stepPhase));
+        break;
+      }
+      sha3.stepSnap = sha3TakeSnapshot();   // cheap (25 lanes); taken before any mutation
       sha3.active = sha3.queue[sha3.qi++];
+      sha3.stepPhase = sha3.active;
       sha3StartPhase(sha3.active, now);
       if (!(sha3.active.dur > 0)) {
         sha3PhaseProgress(sha3.active, 1);
         sha3FinishPhase(sha3.active, now);
         sha3.active = null;
       }
+      if (stepper.on) { stepper.mark(sha3.qi, sha3StepLabel(sha3.stepPhase)); break; }
     }
     // Motion blur: on during genuinely fast movement — pi's slide always (it is the fast
     // rearrangement), and any phase short enough that discrete frames would read as stepping
@@ -3904,6 +4213,7 @@ function sha3Play(trace, onDone) {
       doneFired = true;
       sha3SetPhaseIndicator(null);
       sha3.settleUntil = now + 900;
+      stepper.release(myRunId);   // the queue is exhausted: there is nothing left to step
       if (onDone) onDone();
     }
     if (now < sha3.settleUntil) requestAnimationFrame(frame);
@@ -4096,6 +4406,9 @@ function initSha3Canvas() {
       // along with the shake itself; `noShake` below is what replaced them in the tests.
       intensity: sha3Intensity(),
       flashType: sha3.flashType, flashGain: sha3.flashGain, flashEsc: sha3.flashEsc,
+      // how many times the wavefront sweeps within a phase at the current pacing (1 at the
+      // default speed and above) — see THE WAVEFRONT CYCLES WITHIN ITS PHASE
+      flashCycles: sha3.flashCycles, flashCycleMs: SHA3_FLASH_CYCLE_MS,
       // the two escalating VISUAL channels, exactly as sha3Render computes them
       flashWiden: 1 + SHA3_WIDEN * sha3.flashEsc,
       flashTint: SHA3_TINT_MIN + (SHA3_TINT_MAX - SHA3_TINT_MIN) * sha3.flashEsc,
@@ -4362,6 +4675,97 @@ function renderRealTimeReadout() {
 }
 
 document.getElementById('realtime-toggle').addEventListener('change', renderRealTimeReadout);
+
+// ============================================================================================
+//  STEP MODE — the wiring. See the step controller (`stepper`) further up for the model.
+// ============================================================================================
+//
+//  THE STATE TABLE, written out because "don't leave it stuck" is the whole requirement:
+//
+//    tick the box, nothing running    -> readout says "press Step to begin"; STEP starts a run
+//                                        (Hash) and presents its first sub-cycle.
+//    tick the box, run in flight      -> the sub-cycle now playing finishes normally, then the
+//                                        run HOLDS. Nothing is cancelled and nothing is skipped.
+//    tick the box, run finished       -> as "nothing running": STEP hashes again from the top.
+//    STEP at the last sub-cycle       -> the run completes normally (digest, history, output
+//                                        flash) exactly as an un-stepped run does.
+//    untick the box while holding     -> normal playback RESUMES from where it is holding, at the
+//                                        current slider speed. It never stops or restarts.
+//    switch algorithm while holding   -> currentRunId bumps, the held loop retires at its own
+//                                        guard, the stepper releases. Step mode stays ticked, so
+//                                        the next STEP steps the newly-selected algorithm.
+//    REAL TIME + step mode            -> mutually exclusive, enforced both ways. Real time means
+//                                        "draw the whole permutation in one frame", which is the
+//                                        exact opposite of a breakpoint; ticking either unticks
+//                                        the other rather than producing an incoherent hybrid.
+function setStepMode(on) {
+  stepper.on = !!on;
+  const box = document.getElementById('step-toggle');
+  if (box && box.checked !== stepper.on) box.checked = stepper.on;
+  const controls = document.getElementById('step-controls');
+  if (controls) controls.hidden = !stepper.on;
+  const rt = document.getElementById('realtime-toggle');
+  if (stepper.on && rt && rt.checked) { rt.checked = false; rt.dispatchEvent(new Event('change')); }
+  // Any pending request is dropped on either transition: enabling mid-run must not jump a step,
+  // and disabling must not leave one queued to fire the instant it is re-enabled.
+  stepper.req = null;
+  stepper.render();
+}
+
+function requestStep(kind) {
+  if (!stepper.on) return;
+  if (!stepper.request(kind)) return;   // inside STEP_MIN_INTERVAL_MS of the last one — dropped
+  if (stepper.isLive()) return;         // a live player will consume it on its next frame
+  // Nothing is holding. A STEP is the natural "begin" gesture, so it starts a run — which
+  // re-arms the request in stepper.attach and presents sub-cycle 1. A REDO has nothing to
+  // replay and deliberately does nothing rather than silently starting a run.
+  stepper.req = null;
+  if (kind === 'next') onHashClick();
+}
+
+document.getElementById('step-toggle').addEventListener('change', e => setStepMode(e.target.checked));
+document.getElementById('step-next').addEventListener('click', () => requestStep('next'));
+document.getElementById('step-redo').addEventListener('click', () => requestStep('redo'));
+// Real time is the other half of the mutual exclusion above.
+document.getElementById('realtime-toggle').addEventListener('change', e => {
+  if (e.target.checked && stepper.on) setStepMode(false);
+});
+
+// KEYBOARD. Right-arrow / space steps, left-arrow / R replays.
+//   * `e.repeat` is rejected, so holding a key cannot auto-repeat steps at the OS rate (~30/s).
+//     The rate limit in stepper.request() is the second line of defence behind it.
+//   * typing is never hijacked: any INPUT (which includes the speed slider, where arrow keys
+//     must keep adjusting the value), TEXTAREA, SELECT or contenteditable target is left alone.
+//   * a focused BUTTON keeps its native space/enter activation rather than being double-fired.
+document.addEventListener('keydown', e => {
+  if (!stepper.on || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target, tag = t && t.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+  if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Spacebar' || e.key === 'Enter')) return;
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); requestStep('next'); }
+  else if (e.key === 'ArrowLeft' || e.key === 'r' || e.key === 'R') { e.preventDefault(); requestStep('redo'); }
+});
+
+// Read-only instrumentation for tools/verify_step_through.mjs. `step`/`redo` set the request
+// directly, BYPASSING the rate limit, so a test can drive an exact number of sub-cycles without
+// sleeping 220ms between each; the buttons and the keyboard both go through requestStep and are
+// exercised separately.
+window.__stepDebug = {
+  minIntervalMs: STEP_MIN_INTERVAL_MS,
+  state: () => ({
+    on: stepper.on, live: stepper.isLive(), runId: stepper.runId, currentRunId,
+    index: stepper.index, total: stepper.total, label: stepper.label, req: stepper.req,
+    readout: (document.getElementById('step-readout') || {}).textContent || '',
+    controlsHidden: !!document.getElementById('step-controls').hidden,
+    sha3Qi: sha3.qi, sha3Queue: sha3.queue.length, sha3Active: sha3.active ? sha3.active.type : null,
+    phaseLogLen: sha3.phaseLog.length,
+    roundCounter: (document.getElementById('round-counter') || {}).textContent || '',
+  }),
+  set: on => setStepMode(on),
+  step: () => { stepper.req = 'next'; },
+  redo: () => { stepper.req = 'redo'; },
+  request: kind => requestStep(kind),
+};
 
 // Deferred so it never delays first paint or interactivity — the benchmark is a few dozen
 // milliseconds of pure computation and has nothing to do with the page becoming usable.
