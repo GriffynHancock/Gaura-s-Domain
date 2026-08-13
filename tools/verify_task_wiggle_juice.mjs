@@ -489,7 +489,20 @@ if (!/MD5/.test(rt.text) || !/SHA-3/.test(rt.text)) throw new Error(`readout sho
 if (!/JavaScript/i.test(rt.note) || !/(native|hardware)/i.test(rt.note)) {
   throw new Error(`the readout must be honest that this is a browser JS measurement and that native is faster: "${rt.note}"`);
 }
-console.log(`OK  benchmark measured MD5 ${rt.md5PerBlockUs.toFixed(3)} us/block, SHA-3 ${rt.sha3PerBlockUs.toFixed(2)} us/block, with an honest caveat note`);
+// The two figures are handicapped by DIFFERENT amounts (Keccak's 64-bit lanes are BigInt here;
+// MD5's 32-bit words are native JS numbers), so printing them side by side manufactures a false
+// "SHA-3 is ~45x slower than MD5" reading. The page must disclaim the comparison, not just the
+// absolute magnitudes, and must say WHY (the 64-bit/32-bit JS asymmetry).
+if (!/(not a fair race|aren't a fair race|not a race)/i.test(rt.note)) {
+  throw new Error(`the note must disclaim the MD5-vs-SHA-3 comparison, not only the absolute numbers: "${rt.note}"`);
+}
+if (!/64-bit/.test(rt.note) || !/32-bit/.test(rt.note)) {
+  throw new Error(`the note must explain the 64-bit vs 32-bit JS asymmetry behind the gap: "${rt.note}"`);
+}
+if (!/(not a fair race|see below|not comparable)/i.test(rt.text)) {
+  throw new Error(`the readout line itself must flag that the two figures are not a like-for-like comparison, got "${rt.text}"`);
+}
+console.log(`OK  benchmark measured MD5 ${rt.md5PerBlockUs.toFixed(3)} us/block, SHA-3 ${rt.sha3PerBlockUs.toFixed(2)} us/block, with an honest caveat note that disclaims the cross-algorithm comparison`);
 
 // toggling REAL TIME must collapse the animation to effectively instant, and report a slowdown
 const rtRun = await page.evaluate(async () => {

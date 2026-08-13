@@ -424,6 +424,8 @@
           <strong>8 small cubes</strong>, so <strong>one cube = 8 real bits</strong>: bright = mostly 1s, dark = mostly 0s.
           Each lane also turns about its own axis by its ρ offset — that turn <em>is</em> ρ rotating the lane's 64-bit ring.
           Drag to rotate the whole thing.
+          <br>π shuffles the 25 lanes every round. Its shuffle happens to come full circle after exactly 24 rounds,
+          so the lattice ends a run back in its starting arrangement — it went all the way around, it was not undone.
         </div>
         <div class="phase-row" id="sha3-phase-row">
           <div class="phase-box" id="phase-theta" style="--ph-col:var(--ph-theta)">
@@ -477,6 +479,10 @@
       Measured by timing this page's own JavaScript MD5 / Keccak with the animation's tracing
       switched off. Native and hardware implementations are faster still, so treat these as an
       upper bound on how long a real hash takes — the point is the order of magnitude.
+      <strong>These two numbers are not a fair race between the algorithms.</strong> SHA-3 does its maths on
+      64-bit chunks, which JavaScript can only fake with a slow number type, while MD5's 32-bit
+      chunks run at full speed here — so our SHA-3 is held back far more than our MD5 is. In real
+      optimised code the two are much closer than these numbers make them look.
     </div>
   </div>
 </div>
@@ -2232,7 +2238,8 @@ function renderRealTimeReadout() {
   if (!hashBench.done) { el.textContent = "couldn't measure this browser's hashing speed"; return; }
   const parts = [
     `Measured on this browser: <span class="rt-num">MD5 ${fmtUs(hashBench.md5PerBlockUs)}</span> per 512-bit block, ` +
-    `<span class="rt-num">SHA-3 ${fmtUs(hashBench.sha3PerBlockUs)}</span> per 1088-bit block.`
+    `<span class="rt-num">SHA-3 ${fmtUs(hashBench.sha3PerBlockUs)}</span> per 1088-bit block. ` +
+    `(Not a fair race between the two — see below.)`
   ];
   if (lastRun.algo && lastRun.blocks > 0 && lastRun.ms > 0) {
     const perBlock = lastRun.algo === 'md5' ? hashBench.md5PerBlockUs : hashBench.sha3PerBlockUs;

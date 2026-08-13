@@ -62,10 +62,23 @@ console.log('OK  17 rate / 8 capacity lanes at the exact absorb-order positions'
 
 // ---- 4. the 8-bits-per-cube reduction is stated on the page, not silently implied ----
 const noteText = (await page.locator('#cube-note').innerText()).replace(/\s+/g, ' ');
-if (!/64 bits/.test(noteText) || !/8 real bits/.test(noteText)) {
-  throw new Error(`#cube-note must state the real 64-bit lane size and what one drawn cube stands for; got "${noteText}"`);
+if (!/64 bits/.test(noteText)) {
+  throw new Error(`#cube-note must state the real 64-bit lane size; got "${noteText}"`);
 }
-console.log('OK  page states the real 64-bit lane depth and that one drawn cube = 8 real bits');
+// Pinned to the ACTUAL constants, not a hardcoded "8". Changing SHA3_SUBS_PER_LANE without
+// rewriting the note would otherwise leave the page stating a falsehood with the test still green.
+const subRe = new RegExp(`${geom.subs} small cubes`);
+const bitRe = new RegExp(`one cube = ${geom.bitsPerSub} real bits`);
+if (!subRe.test(noteText) || !bitRe.test(noteText)) {
+  throw new Error(`#cube-note must state the live reduction (${geom.subs} cubes per lane, ${geom.bitsPerSub} real bits each); got "${noteText}"`);
+}
+console.log(`OK  page states the real 64-bit lane depth and that one drawn cube = ${geom.bitsPerSub} real bits`);
+
+// ---- 4b. pi's order-24 return to identity is captioned, not left reading as "the shuffle got undone" ----
+if (!/24 rounds/.test(noteText) || !/(full circle|all the way around)/i.test(noteText)) {
+  throw new Error(`#cube-note must explain that pi returns to its starting arrangement after 24 rounds; got "${noteText}"`);
+}
+console.log('OK  page explains pi\'s order-24 return to identity');
 
 // ---- 5. the canvas actually paints (non-blank pixel data) ----
 await page.click('#algo-next'); // MD5 -> SHA-3, so the canvas is visible
