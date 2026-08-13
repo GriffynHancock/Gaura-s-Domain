@@ -3,7 +3,7 @@
 // WHAT CHANGED vs the previous version of this file, and why the new assertions are stronger:
 //
 //   The old model ramped every effect off a PERCENTAGE of trace progress (p = idx/(total-1)),
-//   so this script asserted (a) "late-run average |--wiggle-rot| > 1.3x the early-run average"
+//   so this script asserted (a) "late-run average |--wiggle| rotation > 1.3x the early-run average"
 //   and (b) "getMd5SpeedMs(last)/getMd5SpeedMs(0) is about 0.5". Both of those pass identically
 //   for a 5-block input and a 56-block input — which is exactly the defect the new model fixes,
 //   so keeping them would have been actively misleading.
@@ -134,7 +134,7 @@ console.log(`OK  speed follows 1.05^-n exactly (n=0 -> ${speed.at0.toFixed(2)}ms
 // 5. END-TO-END: a 5-block input is genuinely milder than a 50-block input
 //    (the assertion the old percentage model made structurally impossible)
 // ============================================================================================
-// Recorded through an in-page hook on md5JuiceFor plus the actual --wiggle-rot strings written
+// Recorded through an in-page hook on md5JuiceFor plus the actual --wiggle strings written
 // to the DOM, so this measures the real animation, not just the formula.
 async function runAndMeasure(text, expectBlocks) {
   const result = await page.evaluate(async ({ text, expectBlocks }) => {
@@ -159,9 +159,14 @@ async function runAndMeasure(text, expectBlocks) {
       for (const m of muts) {
         const el = m.target;
         if (!el.classList || !el.classList.contains('block-group')) continue;
-        const r = parseFloat(el.style.getPropertyValue('--wiggle-rot'));
-        const tx = parseFloat(el.style.getPropertyValue('--wiggle-tx'));
-        const ty = parseFloat(el.style.getPropertyValue('--wiggle-ty'));
+        // --wiggle is ONE property carrying the whole jitter as a transform-list fragment
+        // ("rotate(Ndeg) translate(Npx, Npx)") — three separate custom properties meant three
+        // style invalidations per step for three values that always move together. Parsed back
+        // out here so this witness still checks all three components independently.
+        const w = el.style.getPropertyValue('--wiggle');
+        const mm = /rotate\(([-\d.]+)deg\)\s*translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(w || '');
+        if (!mm) continue;
+        const r = parseFloat(mm[1]), tx = parseFloat(mm[2]), ty = parseFloat(mm[3]);
         if (!Number.isNaN(r)) rec.domRot = Math.max(rec.domRot, Math.abs(r));
         if (!Number.isNaN(tx)) rec.domTx = Math.max(rec.domTx, Math.abs(tx));
         if (!Number.isNaN(ty)) rec.domTy = Math.max(rec.domTy, Math.abs(ty));
@@ -181,12 +186,18 @@ async function runAndMeasure(text, expectBlocks) {
     obs.disconnect();
     window.md5JuiceFor = realFn;
     rec.blocks = document.querySelectorAll('.block-group').length;
-    // final inherited colour channels, as actually resolved on a register box
-    const box = document.getElementById('reg-0-A');
-    const cs = getComputedStyle(box);
-    rec.juiceRed = getComputedStyle(chain).getPropertyValue('--juice-red').trim();
-    rec.juiceSat = parseFloat(getComputedStyle(chain).getPropertyValue('--juice-sat'));
-    rec.juiceGlow = getComputedStyle(chain).getPropertyValue('--juice-glow').trim();
+    // Final colour escalation, read off the CARDS. There is now ONE escalation channel, --juice
+    // (the `approach` term, 0..1), it is written per .block-group rather than once on the chain,
+    // and CSS multiplies it out into the four colour channels at paint time — that is the MD5 lag
+    // fix (four inherited custom properties rewritten on the chain per step were 79% of
+    // style-recalc time at 56 blocks). The peak is the largest value any card ended up carrying.
+    // Channel values are still checked below, derived here with the stylesheet's own
+    // coefficients, and section 5b proves the CSS derivation really reaches a rendered colour.
+    rec.juice = Math.max(...[...chain.querySelectorAll('.block-group')]
+      .map(el => parseFloat(el.style.getPropertyValue('--juice')) || 0));
+    rec.juiceRed = `${(88 * rec.juice).toFixed(2)}%`;
+    rec.juiceSat = 2.2 * rec.juice;
+    rec.juiceGlow = `${(26 * rec.juice).toFixed(2)}px`;
     return rec;
   }, { text, expectBlocks });
   if (result.blocks !== expectBlocks) throw new Error(`expected a ${expectBlocks}-block stack, got ${result.blocks}`);
@@ -209,9 +220,9 @@ if (!near(observed / predicted, 1, 0.02)) {
   throw new Error(`peak-intensity ratio should be 1.1^45 = ${predicted.toFixed(1)}, got ${observed.toFixed(1)}`);
 }
 if (!(long.domRot > short.domRot * 50)) {
-  throw new Error(`DOM-level peak |--wiggle-rot| must scale with block count: ${short.domRot} vs ${long.domRot}`);
+  throw new Error(`DOM-level peak |--wiggle| rotation must scale with block count: ${short.domRot} vs ${long.domRot}`);
 }
-if (!(long.domTy > 0 && short.domTy > 0)) throw new Error('--wiggle-ty (translation) never reached the DOM');
+if (!(long.domTy > 0 && short.domTy > 0)) throw new Error('--wiggle\'s y translation never reached the DOM');
 if (!(parseFloat(long.juiceRed) > parseFloat(short.juiceRed) && parseFloat(long.juiceRed) > 60)) {
   throw new Error(`glow reddening must grow with the count and get strong on long inputs: ${short.juiceRed} vs ${long.juiceRed}`);
 }
@@ -219,6 +230,41 @@ if (!(long.juiceSat > short.juiceSat && long.juiceSat > 1.5)) {
   throw new Error(`glow saturation must grow with the count: ${short.juiceSat} vs ${long.juiceSat}`);
 }
 console.log(`OK  5 blocks is genuinely milder than 50 (peak I ${short.maxI.toFixed(2)} vs ${long.maxI.toFixed(1)}, ratio ${observed.toFixed(1)} = 1.1^45), and the reddening/saturation grew with it`);
+
+// ============================================================================================
+// 5b. The single --juice channel really is multiplied out into RENDERED colour by CSS.
+//     (Guards the lag fix: collapsing four written custom properties into one CSS-derived one
+//     must not quietly disconnect the escalation from what is painted.)
+// ============================================================================================
+const juiceRender = await page.evaluate(() => {
+  const chain = document.getElementById('block-group-0');   // --juice lives on the CARD now
+  const box = document.getElementById('reg-0-A');
+  const prev = chain.style.getPropertyValue('--juice');
+  const read = v => {
+    chain.style.setProperty('--juice', v);
+    box.classList.add('pulse');
+    box.style.transition = 'none';
+    void box.offsetWidth;
+    const cs = getComputedStyle(box);
+    const out = { border: cs.borderTopColor, bg: cs.backgroundColor, filter: cs.filter, shadow: cs.boxShadow };
+    box.classList.remove('pulse');
+    box.style.transition = '';
+    return out;
+  };
+  const cold = read('0');
+  const hot = read('1');
+  chain.style.setProperty('--juice', prev || '0');
+  return { cold, hot };
+});
+for (const k of ['border', 'bg', 'filter', 'shadow']) {
+  if (juiceRender.cold[k] === juiceRender.hot[k]) {
+    throw new Error(`--juice must drive the rendered ${k}: unchanged between --juice:0 and --juice:1 ("${juiceRender.cold[k]}")`);
+  }
+}
+if (!/saturate\(3\.2\)/.test(juiceRender.hot.filter)) {
+  throw new Error(`--juice:1 should resolve to saturate(1 + 2.2) on a chain register box, got "${juiceRender.hot.filter}"`);
+}
+console.log(`OK  the one --juice channel is multiplied out by CSS into rendered border/background/filter/glow (hot filter: ${juiceRender.hot.filter})`);
 
 // ============================================================================================
 // 6. Each card has its OWN off-centre pivot, stable for the life of the render
@@ -248,30 +294,34 @@ const rotationProof = await page.evaluate(() => {
   const el = document.getElementById('block-group-0');
   el.style.transition = 'none';
   el.classList.remove('wiggle');
-  el.style.setProperty('--wiggle-rot', '0deg');
-  el.style.setProperty('--wiggle-tx', '0px');
-  el.style.setProperty('--wiggle-ty', '0px');
+  const setW = (rot, tx, ty) => el.style.setProperty('--wiggle', `rotate(${rot}deg) translate(${tx}px, ${ty}px)`);
+  setW(0, 0, 0);
   el.classList.add('wiggle');
   void el.offsetWidth;
   const baseline = getComputedStyle(el).transform;
-  el.style.setProperty('--wiggle-rot', '10deg');
+  setW(10, 0, 0);
   void el.offsetWidth;
   const rotated = getComputedStyle(el).transform;
-  el.style.setProperty('--wiggle-rot', '0deg');
-  el.style.setProperty('--wiggle-tx', '25px');
-  el.style.setProperty('--wiggle-ty', '13px');
+  setW(0, 25, 13);
   void el.offsetWidth;
   const translated = getComputedStyle(el).transform;
+  // The single-property collapse must not lose the resting pose when --wiggle is absent: the
+  // rule's own fallback has to hold the card exactly where the base transform puts it.
+  el.style.removeProperty('--wiggle');
+  void el.offsetWidth;
+  const missing = getComputedStyle(el).transform;
   el.classList.remove('wiggle');
   el.style.transition = '';
-  ['--wiggle-rot', '--wiggle-tx', '--wiggle-ty'].forEach(v => el.style.removeProperty(v));
-  return { baseline, rotated, translated };
+  return { baseline, rotated, translated, missing };
 });
 if (rotationProof.rotated === rotationProof.baseline) {
-  throw new Error(`--wiggle-rot:10deg produced no computed-transform change (both "${rotationProof.baseline}") — the rotate() is not reaching the element`);
+  throw new Error(`--wiggle rotate(10deg) produced no computed-transform change (both "${rotationProof.baseline}") — the rotate() is not reaching the element`);
 }
 if (rotationProof.translated === rotationProof.baseline) {
-  throw new Error(`--wiggle-tx/--wiggle-ty produced no computed-transform change — the translate() is not reaching the element`);
+  throw new Error(`--wiggle translate() produced no computed-transform change — the translate() is not reaching the element`);
+}
+if (rotationProof.missing !== rotationProof.baseline || /none/.test(rotationProof.missing)) {
+  throw new Error(`with --wiggle unset the fallback must reproduce the resting pose exactly, got "${rotationProof.missing}" vs "${rotationProof.baseline}"`);
 }
 // the translate must move BOTH axes: compare the matrix's last two components
 const mt = /matrix(3d)?\(([^)]+)\)/.exec(rotationProof.translated);
@@ -303,16 +353,10 @@ const layout = await page.evaluate(() => {
   // excursion near 90deg (it is periodic, so bigger angles are not worse), plus max translation.
   groups.forEach((el, i) => {
     el.style.transition = 'none';
-    el.style.setProperty('--wiggle-rot', (i % 2 ? 90 : -90) + 'deg');
-    el.style.setProperty('--wiggle-tx', (i % 2 ? MD5_TX_MAX : -MD5_TX_MAX) + 'px');
-    el.style.setProperty('--wiggle-ty', (i % 2 ? MD5_TY_MAX : -MD5_TY_MAX) + 'px');
+    el.style.setProperty('--wiggle', `rotate(${i % 2 ? 90 : -90}deg) translate(${i % 2 ? MD5_TX_MAX : -MD5_TX_MAX}px, ${i % 2 ? MD5_TY_MAX : -MD5_TY_MAX}px)`);
+    el.style.setProperty('--juice', '1');   // peak escalation, now a single per-card channel
     el.classList.add('wiggle', 'pulse');
   });
-  const chain = document.getElementById('md5-block-chain');
-  chain.style.setProperty('--juice-bright', '0.85');
-  chain.style.setProperty('--juice-sat', '2.2');
-  chain.style.setProperty('--juice-red', '88%');
-  chain.style.setProperty('--juice-glow', '26px');
   void document.body.offsetWidth;
   const de = document.documentElement;
   const box = document.getElementById('animation-box');
@@ -327,7 +371,7 @@ const layout = await page.evaluate(() => {
   groups.forEach(el => {
     el.classList.remove('wiggle', 'pulse');
     el.style.transition = '';
-    ['--wiggle-rot', '--wiggle-tx', '--wiggle-ty'].forEach(v => el.style.removeProperty(v));
+    ['--wiggle', '--juice'].forEach(v => el.style.removeProperty(v));
   });
   return res;
 });
