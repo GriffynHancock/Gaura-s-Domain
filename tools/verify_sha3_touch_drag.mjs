@@ -1,23 +1,22 @@
-// DRAG-ROTATION DIRECTION — mouse vs touch.
+// DRAG-ROTATION DIRECTION — every pointer type, both axes.
 //
-// The reported bug: "up and down rotation are reverse to what it should be on mobile". There is
-// only ONE pointer handler in the page (pointerdown/pointermove/pointerup), shared by mouse, pen
-// and touch, so there was never a sign error between two code paths to find. The defect is a
-// CONVENTION mismatch, and the projection maths pins which convention each device wants:
+// There is only ONE pointer handler in the page (pointerdown/pointermove/pointerup), shared by
+// mouse, pen and touch. History of this file, because the invariant has flipped once:
 //
-//   sha3Project, front-face point (py=0, pz=+1), rotY=0:  sy = oy + sin(rotX)
+//   * ORIGINALLY every input used the desktop orbit convention on the vertical axis (drag up to
+//     tip the top toward you), which is what desktop 3D tools do.
+//   * TOUCH was flipped first, after "up and down rotation are reverse ... on mobile" — a finger
+//     is physically on the object, so the surface under it must travel WITH it.
+//   * MOUSE was then flipped too, after the same complaint on desktop: "dragging the sha3 cube
+//     left and right goes left and right but dragging up and down goes down and up, its inverted.
+//     very hard to use". The decisive argument is INTERNAL CONSISTENCY, not which convention is
+//     nicer: `rotY += dx` already moves the front face WITH the pointer horizontally, so leaving
+//     vertical on the orbit convention made one diagonal drag do direct manipulation on one axis
+//     and orbit on the other.
 //
-// so RAISING rotX drives the front face DOWN the screen.
-//
-//   * MOUSE — the cursor is a handle on the CAMERA, not on the object. Dragging up tipping the
-//     top toward you is the standard desktop-3D orbit convention, and it is the behaviour the
-//     owner said is already right. Pinned here so a future change cannot quietly flip it.
-//   * TOUCH — the finger is physically on the object. Direct manipulation is the only correct
-//     rule: the surface under the finger must travel WITH the finger, which is the opposite sign.
-//
-// So the load-bearing invariant is that the two are OPPOSITE on the vertical axis and IDENTICAL
-// on the horizontal one — not that they match. Asserting "touch equals mouse" would assert the
-// reported bug back in.
+// So the load-bearing invariant is now that mouse and touch are IDENTICAL on BOTH axes, and that
+// the surface follows the pointer. Asserting they are opposite would assert the reported bug back
+// in — that assertion was correct for one revision and is wrong now.
 //
 // The touch events are dispatched through CDP (Input.dispatchTouchEvent) rather than as
 // constructed DOM events, so they arrive as real browser-generated pointer events carrying
@@ -117,14 +116,18 @@ check('a real mouse drag rotates the camera at all',
       mouseUp.userRotated === true && Math.abs(mouseUp.rotX) > 1,
       `rotX ${mouseUp.rotX.toFixed(1)} deg after a ${DRAG_PX}px upward mouse drag`);
 
-// ---- MOUSE: unchanged desktop convention, pinned ----
-// Drag up raises rotX. Per sha3Project that tips the top of the lattice TOWARD the viewer.
-check('mouse: dragging UP raises rotX (desktop orbit convention, unchanged)',
-      Math.abs(mouseUp.rotX - EXPECT_DEG) < 1e-6,
-      `rotX ${mouseUp.rotX.toFixed(1)} (expected +${EXPECT_DEG})`);
-check('mouse: dragging DOWN lowers rotX',
-      Math.abs(mouseDown.rotX + EXPECT_DEG) < 1e-6,
-      `rotX ${mouseDown.rotX.toFixed(1)} (expected -${EXPECT_DEG})`);
+// ---- MOUSE: now direct manipulation too ----
+// The desktop orbit convention was reported as "dragging up and down goes down and up, its
+// inverted. very hard to use". The decisive argument is internal consistency: rotY += dx already
+// moves the front face WITH the pointer horizontally, so leaving the vertical axis on the orbit
+// convention made a single diagonal drag do direct manipulation on one axis and orbit on the
+// other. Every pointer type now gets direct manipulation on BOTH axes.
+check('mouse: dragging UP lowers rotX (surface follows the pointer, same as touch)',
+      Math.abs(mouseUp.rotX + EXPECT_DEG) < 1e-6,
+      `rotX ${mouseUp.rotX.toFixed(1)} (expected -${EXPECT_DEG})`);
+check('mouse: dragging DOWN raises rotX',
+      Math.abs(mouseDown.rotX - EXPECT_DEG) < 1e-6,
+      `rotX ${mouseDown.rotX.toFixed(1)} (expected +${EXPECT_DEG})`);
 
 // ---- TOUCH: direct manipulation ----
 check('touch: dragging UP lowers rotX (the surface under the finger travels WITH the finger)',
@@ -134,11 +137,11 @@ check('touch: dragging DOWN raises rotX',
       Math.abs(touchDown.rotX - EXPECT_DEG) < 1e-6,
       `rotX ${touchDown.rotX.toFixed(1)} (expected +${EXPECT_DEG})`);
 
-// ---- the invariant that is the actual fix ----
-check('vertical drag is OPPOSITE between mouse and touch (this is the fix, not a bug)',
-      Math.sign(mouseUp.rotX) === -Math.sign(touchUp.rotX) && Math.sign(touchUp.rotX) !== 0,
+// ---- the invariant: every input type behaves the same, on both axes ----
+check('vertical drag is IDENTICAL between mouse and touch (both are direct manipulation now)',
+      Math.abs(mouseUp.rotX - touchUp.rotX) < 1e-6 && Math.sign(touchUp.rotX) !== 0,
       `mouse ${mouseUp.rotX.toFixed(1)} vs touch ${touchUp.rotX.toFixed(1)} for the same upward drag`);
-check('horizontal drag is IDENTICAL between mouse and touch (only the vertical axis was wrong)',
+check('horizontal drag is IDENTICAL between mouse and touch',
       Math.abs(mouseRight.rotY - touchRight.rotY) < 1e-6 && mouseRight.rotY > 0,
       `mouse rotY ${mouseRight.rotY.toFixed(1)} vs touch rotY ${touchRight.rotY.toFixed(1)}`);
 

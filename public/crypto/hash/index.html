@@ -4662,18 +4662,22 @@ function initSha3Canvas() {
   //  moves the front face DOWN the screen. Dragging up decreases dy, `rotX -= dy` raises rotX,
   //  and the surface therefore travels opposite the input.
   //
-  //  With a MOUSE that is the ordinary orbit-camera convention — the cursor is not on the object,
-  //  it is a handle on the camera, and "drag up to tip the top toward you" is what desktop 3D
-  //  tools do. Nobody complained about it and it is left exactly as it was.
+  //  That orbit-camera convention (drag up to tip the top toward you) is what desktop 3D tools
+  //  do, so mouse and pen were initially left on it while only touch was flipped.
   //
-  //  With a FINGER the pointer is physically ON the glass, on the object, so direct manipulation
-  //  is the only correct rule: the surface under the finger must follow the finger. That needs
-  //  the opposite sign. Hence vSign below. Horizontal is unaffected — `rotY += dx` already moves
-  //  the front face with the pointer, which is why only the vertical axis was reported.
+  //  UPDATE — the owner then reported the same complaint on DESKTOP: "dragging the sha3 cube left
+  //  and right goes left and right but dragging up and down goes down and up, its inverted. very
+  //  hard to use". That is the decisive argument, and it is about INTERNAL CONSISTENCY rather
+  //  than about which convention is nicer in the abstract: `rotY += dx` already moves the front
+  //  face WITH the pointer horizontally, so keeping the vertical axis on the opposite convention
+  //  makes one drag gesture do direct manipulation on one axis and orbit on the other. Whatever
+  //  a 3D modelling package does, a diagonal drag here felt like it was fighting the user.
   //
-  //  PEN stays on the mouse convention deliberately: a stylus drives a hovering cursor and reads
-  //  as a pointing device, not as a finger pressed onto the surface.
-  const dragVSign = e => (e.pointerType === 'touch' ? 1 : -1);
+  //  So every pointer type now gets direct manipulation on BOTH axes: the surface under the
+  //  pointer follows the pointer. dragVSign is kept as a named constant rather than folded away,
+  //  because the projection genuinely does make raising rotX move the front face down (see the
+  //  derivation above) — the sign is doing real work and should stay legible to the next reader.
+  const dragVSign = () => 1;
   let dragging = false, lastX = 0, lastY = 0;
   c.addEventListener('pointerdown', e => {
     dragging = true; lastX = e.clientX; lastY = e.clientY;
@@ -4690,7 +4694,7 @@ function initSha3Canvas() {
       sha3.hintAnimating = false;
     }
     sha3.rotY += dx * 0.5;
-    sha3.rotX += dy * 0.5 * dragVSign(e);
+    sha3.rotX += dy * 0.5 * dragVSign();
     sha3.rotX = Math.max(-89, Math.min(89, sha3.rotX));
     lastX = e.clientX; lastY = e.clientY;
     sha3RequestRender();
