@@ -13,12 +13,19 @@
     --ink:#241f17; --dim:#7c7259;
     --accent:#b23a26; --gold:#a9772a; --ok:#3f7d52;
     --read-bg:#1a1812; --read-dim:#5e5a3a; --read-on:#f0bb4d;
+    /* One distinct hue per Keccak-f step, for the phase-indicator boxes AND for the canvas
+       renderer's per-phase highlight. Three are reused straight from the existing palette
+       (rho=gold, pi=accent/oxblood, chi=ok/green); theta and iota are the two genuinely new
+       hues the palette didn't already carry, chosen to sit in the same muted, warm-editorial
+       register rather than as pure saturated primaries. Redefined in the dark block below. */
+    --ph-theta:#2c6f80; --ph-rho:#a9772a; --ph-pi:#b23a26; --ph-chi:#3f7d52; --ph-iota:#7a4e9c;
     --disp:"Fraunces",Georgia,serif; --ui:"Hanken Grotesk",system-ui,sans-serif;
     --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
   }
   html[data-theme="dark"]{
     --bg:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
     --ink:#ece3cd; --dim:#9a8f72; --accent:#e0593d; --gold:#c79338; --ok:#62ab77; --read-bg:#14120c;
+    --ph-theta:#4fadc0; --ph-rho:#c79338; --ph-pi:#e0593d; --ph-chi:#62ab77; --ph-iota:#a880d4;
   }
   *{box-sizing:border-box}
   body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg);
@@ -219,88 +226,49 @@
     text-align:center; margin-top:4px; }
   .absorb-chain{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center}
 
-  .cube-wrap{ perspective: 800px; display:flex; flex-direction:column; align-items:center; gap:8px; }
-  /* #lane-grid is a 1x1 point (every .lane is absolutely positioned around its centre), so it
-     contributes ~0 height to the flex column and the ~180px-tall painted grid would sit on top
-     of the legend and the round counter below it. The margin reserves the grid's real projected
-     footprint. Since the lanes became 64px-deep BARS (see --lane-depth) the footprint is no
-     longer the symmetric +/-(2*LANE_CELL + 13) it was for flat tiles — the depth projects
-     asymmetrically under rotateX(-24deg)/rotateY(34deg), and the grid is drag-rotatable to any
-     angle. 150x140px is tuned from real painted pixels at the default angle and re-checked at a
-     worst-case rotateX(-45)/rotateY(45) drag (no clipping, legend/counter still clear), not
-     derived from a formula. */
-  .lane-grid{ width:1px; height:1px; position:relative; transform-style:preserve-3d;
-    margin:150px 140px; transform: rotateX(-24deg) rotateY(34deg); cursor:grab; touch-action:none; }
-  .lane-grid:active{ cursor:grabbing; }
-  /* transform is transitioned from the stylesheet, NOT from an inline `transition:` shorthand in
-     JS. (Historically that mattered because .lane also carried the pulse's filter transition and
-     the shorthand wiped it; those filter transitions now live on the three leaf faces instead, so
-     the hazard is smaller — but keep writing only `style.transform` from JS anyway.)
-     --lane-tdur is pi's own slide duration (.22s), set once per pi event so its transition
-     doesn't fight the stylesheet default. rho's twist is a separate mechanism entirely — it
-     animates .lane-tick via the .rho-twist/@keyframes rhoSwing rule below, not this transition. */
-  /* .lane is a PURE 3D CONTAINER — it deliberately carries no `opacity`, no `filter` and no
-     painted background of its own. Both `opacity < 1` and any `filter` other than `none` are
-     CSS grouping properties: they force this element's USED transform-style to `flat` even
-     though the computed value still reports `preserve-3d`. That is what silently collapsed the
-     old ::before/::after faces to zero-height slivers, so the "pseudo-3D block" never actually
-     extruded at all and the grid read as a flat tray of 25 tiles. The painted faces are now
-     three separate leaf boxes (.lane-front + ::before + ::after) and the brightness/pulse
-     filters live on THOSE, where flattening a leaf costs nothing. */
-  .lane{ position:absolute; top:-13px; left:-13px; width:26px; height:26px;
-    /* z-extrusion of the bar. FIPS 202's Keccak-f[1600] state is 5x5 lanes each 64 BITS DEEP —
-       at the old 13px (and, given the flattening bug above, effectively 0px) this read as a
-       flat tray of nubs; at 64px it reads as 25 elongated bars, i.e. a volume. */
-    --lane-depth:64px;
-    /* per-lane face colour, and the pulse multiplier the three faces each scale their own base
-       brightness by (see .lane-front/::before/::after). */
-    --lane-col:var(--gold); --lane-bright:1;
-    transform-style:preserve-3d;
-    transition:transform var(--lane-tdur, .22s) ease-in-out; }
-  .lane.capacity{ --lane-col:var(--panel2); }
-  /* same top-up/decay pulse convention as .stage-box/.cube/.chain-link elsewhere in this file:
-     fast attack via the .pulse rule, slow decay via each face's base transition. The custom
-     property changes discretely, but each face's `filter` COMPUTED value changes with it, and
-     it is that filter value the transition interpolates. */
-  .lane.pulse{ --lane-bright:1.85; }
-  /* pseudo-3D bar: .lane-front is the front face; ::before/::after are the top and left-side
-     faces (see the comment on ::after below for why left, not right), rotated into the XZ / YZ
-     planes off the front face's own edges — same rotateX/rotateY 3D-transform technique as the
-     single cube this replaces, just sized down to one lane instead of one 90px cube, and now
-     genuinely --lane-depth deep. */
-  .lane-front, .lane::before, .lane::after{ position:absolute; background:var(--lane-col);
-    border:1px solid var(--edge); transition:filter 1.2s ease-out; }
-  .lane.pulse .lane-front, .lane.pulse::before, .lane.pulse::after{ transition:filter .06s ease-out; }
-  .lane-front{ inset:0; filter:brightness(var(--lane-bright)); }
-  .lane::before, .lane::after{ content:''; }
-  .lane::before{ width:26px; height:var(--lane-depth); top:calc(-1 * var(--lane-depth)); left:0;
-    filter:brightness(calc(1.16 * var(--lane-bright))); transform:rotateX(90deg); transform-origin:bottom; }
-  /* LEFT face, not right: the grid's rotateY(+34deg) projects the -z depth axis to screen-LEFT,
-     so it is the left side of each bar that turns toward the camera. A right-side face here is
-     geometrically correct but self-occluded — it only ever leaked out as a 1px dark sliver. */
-  .lane::after{ width:var(--lane-depth); height:26px; top:0; left:calc(-1 * var(--lane-depth));
-    filter:brightness(calc(.72 * var(--lane-bright))); transform:rotateY(-90deg); transform-origin:right; }
-  .lane-tick{ position:absolute; left:50%; top:50%; width:2px; height:11px; background:var(--ink);
-    transform:translate(-50%,-100%) translateZ(1px) rotate(0deg); transform-origin:bottom center; opacity:.55;
-    transition:transform .3s ease-out, opacity .3s ease-out; }
-  .round-counter{ font-family:var(--mono); font-size:.7rem; color:var(--dim); }
-  /* rho ONLY. Deliberately not hung off the shared `.pulse` pathway (theta/pi/chi pulse too, and
-     .pulse is stripped after 2 rAFs — far too short for a .3s twist to be seen). The rho-twist
-     class is added only for step==='rho' events and held by a setTimeout, the same
-     hold-then-revert pattern pi uses. Each lane rotates by its OWN rho offset, so rho reads as
-     "25 lanes twisting by 25 different amounts" instead of another flash-everything. */
-  /* The twist lives on the TICK, not on the lane's own transform: pi writes style.transform on
-     every lane a few ms later, which would wipe a lane-level rotateZ long before it was visible.
-     --tick-deg is that lane's real rho offset expressed as a fraction of the 64-bit ring. */
-  .lane.rho-twist .lane-tick{ animation:rhoSwing .3s ease-out both;
-    opacity:1; height:13px; background:var(--accent); }
-  @keyframes rhoSwing{
-    0%{ transform:translate(-50%,-100%) translateZ(1px) rotate(0deg) }
-    100%{ transform:translate(-50%,-100%) translateZ(1px) rotate(var(--tick-deg, 0deg)) }
-  }
-  .cube-legend{ font-family:var(--mono); font-size:.62rem; color:var(--dim); display:flex; gap:10px; }
+  /* ---- SHA-3 state: Canvas 2D renderer ----
+     The whole CSS-3D lane grid (.lane / .lane-front / .lane::before/::after / .lane-tick /
+     .lane-grid) is GONE. It could not be made to work: `filter`/`opacity` are CSS grouping
+     properties that silently force a `preserve-3d` subtree to `flat`, so per-box brightness and
+     real nested 6-face solids were mutually exclusive; and CSS has no z-buffer, so 25 adjacent
+     solids under free drag-rotation have no correct generic sort. Both are documented in
+     docs/research/3d-rendering-options.md. Everything below the canvas element is now just
+     chrome — the geometry, occlusion, shading and animation all live in JS (see the
+     `sha3` renderer/controller section in the script). */
+  .cube-wrap{ display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; }
+  /* Fixed CSS height (not aspect-ratio) so the reserved layout box never depends on how far the
+     user has drag-rotated the assembly — the canvas clips, the page never reflows. The backing
+     store is resized to CSS-pixels x devicePixelRatio in JS (see resizeCanvas). */
+  #lane-canvas{ display:block; width:100%; max-width:560px; height:360px; touch-action:none;
+    cursor:grab; border:1px solid var(--edge); border-radius:8px; background:var(--panel2); }
+  #lane-canvas:active{ cursor:grabbing; }
+  .cube-note{ font-family:var(--mono); font-size:.62rem; color:var(--dim); text-align:center;
+    max-width:56ch; line-height:1.6; }
+  /* Per-phase indicator boxes: one per Keccak-f[1600] step, each in its own hue (--ph-*), lit
+     only while the animation controller has that phase active. Deliberately mirrors the
+     controller's own state — there is exactly one active phase at a time, so at most one of
+     these is ever lit. */
+  .phase-row{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  .phase-box{ flex:0 1 auto; min-width:86px; border:1px solid var(--edge); border-radius:7px;
+    padding:6px 9px; background:var(--panel2); text-align:center; opacity:.62;
+    transition:opacity .18s ease-out, border-color .18s ease-out, box-shadow .35s ease-out,
+               background-color .35s ease-out; }
+  .phase-box .ph-glyph{ display:block; font-family:var(--disp); font-weight:600; font-size:1rem;
+    line-height:1.1; color:var(--ph-col); }
+  .phase-box .ph-name{ display:block; font-family:var(--mono); font-size:.56rem; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--dim); margin-top:1px; }
+  .phase-box .ph-what{ display:block; font-size:.62rem; color:var(--dim); margin-top:3px; line-height:1.3; }
+  .phase-box.active{ opacity:1; border-color:var(--ph-col);
+    background:color-mix(in srgb, var(--ph-col) 16%, var(--panel2));
+    box-shadow:0 0 0 2px color-mix(in srgb, var(--ph-col) 34%, transparent);
+    transition:opacity .05s ease-out, border-color .05s ease-out, box-shadow .05s ease-out,
+               background-color .05s ease-out; }
+  .phase-box.active .ph-name{ color:var(--ph-col); }
+  .cube-legend{ font-family:var(--mono); font-size:.62rem; color:var(--dim); display:flex; gap:10px;
+    flex-wrap:wrap; justify-content:center; }
   .legend-rate::before{ content:'■ '; color:var(--gold); }
   .legend-capacity::before{ content:'■ '; color:var(--dim); }
+  .round-counter{ font-family:var(--mono); font-size:.7rem; color:var(--dim); }
 
   /* Task 6: outer input/output box flash on Hash click, distinct from per-diagram-box pulses */
   #input-box, #output-box{ transition: background-color .4s ease-out; }
@@ -398,10 +366,32 @@
         <!-- Task 7 populates one absorb-flow arrow per real rate-block here -->
       </div>
       <div class="cube-wrap" id="cube-wrap">
-        <div class="lane-grid" id="lane-grid"></div>
+        <canvas id="lane-canvas" width="560" height="360"
+          aria-label="The Keccak state: 5 by 5 lanes of 64 bits, drawn as a lattice of small cubes. Drag to rotate."></canvas>
         <div class="cube-legend">
           <span class="legend-rate">rate — exposed (17 lanes)</span>
           <span class="legend-capacity">capacity — hidden (8 lanes)</span>
+        </div>
+        <!-- Honesty note, required on the page and not just in a code comment: the state really is
+             5x5x64 bits. We draw 8 cubes per lane, not 64, and each drawn cube stands for 8 real
+             bits — that reduction is stated here, never silently implied. -->
+        <div class="cube-note" id="cube-note">
+          The real state is <strong>5 × 5 lanes × 64 bits</strong> = 1600 bits. Each lane is drawn here as
+          <strong>8 small cubes</strong>, so <strong>one cube = 8 real bits</strong>: bright = mostly 1s, dark = mostly 0s.
+          Each lane also turns about its own axis by its ρ offset — that turn <em>is</em> ρ rotating the lane's 64-bit ring.
+          Drag to rotate the whole thing.
+        </div>
+        <div class="phase-row" id="sha3-phase-row">
+          <div class="phase-box" id="phase-theta" style="--ph-col:var(--ph-theta)">
+            <span class="ph-glyph">θ</span><span class="ph-name">theta</span><span class="ph-what">mix columns</span></div>
+          <div class="phase-box" id="phase-rho" style="--ph-col:var(--ph-rho)">
+            <span class="ph-glyph">ρ</span><span class="ph-name">rho</span><span class="ph-what">twist each lane</span></div>
+          <div class="phase-box" id="phase-pi" style="--ph-col:var(--ph-pi)">
+            <span class="ph-glyph">π</span><span class="ph-name">pi</span><span class="ph-what">shuffle positions</span></div>
+          <div class="phase-box" id="phase-chi" style="--ph-col:var(--ph-chi)">
+            <span class="ph-glyph">χ</span><span class="ph-name">chi</span><span class="ph-what">mix rows (the only non-linear step)</span></div>
+          <div class="phase-box" id="phase-iota" style="--ph-col:var(--ph-iota)">
+            <span class="ph-glyph">ι</span><span class="ph-name">iota</span><span class="ph-what">stamp round constant on one lane</span></div>
         </div>
         <div class="round-counter" id="round-counter">round — / 24</div>
       </div>
@@ -533,10 +523,22 @@ const KECCAK_MASK64 = (1n << 64n) - 1n;
 function rol64(x, n) { n = BigInt(n % 64); return ((x << n) | (x >> (64n - n))) & KECCAK_MASK64; }
 function laneHex(x) { return x.toString(16).padStart(16,'0'); }
 
-// px between lane centers. Widened from 34 when the lanes gained real depth (--lane-depth,
-// 13px -> 64px): at 34px spacing the deep bars occluded their own neighbours badly enough that
-// the 5x5 arrangement stopped being readable. Tuned empirically from screenshots.
-const LANE_CELL = 42;
+// Per-lane VALUE snapshot for the renderer, emitted onto trace events as the `lv` field.
+//
+// Two hard constraints shape the format:
+//  1. NEVER BigInt. tools/extract_hash_core.mjs runs this core in a vm sandbox and
+//     tools/test_keccak_trace.mjs JSON round-trips trace fields to defeat cross-realm
+//     deepEqual — and JSON.stringify THROWS on a BigInt. So values leave as 16-char hex.
+//  2. Flat row-major array indexed x*5+y, so a consumer never has to know about the nested
+//     state[x][y] shape.
+// This is additive to the trace only. It reads `state` and never writes it, so the bitwise
+// math and the resulting digest are untouched.
+function laneSnapshot(state) {
+  const out = [];
+  for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) out.push(laneHex(state[x][y]));
+  return out;
+}
+
 const KECCAK_RATE_LANES = new Set();
 for (let i = 0; i < 17; i++) {
   // mirrors the absorb-order logic already used in keccak256WithTrace's j-loop
@@ -545,40 +547,6 @@ for (let i = 0; i < 17; i++) {
   const x = i % 5, y = Math.floor(i / 5);
   KECCAK_RATE_LANES.add(`${x},${y}`);
 }
-
-function buildLaneGrid() {
-  const grid = document.getElementById('lane-grid');
-  grid.innerHTML = '';
-  for (let y = 0; y < 5; y++) {
-    for (let x = 0; x < 5; x++) {
-      const lane = document.createElement('div');
-      lane.className = 'lane ' + (KECCAK_RATE_LANES.has(`${x},${y}`) ? 'rate' : 'capacity');
-      lane.id = `lane-${x}-${y}`;
-      lane.dataset.x = String(x);
-      lane.dataset.y = String(y);
-      const baseTransform = `translate3d(${(x - 2) * LANE_CELL}px, ${(y - 2) * LANE_CELL}px, 0)`;
-      lane.dataset.baseTransform = baseTransform;
-      lane.style.transform = baseTransform;
-      // .lane itself paints nothing — it is only the 3D container (see the CSS note on why it
-      // must carry no opacity/filter). The front face is this real child box.
-      const front = document.createElement('span');
-      front.className = 'lane-front';
-      lane.appendChild(front);
-      const tick = document.createElement('span');
-      tick.className = 'lane-tick';
-      lane.appendChild(tick);
-      grid.appendChild(lane);
-    }
-  }
-}
-// NOTE: the call to buildLaneGrid() is deliberately *not* here — this file's DOM-free
-// "algorithm core" is extracted by tools/extract_hash_core.mjs (bounded by the marker strings
-// it looks for near the top and bottom of this script block) and run in a Node vm context with
-// no `document` global for tools/test_md5_trace.mjs / tools/test_keccak_trace.mjs.
-// buildLaneGrid()'s definition can live here (function bodies aren't executed until called), but
-// invoking it eagerly at this point would throw ReferenceError: document is not defined under
-// that extraction. The actual call is below, alongside the other page-load DOM wiring
-// (renderAlgorithmBox() etc.) that already lives outside the extraction boundary.
 
 function keccakF1600WithTrace(state, trace) {
   for (let rnd = 0; rnd < 24; rnd++) {
@@ -590,7 +558,8 @@ function keccakF1600WithTrace(state, trace) {
     trace.push({
       boxId:`lane-r${rnd}-theta`, kind:'activate',
       sample: `D=[${D.map(v => laneHex(v).slice(0,4)).join(',')}]`,
-      lanes: ALL_25_LANES
+      lanes: ALL_25_LANES,
+      lv: laneSnapshot(state)
     });
 
     const B = [[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n],[0n,0n,0n,0n,0n]];
@@ -598,11 +567,22 @@ function keccakF1600WithTrace(state, trace) {
       const nx = y, ny = (2*x + 3*y) % 5;
       B[nx][ny] = rol64(state[x][y], KECCAK_RHO_OFFSETS[x][y]);
     }
+    // rho's per-lane values are the ROTATED values still sitting at their ORIGINAL (x,y) — i.e.
+    // rho's effect isolated from pi's re-slotting, which is how the animation shows them (rho
+    // twists in place; pi then moves the boxes). The loop above fused both steps into B, so read
+    // them back out through the inverse of the pi map: the value that started at (x,y) landed at
+    // B[y][(2x+3y)%5]. Pure read of B — no recomputation, no change to the math.
+    const rhoLv = [];
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) rhoLv.push(laneHex(B[y][(2*x + 3*y) % 5]));
     trace.push({
       boxId:`lane-r${rnd}-rho`, kind:'activate',
       sample: 'each lane rotated by its own fixed offset',
-      lanes: ALL_25_LANES
+      lanes: ALL_25_LANES,
+      lv: rhoLv
     });
+    // pi carries NO lv: pi moves lanes, it does not change any lane's value. The renderer models
+    // each lane as an object that carries its own value and changes SLOT here, so re-emitting the
+    // same 25 values under permuted indices would be both redundant and easy to misapply.
     trace.push({
       boxId:`lane-r${rnd}-pi`, kind:'activate',
       sample: 'lanes permuted via (x,y) -> (y, 2x+3y mod 5)',
@@ -620,14 +600,18 @@ function keccakF1600WithTrace(state, trace) {
     trace.push({
       boxId:`lane-r${rnd}-chi`, kind:'activate',
       sample: 'row y=0 self-mixed (representative — chi runs on every row every round)',
-      lanes: [[0,0],[1,0],[2,0],[3,0],[4,0]]
+      lanes: [[0,0],[1,0],[2,0],[3,0],[4,0]],
+      lv: laneSnapshot(state)
     });
 
     state[0][0] ^= KECCAK_RC[rnd];
     trace.push({
       boxId:`lane-r${rnd}-iota`, kind:'activate',
       sample: laneHex(KECCAK_RC[rnd]),
-      lanes: [[0,0]]
+      lanes: [[0,0]],
+      // iota touches exactly one lane, so this is a single-lane delta rather than a full
+      // 25-lane snapshot — the renderer applies it to canonical lane (0,0) only.
+      lv1: laneHex(state[0][0])
     });
   }
   return state;
@@ -645,7 +629,6 @@ function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32
   trace.push({ boxId:'absorb-split', kind:'activate', sample:`${numBlocks} rate-block(s) x ${rateBytes*8} bits` });
   for (let i = 0; i < msg.length; i += rateBytes) {
     const blockIdx = i / rateBytes;
-    trace.push({ boxId:`absorb-${blockIdx}`, kind:'flow', sample:`block ${blockIdx} -> rate` });
     const block = msg.slice(i, i + rateBytes);
     for (let j = 0; j < rateBytes; j += 8) {
       const x = (j/8) % 5, y = Math.floor((j/8)/5);
@@ -653,6 +636,15 @@ function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32
       for (let b = 7; b >= 0; b--) lane = (lane << 8n) | BigInt(block[j+b] || 0);
       state[x][y] ^= lane;
     }
+    // Pushed AFTER the XOR-in (it used to be before), so its `lv` is the state the absorb
+    // actually produced: rate lanes now non-zero, capacity lanes STILL EXACTLY ZERO. That
+    // contrast is the whole sponge lesson — input never touches capacity directly — and it only
+    // reads true if the snapshot is taken post-XOR. Event ORDER is unchanged: this is still the
+    // `absorb-N` event immediately preceding this block's permutation events.
+    trace.push({
+      boxId:`absorb-${blockIdx}`, kind:'flow', sample:`block ${blockIdx} -> rate`,
+      lv: laneSnapshot(state)
+    });
     state = keccakF1600WithTrace(state, trace);
   }
   trace.push({ boxId:'squeeze', kind:'flow', sample:'reading rate -> output' });
@@ -938,41 +930,7 @@ function renderAlgorithmBox() {
 document.getElementById('algo-prev').onclick = document.getElementById('algo-next').onclick =
   () => setAlgorithm(currentAlgorithm === 'md5' ? 'sha3' : 'md5');
 renderAlgorithmBox();
-buildLaneGrid();
-
-// Seeds each lane's --tick-deg with its own rho rotation offset (bits of a 64-bit ring -> degrees).
-// Only the .rho-twist class actually applies it, so the ticks sit at 0deg until rho fires.
-function applyRhoTicks() {
-  for (let x = 0; x < 5; x++) {
-    for (let y = 0; y < 5; y++) {
-      const el = document.getElementById(`lane-${x}-${y}`);
-      const tick = el && el.querySelector('.lane-tick');
-      if (!tick) continue;
-      const deg = (KECCAK_RHO_OFFSETS[x][y] % 64) * (360 / 64);
-      tick.style.setProperty('--tick-deg', deg + 'deg');
-    }
-  }
-}
-applyRhoTicks();
-
-(function setupLaneGridDrag() {
-  const grid = document.getElementById('lane-grid');
-  // MUST match .lane-grid's stylesheet `transform: rotateX(...) rotateY(...)` — the first
-  // pointermove writes an inline transform built from these, so a mismatch makes the grid jump.
-  let rotX = -24, rotY = 34, dragging = false, lastX = 0, lastY = 0;
-  function apply() { grid.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`; }
-  grid.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; grid.setPointerCapture(e.pointerId); });
-  grid.addEventListener('pointermove', e => {
-    if (!dragging) return;
-    const dx = e.clientX - lastX, dy = e.clientY - lastY;
-    rotY += dx * 0.5; rotX -= dy * 0.5;
-    lastX = e.clientX; lastY = e.clientY;
-    apply();
-  });
-  grid.addEventListener('pointerup', () => { dragging = false; });
-  grid.addEventListener('pointercancel', () => { dragging = false; });
-  apply();
-})();
+// The SHA-3 state renderer + animation controller are built further down (initSha3Canvas).
 
 // ---- Task 6: shared animation engine ----
 
@@ -1172,58 +1130,6 @@ function renderSha3AbsorbChain(numBlocks) {
   }
 }
 
-// Consumes Task 2's per-round theta/rho/pi/chi/iota trace events and pulses exactly the lanes
-// each event names. Returns false for any other boxId so the caller can fall through to the
-// generic pulseBoxOrCube handling (pad/absorb-split/squeeze/output boxes).
-function pulseLanesFor(ev) {
-  const m = /^lane-r(\d+)-(theta|rho|pi|chi|iota)$/.exec(ev.boxId);
-  if (!m) return false;
-  const rnd = Number(m[1]);
-  const step = m[2];
-  const lanes = ev.lanes || [];
-  const rhoLanes = [];
-  lanes.forEach(([x, y]) => {
-    const el = document.getElementById(`lane-${x}-${y}`);
-    if (!el) return;
-    // rho gets a twist instead of a flash: theta already owns the "everything lights up at once"
-    // look, and giving rho the same pulse made the two steps byte-identical on screen.
-    if (step !== 'rho') {
-      el.classList.add('pulse');
-      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('pulse')));
-    }
-    if (step === 'pi') {
-      const [nx, ny] = KECCAK_PI_LANE_MAP[x][y];
-      const tx = (nx - 2) * LANE_CELL, ty = (ny - 2) * LANE_CELL;
-      // NB: only style.transform is written — the transition lives in the stylesheet. Setting the
-      // `transition` shorthand here used to reset transition-property to `transform`, killing
-      // .lane / .lane.pulse's filter decay for that lane for the rest of the page's life.
-      el.style.setProperty('--lane-tdur', '.22s');
-      el.style.transform = `translate3d(${tx}px, ${ty}px, 12px)`;
-      setTimeout(() => { el.style.transform = el.dataset.baseTransform; }, 220);
-    }
-    if (step === 'rho') rhoLanes.push([el, x, y]);
-  });
-  if (rhoLanes.length) {
-    // Dedicated rho trigger — deliberately NOT the shared .pulse pathway (theta/pi/chi all use
-    // that, and .pulse is stripped after 2 rAFs / ~33ms, far too short for a .3s twist to land),
-    // and deliberately not a lane-level rotateZ either (pi overwrites style.transform on every
-    // lane a few ms later and would wipe it). The tick swings from 0 to that lane's OWN rho
-    // offset, held ~.3s by a timeout like pi's, so rho reads as 25 different rotations rather
-    // than a second flash-everything.
-    rhoLanes.forEach(([el]) => { el.classList.remove('rho-twist'); clearTimeout(el._rhoTimer); });
-    void document.getElementById('lane-grid').offsetWidth; // one reflow, so the swing restarts every round
-    rhoLanes.forEach(([el]) => {
-      el.classList.add('rho-twist');
-      el._rhoTimer = setTimeout(() => el.classList.remove('rho-twist'), 300);
-    });
-  }
-  if (step === 'iota') {
-    const counter = document.getElementById('round-counter');
-    if (counter) counter.textContent = `round ${rnd + 1} / 24`;
-  }
-  return true;
-}
-
 function pulseBoxOrCube(boxId, sample) {
   // md5WithTrace already pushes a chain-{blk-1} 'flow' event carrying the outgoing A/B/C/D state
   // whenever it moves to a new block (public/crypto/hash/index.html, unmodified by this
@@ -1253,6 +1159,573 @@ function pulseBoxOrCube(boxId, sample) {
   }
   pulseBox(boxId, sample);
 }
+
+// ============================================================================================
+//  SHA-3 state: Canvas 2D renderer + animation state controller
+// ============================================================================================
+//
+//  WHY CANVAS 2D (decision made in docs/research/3d-rendering-options.md, not re-litigated here):
+//  CSS 3D cannot do this. Two structural blockers, both documented: (a) `filter`/`opacity` are
+//  CSS grouping properties that force a `preserve-3d` subtree's USED transform-style to `flat`,
+//  so "real nested 6-face solid" and "per-box brightness pulse" are mutually exclusive in one
+//  element hierarchy — which is exactly why every previous attempt produced loose planes glued
+//  to a front face rather than closed boxes; (b) CSS has no z-buffer, and a static DOM-order
+//  sort cannot track a viewpoint that moves under pointer drag. Canvas 2D costs zero vendored
+//  bytes, and painter's-algorithm sorting is not an approximation here but *exactly* correct:
+//  for rigid, convex, non-interpenetrating boxes, one is always strictly nearer than the other
+//  along the view axis. Keeping that precondition true during pi is the one thing the animation
+//  has to be careful about — see the lift/slide/drop note on sha3PhaseProgress.
+//
+//  GEOMETRY DECISION — how the 64-bit depth is represented:
+//  Keccak-f[1600]'s state is 5 x 5 lanes x 64 bits. We draw each lane as a run of 8 small cubes
+//  along its own z axis, giving a genuine 5 x 5 x 8 lattice of 200 closed cubes — "a cube of
+//  cubes" — rather than 25 elongated bars (which read as stacked planes, the exact complaint
+//  this rewrite exists to fix). ONE DRAWN CUBE THEREFORE STANDS FOR 8 REAL BITS, and that
+//  reduction is stated in plain text on the page itself (#cube-note), never silently implied:
+//  drawing all 64 would put 1600 cubes on screen at roughly 3 px each, which is neither legible
+//  nor honest about which bit is which. Each cube's brightness is the real popcount of the byte
+//  it stands for, so the picture is a true (if coarse-grained) view of the actual state.
+const SHA3_SUBS_PER_LANE = 8;                                   // cubes drawn per lane
+const SHA3_BITS_PER_SUB = 64 / SHA3_SUBS_PER_LANE;              // = 8 real bits per drawn cube
+const SHA3_CELL = 1.0;        // world-unit pitch between lane centres in x and y
+const SHA3_SUB_PITCH = 1.0;   // world-unit pitch between sub-cubes along a lane's z axis
+// Cube edge < pitch for two reasons: it leaves a visible gap so the lattice reads as SEPARATE
+// cubes, and it guarantees the axial (rho) spin can never make two neighbours interpenetrate —
+// a cube of edge e spinning about its own z axis sweeps an in-plane circumradius of e*sqrt(2)/2,
+// which for e=0.66 is 0.467 < 0.5 * pitch. That inequality is what keeps the depth sort exactly
+// correct while the lanes are twisting.
+const SHA3_CUBE = 0.66;
+// pi's transit arc. NOTE the shape this settled into and why: pi moves 24 of the 25 lanes (only
+// the slot (0,0) is a fixed point), so lifting every moving lane "clear of the lattice" is just a
+// global translation — it slides the whole object off the canvas and communicates nothing. What
+// actually reads as a rearrangement is a CENTRED FAN-OUT: a small overall rise plus a per-lane
+// shelf offset that is symmetric about zero, so the lattice visibly comes apart into separated
+// layers, shuffles, and closes back up without the assembly leaving frame.
+const SHA3_LIFT_BASE = 0.9;
+// Every lane gets its own shelf height during transit (spread symmetric about 0). Two lanes on
+// different shelves cannot interpenetrate however their horizontal paths cross, which is what
+// keeps the painter's-algorithm precondition true through pi.
+const SHA3_LIFT_SPREAD = 3.0;
+
+const sha3 = {
+  canvas: null, ctx: null, w: 0, h: 0, dpr: 1,
+  rotX: -24, rotY: 34,          // camera, degrees — same default angle the old CSS grid used
+  lanes: [],
+  palette: null,
+  // controller
+  runId: -1, queue: [], qi: 0, active: null, phaseLog: [], settleUntil: 0,
+  running: false, onDone: null, lastFrame: 0, facesDrawn: 0, framesDrawn: 0,
+};
+
+// ---- colour plumbing: every colour comes from the page's own CSS custom properties ----
+function sha3ReadPalette() {
+  const cs = getComputedStyle(document.documentElement);
+  const get = (name, fallback) => parseCssColor(cs.getPropertyValue(name).trim() || fallback);
+  sha3.palette = {
+    bg: get('--bg', '#e7dec9'), panel: get('--panel', '#efe7d3'), panel2: get('--panel2', '#e2d8be'),
+    edge: get('--edge', '#cdc09f'), ink: get('--ink', '#241f17'), dim: get('--dim', '#7c7259'),
+    accent: get('--accent', '#b23a26'), gold: get('--gold', '#a9772a'),
+    theta: get('--ph-theta', '#2c6f80'), rho: get('--ph-rho', '#a9772a'),
+    pi: get('--ph-pi', '#b23a26'), chi: get('--ph-chi', '#3f7d52'), iota: get('--ph-iota', '#7a4e9c'),
+  };
+}
+// Handles #rgb / #rrggbb / rgb()/rgba() — the only forms the page's own custom properties use.
+function parseCssColor(str) {
+  str = String(str).trim();
+  if (str.startsWith('#')) {
+    let h = str.slice(1);
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    const n = parseInt(h.slice(0, 6), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m = /rgba?\(([^)]+)\)/.exec(str);
+  if (m) { const p = m[1].split(/[,\s/]+/).map(Number); return [p[0]|0, p[1]|0, p[2]|0]; }
+  return [128, 128, 128];
+}
+function mixRgb(a, b, t) { return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]; }
+function rgbCss(c, mul) {
+  const m = mul === undefined ? 1 : mul;
+  const cl = v => Math.max(0, Math.min(255, Math.round(v * m)));
+  return `rgb(${cl(c[0])},${cl(c[1])},${cl(c[2])})`;
+}
+
+// ---- lane model ----
+// A lane is a persistent OBJECT with an identity, not a cell in a grid. That distinction is the
+// whole fix for the snap-back bug: position is state carried on this object and read fresh every
+// frame, so nothing can "revert" it — there is no base transform to revert TO.
+//   cx,cy  canonical Keccak lane index. NEVER changes. Its value each round is state[cx][cy],
+//          and whether it is a rate or a capacity lane is fixed by it.
+//   sx,sy  the SLOT this lane currently occupies on screen — integers 0..4, permuted by pi and
+//          never reset mid-run. Integers (not accumulated pixel offsets) so repeated pi can
+//          never drift the lattice out of its 5x5 footprint.
+//   fx,fy  the rendered slot, a float that eases toward sx,sy during pi's transit.
+function sha3MakeLanes() {
+  const lanes = [];
+  for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
+    lanes.push({
+      cx: x, cy: y, sx: x, sy: y, fx: x, fy: y, prevSx: x, prevSy: y,
+      lift: 0, liftShelf: 0,
+      spin: 0, spinTarget: 0,
+      bytes: new Array(SHA3_SUBS_PER_LANE).fill(0),
+      bytesTarget: new Array(SHA3_SUBS_PER_LANE).fill(0),
+      glow: 0,
+      isRate: KECCAK_RATE_LANES.has(`${x},${y}`),
+    });
+  }
+  return lanes;
+}
+function sha3LaneAt(cx, cy) { return sha3.lanes[cx * 5 + cy]; }
+
+// Byte k of a 64-bit lane = bits [8k, 8k+8), read out of the 16-char big-endian hex the trace
+// carries. k=0 (the LSB byte) is the sub-cube at the front of the lane.
+function sha3HexToByteSlices(hex) {
+  const out = new Array(SHA3_SUBS_PER_LANE);
+  for (let k = 0; k < SHA3_SUBS_PER_LANE; k++) out[k] = parseInt(hex.substr(14 - 2 * k, 2), 16) || 0;
+  return out;
+}
+function popcount8(b) { let c = 0; while (b) { c += b & 1; b >>= 1; } return c; }
+
+// `lv` is the flat row-major (x*5+y) snapshot emitted by laneSnapshot() in the algorithm core.
+function sha3ApplyLaneValues(lv) {
+  if (!lv) return;
+  for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
+    const L = sha3LaneAt(x, y);
+    L.bytesTarget = sha3HexToByteSlices(lv[x * 5 + y]);
+  }
+}
+
+// ---- projection ----
+// Axonometric: rotate about Y, then about X, then a weak perspective divide. This is a genuine
+// coordinate system — boxes are defined as centre + half-extents in world units and everything
+// downstream (occlusion, shading, hit order) falls out of the maths rather than being hand-tuned.
+function sha3Project(px, py, pz, cam) {
+  const x1 = px * cam.cy + pz * cam.sy;
+  const z1 = -px * cam.sy + pz * cam.cy;
+  const y2 = py * cam.cx - z1 * cam.sx;
+  const z2 = py * cam.sx + z1 * cam.cx;     // depth: larger = nearer the camera
+  const persp = cam.f / (cam.f - z2);
+  return { sx: cam.ox + x1 * cam.scale * persp, sy: cam.oy - y2 * cam.scale * persp, z: z2 };
+}
+// Same rotation, no translation/perspective — for face normals.
+function sha3RotateVec(px, py, pz, cam) {
+  const x1 = px * cam.cy + pz * cam.sy;
+  const z1 = -px * cam.sy + pz * cam.cy;
+  return { x: x1, y: py * cam.cx - z1 * cam.sx, z: py * cam.sx + z1 * cam.cx };
+}
+
+// Unit cube: 8 corners, and 6 faces each given as 4 corner indices in counter-clockwise order
+// when viewed from OUTSIDE, plus that face's outward normal. Every face is a real quad built
+// from the box's own shared corners, which is why the vertices actually meet and the result
+// reads as a closed solid instead of three planes that happen to be near each other.
+const SHA3_CORNERS = [
+  [-1,-1,-1], [ 1,-1,-1], [ 1, 1,-1], [-1, 1,-1],
+  [-1,-1, 1], [ 1,-1, 1], [ 1, 1, 1], [-1, 1, 1],
+];
+const SHA3_FACES = [
+  { idx: [4,5,6,7], n: [ 0, 0, 1] },  // front (+z)
+  { idx: [1,0,3,2], n: [ 0, 0,-1] },  // back  (-z)
+  { idx: [3,2,6,7], n: [ 0, 1, 0] },  // top
+  { idx: [0,1,5,4], n: [ 0,-1, 0] },  // bottom
+  { idx: [5,1,2,6], n: [ 1, 0, 0] },  // right
+  { idx: [0,4,7,3], n: [-1, 0, 0] },  // left
+];
+const SHA3_LIGHT = (() => { const v = [-0.36, 0.72, 0.59]; const m = Math.hypot(...v); return v.map(c => c/m); })();
+
+function sha3ResizeCanvas() {
+  const c = sha3.canvas;
+  if (!c) return;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const rect = c.getBoundingClientRect();
+  const cssW = Math.max(1, Math.round(rect.width || 560));
+  const cssH = Math.max(1, Math.round(rect.height || 360));
+  // Backing store sized in DEVICE pixels so the render is sharp on retina, then the context is
+  // scaled once so all drawing code can keep working in CSS pixels.
+  if (c.width !== cssW * dpr || c.height !== cssH * dpr) {
+    c.width = Math.round(cssW * dpr);
+    c.height = Math.round(cssH * dpr);
+  }
+  sha3.w = cssW; sha3.h = cssH; sha3.dpr = dpr;
+}
+
+function sha3Render(opts) {
+  const ctx = sha3.ctx;
+  if (!ctx) return;
+  const blur = opts && opts.blur;
+  sha3ResizeCanvas();
+  const { w, h, dpr } = sha3;
+  const P = sha3.palette;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Motion blur, essentially free in Canvas 2D: instead of wiping the frame, lay down a
+  // TRANSLUCENT background so the previous frames bleed through as a trail. Used only while
+  // something is genuinely in fast transit (pi's slide), so the lattice at rest stays crisp.
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = blur ? `rgba(${P.panel2.map(v=>Math.round(v)).join(',')},0.30)` : rgbCss(P.panel2);
+  ctx.fillRect(0, 0, w, h);
+
+  // Zoom out slightly while lanes are lifted, so pi's transit arc (which rises above the whole
+  // lattice by design — see SHA3_LIFT) still fits inside the canvas.
+  let maxLift = 0;
+  for (const L of sha3.lanes) if (L.lift > maxLift) maxLift = L.lift;
+  const rx = sha3.rotX * Math.PI / 180, ry = sha3.rotY * Math.PI / 180;
+  const cam = {
+    cx: Math.cos(rx), sx: Math.sin(rx), cy: Math.cos(ry), sy: Math.sin(ry),
+    scale: Math.min(w / 12.5, h / 11) * (1 - 0.18 * Math.min(1, maxLift)),
+    f: 34, ox: w / 2, oy: h / 2,
+  };
+
+  // Build the draw list: one entry per sub-cube (25 lanes x SHA3_SUBS_PER_LANE).
+  const items = [];
+  const half = SHA3_CUBE / 2;
+  for (const L of sha3.lanes) {
+    const spin = L.spin * Math.PI / 180;
+    const cs = Math.cos(spin), sn = Math.sin(spin);
+    const wx = (L.fx - 2) * SHA3_CELL;
+    const wy = (2 - L.fy) * SHA3_CELL + L.lift * (SHA3_LIFT_BASE + L.liftShelf);
+    const laneCol = L.isRate ? P.gold : P.dim;
+    for (let k = 0; k < SHA3_SUBS_PER_LANE; k++) {
+      const wz = (k - (SHA3_SUBS_PER_LANE - 1) / 2) * SHA3_SUB_PITCH;
+      // Sub-cube brightness IS the real data: the popcount of the 8 bits this cube stands for.
+      // An all-zero lane (a capacity lane before anything has diffused into it) is therefore
+      // genuinely dark, and lights up only once the permutation has actually stirred data in.
+      const density = popcount8(Math.round(L.bytes[k])) / 8;
+      // The floor (0.22, not 0) keeps a trace of the lane's own hue even when the lane is all
+      // zeroes, so rate (gold) and capacity (grey) stay tellable apart at rest and the legend
+      // matches what is on screen. It does not soften the honest reading: 0.22 vs 1.0 is still a
+      // wide brightness gap, so an empty lane still reads as clearly empty.
+      const base = mixRgb(mixRgb(P.bg, P.ink, 0.42), laneCol, 0.22 + 0.78 * density);
+      const corners = [];
+      let depthSum = 0;
+      for (let i = 0; i < 8; i++) {
+        const c = SHA3_CORNERS[i];
+        const lx = c[0] * half, ly = c[1] * half, lz = c[2] * half;
+        // axial (rho) spin about the lane's own z axis, applied in the lane's LOCAL frame
+        // before the box is placed in the world — a real per-object transform.
+        const p = sha3Project(wx + lx * cs - ly * sn, wy + lx * sn + ly * cs, wz + lz, cam);
+        corners.push(p);
+        depthSum += p.z;
+      }
+      items.push({ corners, depth: depthSum / 8, base, glow: L.glow, cs, sn, k });
+    }
+  }
+  // Painter's algorithm: farthest first. Exactly correct here — the boxes are rigid, convex and
+  // never interpenetrate (guaranteed by SHA3_CUBE < pitch for the spin, and by pi's staggered
+  // lift shelves for the transit), so for any two, one is strictly nearer along the view axis.
+  items.sort((a, b) => a.depth - b.depth);
+
+  let faces = 0;
+  ctx.lineJoin = 'round';
+  for (const it of items) {
+    const bright = 1 + it.glow * 0.85;
+    for (const f of SHA3_FACES) {
+      // spin the face normal the same way the corners were spun, then camera-rotate it
+      const nx = f.n[0] * it.cs - f.n[1] * it.sn;
+      const ny = f.n[0] * it.sn + f.n[1] * it.cs;
+      const n = sha3RotateVec(nx, ny, f.n[2], cam);
+      if (n.z <= 0.0001) continue;                     // backface cull
+      const lambert = Math.max(0, n.x*SHA3_LIGHT[0] + n.y*SHA3_LIGHT[1] + n.z*SHA3_LIGHT[2]);
+      const shade = 0.52 + 0.48 * lambert;
+      const q = f.idx.map(i => it.corners[i]);
+      ctx.beginPath();
+      ctx.moveTo(q[0].sx, q[0].sy);
+      for (let i = 1; i < 4; i++) ctx.lineTo(q[i].sx, q[i].sy);
+      ctx.closePath();
+      ctx.fillStyle = rgbCss(it.base, shade * bright);
+      ctx.fill();
+      // A hairline edge in the same shaded colour, darkened — this is what makes the shared
+      // corners legible as corners and stops adjacent coplanar faces melting together.
+      ctx.strokeStyle = rgbCss(it.base, shade * bright * 0.55);
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+      faces++;
+    }
+  }
+  sha3.facesDrawn = faces;
+  sha3.framesDrawn++;
+}
+
+// A single idle repaint (theme change, drag, resize, first load) — distinct from the controller's
+// own continuous loop.
+let sha3IdlePending = false;
+function sha3RequestRender() {
+  if (sha3IdlePending || sha3.running) return;
+  sha3IdlePending = true;
+  requestAnimationFrame(() => { sha3IdlePending = false; if (!sha3.running) sha3Render(); });
+}
+
+// ============================ animation state controller ====================================
+//
+//  The user's central complaint was that every effect interrupted every other one: "the whole
+//  thing flashes, then the dials turn, then it re-arranges and twists but only for a split
+//  second before returning". That is what this replaces.
+//
+//  Model: the trace becomes a QUEUE of phases. Exactly ONE phase is active at a time, it owns a
+//  real start time and duration, and the next phase does not start until the current one has
+//  actually FINISHED and committed its end state. Nothing is scheduled with setTimeout, so
+//  nothing can fire on top of anything else, and nothing reverts.
+//
+//  Two kinds of effect, deliberately separated:
+//    * GATED  — belongs to a phase and is driven by that phase's progress p in [0,1]. pi's
+//               rearrangement is the important one: it MUTATES sx/sy once at phase start and the
+//               renderer reads it forever after. There is no revert timer. Applying pi again
+//               next round permutes from the CURRENT arrangement, which is the honest behaviour
+//               of a permutation being applied repeatedly.
+//    * AMBIENT — runs every frame regardless of which phase is active, on its own time constant,
+//               and is free to still be settling after its phase has handed off. The rho "dials"
+//               are exactly this: rho sets each lane's spin TARGET, and the spin keeps easing
+//               toward it independently. Same for the per-cube fill and the glow decay.
+const SHA3_PHASE_BASE  = { theta:300, rho:420, pi:560, chi:320, iota:220, box:320 };
+// Floors, per phase rather than one global minimum: at the fast end of the slider a uniform
+// scale would push pi under two frames, and a snapping pi is precisely the failure mode this
+// rewrite exists to fix. Each floor is the shortest duration at which that phase still reads as
+// a movement rather than a jump.
+const SHA3_PHASE_FLOOR = { theta:30,  rho:44,  pi:58,  chi:30,  iota:22,  box:40 };
+const SHA3_PHASE_IDS = { theta:'phase-theta', rho:'phase-rho', pi:'phase-pi', chi:'phase-chi', iota:'phase-iota' };
+
+// Slider 1..100 -> a scale applied to the base phase durations. Full-run durations for the
+// common one-rate-block input (24 rounds x 5 phases + 5 stage events) are documented in the
+// task report; the slow end is preserved (~40s, legibility genuinely needs it) and the fast end
+// is opened up a long way past the old 85ms/event floor.
+function sha3PhaseScale() {
+  const v = readSpeedSlider();
+  if (v >= 50) return 0.28 - (v - 50) * (0.28 - 0.10) / 50;   // 50 -> 0.28, 100 -> 0.10
+  return 0.28 + (50 - v) * (0.90 - 0.28) / 49;                // 50 -> 0.28,   1 -> 0.90
+}
+function sha3PhaseDuration(type) {
+  return Math.max(SHA3_PHASE_FLOOR[type], SHA3_PHASE_BASE[type] * sha3PhaseScale());
+}
+
+function sha3SetPhaseIndicator(type) {
+  Object.keys(SHA3_PHASE_IDS).forEach(t => {
+    const el = document.getElementById(SHA3_PHASE_IDS[t]);
+    if (el) el.classList.toggle('active', t === type);
+  });
+}
+
+function sha3ResetState() {
+  sha3.lanes.forEach(L => {
+    L.sx = L.cx; L.sy = L.cy; L.fx = L.cx; L.fy = L.cy; L.prevSx = L.cx; L.prevSy = L.cy;
+    L.lift = 0; L.liftShelf = 0; L.spin = 0; L.spinTarget = 0; L.glow = 0;
+    L.bytes.fill(0); L.bytesTarget.fill(0);
+  });
+  sha3.phaseLog = [];
+  sha3SetPhaseIndicator(null);
+}
+
+function sha3BuildQueue(trace) {
+  return trace.map(ev => {
+    const m = /^lane-r(\d+)-(theta|rho|pi|chi|iota)$/.exec(ev.boxId);
+    return m ? { type: m[2], round: Number(m[1]), ev } : { type: 'box', round: -1, ev };
+  });
+}
+
+const sha3Ease = t => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+
+function sha3StartPhase(ph, now) {
+  ph.start = now;
+  ph.dur = sha3PhaseDuration(ph.type);
+  const ev = ph.ev;
+  if (ev.lv) sha3ApplyLaneValues(ev.lv);
+  if (ev.lv1) sha3LaneAt(0, 0).bytesTarget = sha3HexToByteSlices(ev.lv1);
+  const pulse = list => (list || []).forEach(([x, y]) => {
+    const L = sha3LaneAt(x, y);
+    if (L) L.glow = Math.min(1, L.glow + 0.9);   // top up, don't reset
+  });
+  if (ph.type === 'theta' || ph.type === 'chi' || ph.type === 'iota') {
+    pulse(ev.lanes);
+  } else if (ph.type === 'rho') {
+    // Each lane's target spin advances by its OWN rho offset, expressed as that fraction of a
+    // full turn: a lane's 64 bits are a RING, and rho rotates that ring by r positions, so
+    // r/64 of a turn is a literal picture of the step rather than a decoration. Because the
+    // offsets differ per lane and accumulate every round, the 25 lanes are never all pointing
+    // the same way — which was the "the dials always point to the same place" complaint.
+    sha3.lanes.forEach(L => {
+      L.spinTarget += (KECCAK_RHO_OFFSETS[L.cx][L.cy] % 64) * (360 / 64);
+    });
+  } else if (ph.type === 'pi') {
+    // Permute SLOTS, composing with wherever each lane already is. This mutation is permanent —
+    // there is no timer that puts anything back.
+    sha3.lanes.forEach((L, i) => {
+      L.prevSx = L.sx; L.prevSy = L.sy;
+      const [nx, ny] = KECCAK_PI_LANE_MAP[L.sx][L.sy];
+      L.sx = nx; L.sy = ny;
+      // distinct shelf per lane, keyed off its (distinct) starting slot, spread symmetrically
+      // about zero so the fan-out stays centred — see SHA3_LIFT_SPREAD
+      L.liftShelf = (((L.prevSx * 5 + L.prevSy) / 24) - 0.5) * SHA3_LIFT_SPREAD;
+    });
+  } else if (ph.type === 'box') {
+    pulseBoxOrCube(ev.boxId, ev.sample);
+  }
+  if (ph.type === 'iota') {
+    const counter = document.getElementById('round-counter');
+    if (counter) counter.textContent = `round ${ph.round + 1} / 24`;
+  }
+  if (SHA3_PHASE_IDS[ph.type]) sha3SetPhaseIndicator(ph.type);
+  else sha3SetPhaseIndicator(null);
+  sha3.phaseLog.push({ type: ph.type, round: ph.round, start: now, end: null });
+}
+
+function sha3PhaseProgress(ph, p) {
+  if (ph.type !== 'pi') return;
+  // LIFT / SLIDE / DROP, not a straight lerp. A straight lerp would send lanes through the
+  // lattice interior, momentarily interpenetrating other boxes and breaking the one precondition
+  // the depth sort relies on. Rising clear of the whole lattice first keeps every box either at
+  // its resting depth or strictly above everything, so the sort stays exactly correct — and it
+  // also reads better: you can follow a lane picking itself up and moving to its new slot.
+  const RISE = 0.26, FALL = 0.74;
+  const lift = p < RISE ? sha3Ease(p / RISE)
+             : p < FALL ? 1
+             : 1 - sha3Ease((p - FALL) / (1 - FALL));
+  const span = FALL - RISE;
+  sha3.lanes.forEach((L, i) => {
+    L.lift = lift;
+    // Each lane also slides in its OWN sub-window of the slide phase. Two lanes that swap slots
+    // would otherwise cross at the exact same instant at the exact same point (a straight lerp
+    // puts both at the midpoint at p=0.5), which is the one configuration that can co-locate two
+    // boxes and defeat a centroid depth sort. Staggered windows make that coincidence impossible.
+    const stag = (i / sha3.lanes.length) * 0.26;
+    const t0 = RISE + stag * span;
+    const t1 = FALL - (0.26 - stag) * span;
+    const s = p <= t0 ? 0 : p >= t1 ? 1 : sha3Ease((p - t0) / (t1 - t0));
+    L.fx = L.prevSx + (L.sx - L.prevSx) * s;
+    L.fy = L.prevSy + (L.sy - L.prevSy) * s;
+  });
+}
+
+function sha3FinishPhase(ph, now) {
+  if (ph.type === 'pi') {
+    // commit to exact integer slots — an aborted or rounding-drifted transit can never leave a
+    // lane at a fractional position for the next pi to permute from.
+    sha3.lanes.forEach(L => { L.fx = L.sx; L.fy = L.sy; L.lift = 0; });
+  }
+  const rec = sha3.phaseLog[sha3.phaseLog.length - 1];
+  if (rec && rec.end === null) rec.end = now;
+}
+
+// AMBIENT — every frame, ungated. Frame-rate independent (driven by real dt, not per-frame
+// constants) so it behaves the same at 60 and 120 Hz.
+function sha3Ambient(dt) {
+  const kSpin = 1 - Math.exp(-dt / 130);
+  const kFill = 1 - Math.exp(-dt / 150);
+  const kGlow = Math.exp(-dt / 260);
+  for (const L of sha3.lanes) {
+    L.spin += (L.spinTarget - L.spin) * kSpin;
+    for (let k = 0; k < SHA3_SUBS_PER_LANE; k++) {
+      L.bytes[k] += (L.bytesTarget[k] - L.bytes[k]) * kFill;
+    }
+    L.glow *= kGlow;
+  }
+}
+
+function sha3Stop() { sha3.running = false; sha3.active = null; sha3SetPhaseIndicator(null); }
+
+function sha3Play(trace, onDone) {
+  // Same hard-reset guarantee playTrace gives: a newer run (Hash re-click, algorithm switch)
+  // bumps currentRunId and this loop stops silently at the top of its next frame.
+  const myRunId = ++currentRunId;
+  sha3.runId = myRunId;
+  sha3ResetState();
+  sha3.queue = sha3BuildQueue(trace);
+  sha3.qi = 0;
+  sha3.active = null;
+  sha3.running = true;
+  sha3.onDone = onDone;
+  sha3.settleUntil = 0;
+  let last = performance.now();
+  let doneFired = false;
+
+  function frame(now) {
+    if (myRunId !== currentRunId) { sha3Stop(); return; }
+    const dt = Math.min(120, now - last);
+    last = now;
+    sha3Ambient(dt);
+
+    if (sha3.active) {
+      const p = Math.min(1, (now - sha3.active.start) / sha3.active.dur);
+      sha3PhaseProgress(sha3.active, p);
+      if (p >= 1) { sha3FinishPhase(sha3.active, now); sha3.active = null; }
+    }
+    // A phase can only begin once the previous one has finished and committed. This is the
+    // gate — it is why nothing interrupts anything any more.
+    if (!sha3.active && sha3.qi < sha3.queue.length) {
+      sha3.active = sha3.queue[sha3.qi++];
+      sha3StartPhase(sha3.active, now);
+    }
+    const blurring = sha3.active && sha3.active.type === 'pi';
+    sha3Render({ blur: blurring });
+
+    if (sha3.active || sha3.qi < sha3.queue.length) { requestAnimationFrame(frame); return; }
+    // queue drained: fire onDone once, then keep painting briefly so the ambient easings settle
+    // rather than freezing mid-transition.
+    if (!doneFired) {
+      doneFired = true;
+      sha3SetPhaseIndicator(null);
+      sha3.settleUntil = now + 900;
+      if (onDone) onDone();
+    }
+    if (now < sha3.settleUntil) requestAnimationFrame(frame);
+    else sha3Stop();
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---- setup: canvas, drag rotation, theme following ----
+function initSha3Canvas() {
+  const c = document.getElementById('lane-canvas');
+  if (!c) return;
+  sha3.canvas = c;
+  sha3.ctx = c.getContext('2d');
+  sha3.lanes = sha3MakeLanes();
+  sha3ReadPalette();
+  sha3ResizeCanvas();
+  sha3Render();
+
+  // Drag-rotation: same accumulate-from-pointer-deltas approach the old CSS grid used, now
+  // feeding the projection's rotation instead of a CSS transform string.
+  let dragging = false, lastX = 0, lastY = 0;
+  c.addEventListener('pointerdown', e => {
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    c.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  c.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    sha3.rotY += (e.clientX - lastX) * 0.5;
+    sha3.rotX -= (e.clientY - lastY) * 0.5;
+    sha3.rotX = Math.max(-89, Math.min(89, sha3.rotX));
+    lastX = e.clientX; lastY = e.clientY;
+    sha3RequestRender();
+  });
+  const endDrag = () => { dragging = false; };
+  c.addEventListener('pointerup', endDrag);
+  c.addEventListener('pointercancel', endDrag);
+
+  // Follow the page's light/dark toggle: re-read the custom properties and repaint.
+  new MutationObserver(() => { sha3ReadPalette(); sha3RequestRender(); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  window.addEventListener('resize', () => { sha3ResizeCanvas(); sha3RequestRender(); });
+
+  // Read-only instrumentation hook for the Playwright regression scripts. The automation tab
+  // backgrounds rAF, so the tests read RECORDED history (phaseLog, with page-clock timestamps
+  // captured as each phase actually fired) rather than sampling an in-flight animation — see
+  // CLAUDE.md's "animation verification trap".
+  window.__sha3Debug = {
+    subsPerLane: SHA3_SUBS_PER_LANE,
+    bitsPerSub: SHA3_BITS_PER_SUB,
+    boxCount: () => sha3.lanes.length * SHA3_SUBS_PER_LANE,
+    facesDrawn: () => sha3.facesDrawn,
+    framesDrawn: () => sha3.framesDrawn,
+    rotation: () => ({ rotX: sha3.rotX, rotY: sha3.rotY }),
+    activePhase: () => (sha3.active ? sha3.active.type : null),
+    phaseLog: () => sha3.phaseLog.map(r => ({ type: r.type, round: r.round, start: r.start, end: r.end })),
+    lanes: () => sha3.lanes.map(L => ({
+      cx: L.cx, cy: L.cy, sx: L.sx, sy: L.sy, isRate: L.isRate,
+      spin: L.spin, spinTarget: L.spinTarget,
+      bytes: L.bytesTarget.slice(),
+      value: L.bytesTarget.reduce((s, b) => s + b, 0),
+    })),
+  };
+}
+initSha3Canvas();
 
 function readSpeedSlider() {
   // the slider is read LIVE each frame inside playTrace's loop (it calls the speed function
@@ -1290,35 +1763,10 @@ function getMd5SpeedMs(idx, total) {
   return base * (1 - 0.5 * p);
 }
 
-function getSha3SpeedMs() {
-  // "Slow default": every one of the 24 rounds plays all five sub-steps at a pace where each is
-  // actually a distinct visual event, instead of 125 events smeared into ~3 seconds.
-  //
-  // Event budget for a one-rate-block input (the common case: anything <= 135 bytes):
-  //   24 rounds x 5 sub-steps (theta/rho/pi/chi/iota) = 120
-  //   + pad + absorb-split + absorb-0 + squeeze + output                  = 5
-  //   ---------------------------------------------------------------------------
-  //   125 events total.   125 events x 100ms = 12.5s   <- default (slider 50)
-  //                       125 events x  85ms = 10.6s   <- fastest (slider 100)
-  //                       125 events x 320ms = 40s     <- slowest (slider 1)
-  // Longer inputs scale linearly (one extra rate-block = +121 events = +12.1s at default).
-  //
-  // FLOOR RATIONALE (85ms, not lower): rho holds its .rho-twist class 300ms and pi holds its
-  // slide 220ms, and each fires once per round — so the round-to-round spacing (5 x ms/event)
-  // is what has to clear those holds, or rho and pi are permanently painted on top of each
-  // other (the original 4-43.6ms range overlapped them by 5x-75x at EVERY slider position).
-  //   5 x 85ms = 425ms round spacing  >  300ms rho hold (125ms of genuine clear time)
-  //                                   >  220ms pi hold
-  // 85ms is also comfortably above one 60fps frame (16.7ms), so playTrace's
-  // `while (elapsed >= stepMs)` loop can never collapse two SHA-3 events into a single paint.
-  //
-  // Piecewise-linear so the default sits at 100ms with real range on both sides: the fast half
-  // is necessarily narrow (the 85ms floor is a hard legibility floor), the slow half opens up
-  // to 320ms for anyone who wants to actually read each sub-step.
-  const v = readSpeedSlider();
-  if (v >= 50) return 100 - (v - 50) * 0.3;   // 50 -> 100ms, 100 -> 85ms
-  return 100 + (50 - v) * 4.5;                 // 50 -> 100ms,   1 -> 320.5ms
-}
+// NOTE: SHA-3 no longer has a per-event speed function. Its pacing is expressed in PHASE
+// durations (see SHA3_PHASE_BASE / sha3PhaseScale above), because the controller's unit of time
+// is a phase, not a trace event. getMd5SpeedMs above is untouched and MD5 still runs through
+// playTrace exactly as before.
 
 async function onHashClick() {
   // algo/label MUST be read synchronously here, before the only await in this function — NOT
@@ -1368,7 +1816,11 @@ async function onHashClick() {
     renderSha3AbsorbChain(numBlocks);
     showDiagramFor('sha3');
     document.getElementById('round-counter').textContent = 'round 0 / 24';
-    playTrace(trace, getSha3SpeedMs, (ev) => { if (!pulseLanesFor(ev)) pulseBoxOrCube(ev.boxId, ev.sample); }, () => {
+    // SHA-3 runs on its own phase controller, NOT playTrace. playTrace stays exactly as it was
+    // for MD5 — deliberately not refactored into a shared engine, since the two have completely
+    // different units of time (an event vs a gated phase). Both respect the same currentRunId,
+    // so a Hash re-click or an algorithm switch still hard-cancels whichever is in flight.
+    sha3Play(trace, () => {
       addHistoryEntry(algo, digest, bytes, label);
       document.getElementById('output-digest').textContent = digest;
       document.getElementById('output-bits').textContent = '256-bit / 64 hex chars';

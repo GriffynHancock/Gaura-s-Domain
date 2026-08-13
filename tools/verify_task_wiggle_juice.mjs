@@ -117,16 +117,38 @@ console.log(`getMd5SpeedMs: idx=0 -> ${speeds.early}ms, idx=last -> ${speeds.lat
 const ratio = speeds.late / speeds.early;
 if (!(ratio < 0.55 && ratio > 0.45)) throw new Error(`expected ~0.5x ratio late/early, got ${ratio}`);
 
-// ---- 4: SHA-3 unaffected ----
-const sha3 = await page.evaluate(() => {
-  const v = document.getElementById('speed-slider').value;
-  return { at50: getSha3SpeedMs(), floorCheck: true };
+// ---- 4: SHA-3 pacing is still a SEPARATE mechanism, unaffected by MD5's ramp ----
+// SHA-3 used to expose getSha3SpeedMs() (ms per trace event). It now runs on a phase controller
+// whose unit of time is a PHASE, not an event, so the equivalent assertion is made against
+// sha3PhaseScale()/sha3PhaseDuration(). The guarantee under test is unchanged and still the
+// point of this block: MD5's progress-ramped per-event speed must not reach into SHA-3's pacing.
+const sha3Pace = await page.evaluate(() => {
+  document.getElementById('speed-slider').value = '50';
+  return {
+    scale: sha3PhaseScale(),
+    // sampled with MD5-style (idx,total) args, which the SHA-3 pacing functions must ignore
+    theta: sha3PhaseDuration('theta'),
+    thetaWithArgs: sha3PhaseDuration('theta', 5, 200),
+    pi: sha3PhaseDuration('pi'),
+    perRound: ['theta','rho','pi','chi','iota'].reduce((s, t) => s + sha3PhaseDuration(t), 0),
+  };
 });
-console.log('getSha3SpeedMs() at default slider:', sha3.at50);
-if (Math.abs(sha3.at50 - 100) > 0.01) throw new Error(`getSha3SpeedMs() at default should be 100ms, got ${sha3.at50}`);
-// getSha3SpeedMs must ignore extra args entirely (same value with or without them)
-const sha3WithArgs = await page.evaluate(() => getSha3SpeedMs(5, 200));
-if (Math.abs(sha3WithArgs - sha3.at50) > 0.01) throw new Error('getSha3SpeedMs must ignore idx/total args');
+console.log(`sha3PhaseScale() at default slider: ${sha3Pace.scale.toFixed(3)} (round = ${sha3Pace.perRound.toFixed(0)}ms)`);
+if (Math.abs(sha3Pace.scale - 0.28) > 0.001) throw new Error(`sha3PhaseScale() at default should be 0.28, got ${sha3Pace.scale}`);
+if (Math.abs(sha3Pace.thetaWithArgs - sha3Pace.theta) > 0.01) {
+  throw new Error('SHA-3 phase durations must ignore MD5-style idx/total args');
+}
+// Every phase must stay well clear of a single 60fps frame, or it degrades into a snap — which
+// is the exact failure mode ("only for a split second before returning") this rewrite fixed.
+const fastest = await page.evaluate(() => {
+  document.getElementById('speed-slider').value = '100';
+  return ['theta','rho','pi','chi','iota'].map(t => [t, sha3PhaseDuration(t)]);
+});
+for (const [t, ms] of fastest) {
+  if (ms < 20) throw new Error(`phase ${t} is only ${ms}ms at the fastest slider setting — it would snap`);
+}
+console.log('sha3 phase durations at fastest slider: ' + fastest.map(([t, m]) => `${t}=${m.toFixed(0)}ms`).join(' '));
+await page.evaluate(() => { document.getElementById('speed-slider').value = '50'; });
 
 if (consoleErrors.length) throw new Error('console errors: ' + consoleErrors.join(' | '));
 

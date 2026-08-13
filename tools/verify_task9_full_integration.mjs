@@ -38,27 +38,51 @@ const expectedSha3 = crypto.createHash('sha3-256').update('abc').digest('hex');
 if (sha3Digest !== expectedSha3) throw new Error(`SHA3-256 digest mismatch: got ${sha3Digest}, expected ${expectedSha3}`);
 console.log(`OK  SHA3-256("abc") = ${sha3Digest}`);
 
-const laneCount = await page.locator('.lane').count();
-if (laneCount !== 25) throw new Error(`expected 25 .lane elements, found ${laneCount}`);
+// The CSS-3D `.lane` DOM was replaced by a Canvas 2D renderer, so these read the renderer's
+// read-only instrumentation hook and the real painted pixels instead of counting divs — see the
+// header comment in tools/verify_task3_lane_grid.mjs.
+const state = await page.evaluate(() => ({
+  boxes: window.__sha3Debug.boxCount(),
+  lanes: window.__sha3Debug.lanes().length,
+  rate: window.__sha3Debug.lanes().filter(l => l.isRate).length,
+  faces: window.__sha3Debug.facesDrawn(),
+  phases: window.__sha3Debug.phaseLog().length,
+}));
+if (state.lanes !== 25) throw new Error(`expected 25 lanes, found ${state.lanes}`);
+if (state.boxes !== 25 * 8) throw new Error(`expected 200 drawn boxes, found ${state.boxes}`);
+if (state.rate !== 17) throw new Error(`expected 17 rate lanes, found ${state.rate}`);
+if (state.faces < state.boxes) throw new Error(`only ${state.faces} faces drawn for ${state.boxes} boxes — not drawn as solids`);
+if (state.phases !== 125) throw new Error(`expected 125 controller phases for a one-rate-block input, found ${state.phases}`);
 const roundCounterText = await page.locator('#round-counter').innerText();
 if (roundCounterText !== 'round 24 / 24') throw new Error(`expected round counter at 24/24, got "${roundCounterText}"`);
-console.log('OK  SHA-3 lane grid has 25 elements, round counter reached 24/24');
+console.log(`OK  SHA-3 canvas state: 25 lanes / ${state.boxes} boxes / ${state.faces} faces, ${state.phases} phases, round counter 24/24`);
 
-// ---- 4. lane grid is drag-rotatable ----
-const grid = page.locator('#lane-grid');
-const beforeTransform = await grid.evaluate(el => el.style.transform);
-// page.mouse coordinates are viewport-relative, and the grid now reserves its real ~180px
-// projected footprint (so it no longer paints over the legend / round counter), which can put it
-// below the fold — scroll it in first or the drag silently misses.
-await grid.scrollIntoViewIfNeeded();
-const box = await grid.boundingBox();
+// ---- 4. the state canvas is drag-rotatable, and the drag actually repaints ----
+const canvas = page.locator('#lane-canvas');
+await canvas.scrollIntoViewIfNeeded();
+const sampleCanvas = () => page.evaluate(() => {
+  const c = document.getElementById('lane-canvas');
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let sum = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4 * 37) { sum += d[i] + d[i + 1] + d[i + 2]; n++; }
+  return sum / n;
+});
+const beforeRot = await page.evaluate(() => window.__sha3Debug.rotation());
+const beforePixels = await sampleCanvas();
+const box = await canvas.boundingBox();
 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 await page.mouse.down();
-await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 30, { steps: 6 });
+await page.mouse.move(box.x + box.width / 2 + 70, box.y + box.height / 2 + 35, { steps: 6 });
 await page.mouse.up();
-const afterTransform = await grid.evaluate(el => el.style.transform);
-if (afterTransform === beforeTransform) throw new Error('drag-rotate did not change #lane-grid transform');
-console.log('OK  lane grid is drag-rotatable via real pointer events');
+await page.waitForTimeout(250);
+const afterRot = await page.evaluate(() => window.__sha3Debug.rotation());
+if (afterRot.rotX === beforeRot.rotX && afterRot.rotY === beforeRot.rotY) {
+  throw new Error('drag-rotate did not change the canvas projection rotation');
+}
+if (Math.abs((await sampleCanvas()) - beforePixels) < 0.5) {
+  throw new Error('drag-rotate changed the rotation state but the canvas did not repaint');
+}
+console.log('OK  state canvas is drag-rotatable via real pointer events and repaints');
 
 // ---- 5. input box shows real content, not a label, for letter-a and whitespace presets ----
 await page.click('#input-next'); // custom(0) -> letter-a(1)
