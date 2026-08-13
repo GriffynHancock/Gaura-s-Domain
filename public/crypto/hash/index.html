@@ -2378,12 +2378,19 @@ function sha3AliasGeo() { return sha3AliasFactor(sha3RoundRate(), SHA3_ALIAS_GEO
 // individual move and there is nothing to alias.
 //
 // So the warp's amplitude is ramped in over q = true rate / shutter rate in [0.62, 1.00]:
-//   * q <= 0.62 (up to about slider 53, which covers the whole slow half and the default) —
-//     amplitude 0. The transit is drawn truthfully and the five group starts are exactly even.
+//   * q <= 0.62 (slider 55 and below, measured — so the whole slow half and the default, which
+//     sits at q = 0.50) — amplitude 0. The transit is drawn truthfully and the five group starts
+//     are exactly even.
 //   * q >= 1.00 (slider 68 up, the freeze point and everything beyond) — amplitude 1, the full
 //     unmodified fold. The freeze, the retrograde band and the re-folds are bit-for-bit what they
 //     were: at q >= 1 this function returns f unchanged.
-//   * in between, a smoothstep, so nothing snaps on as the slider crosses the threshold.
+//   * sliders 56..67 in between, a smoothstep, so nothing snaps on as the slider crosses it.
+//
+// ONE HONEST CAVEAT: q is a function of the CURRENT pace, and the pace escalates within a run
+// (sha3SpeedIntensity reaches 3.82x by round 23 of a block). So a run started at the default does
+// cross into the gated region partway through, and the stagger goes lumpy from there — which is
+// the escalation working as designed, and is in any case strictly better than the build this
+// replaces, where the warp was applied from round 1 at every setting.
 // The upper anchor is deliberately q = 1 — the exact rate at which apparent motion first stops —
 // so the gate finishes ramping in precisely where the aliasing becomes the point.
 //
@@ -4116,7 +4123,18 @@ function sha3PhaseProgress(ph, p) {
   // the depth sort relies on. Rising clear of the whole lattice first keeps every box either at
   // its resting depth or strictly above everything, so the sort stays exactly correct — and it
   // also reads better: you can follow a lane picking itself up and moving to its new slot.
-  const RISE = 0.26, FALL = 0.74;
+  // 0.18/0.82, WIDENED FROM 0.26/0.74, and this is the second half of answering "way too fast".
+  // Sequencing five group moves inside the slide span necessarily makes each individual move
+  // SHORTER than the old all-at-once one — measured, at the default slider the per-lane slide went
+  // from 72.5ms to 28ms even though the phase itself got longer. The span is where that time has
+  // to come from, and the ramps are the only place to find it: the old split spent 52% of pi
+  // lifting and dropping, with nothing translating for either half of it. Moving 8% off each end
+  // widens the span 0.48 -> 0.64, which is +33% to the group window AND +33% to the gap between
+  // groups at once — it buys legibility on both channels without touching the group count, the
+  // overlap, or the RISE <= t0 < t1 <= FALL invariant below. The fan-out itself still gets 0.18 of
+  // the phase at each end, which at the default slider is ~33ms: enough to read as the lattice
+  // coming apart rather than snapping apart.
+  const RISE = 0.18, FALL = 0.82;
   const lift = p < RISE ? sha3Ease(p / RISE)
              : p < FALL ? 1
              : 1 - sha3Ease((p - FALL) / (1 - FALL));

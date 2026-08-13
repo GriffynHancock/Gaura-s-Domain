@@ -50,11 +50,12 @@ await page.click('#algo-next');   // SHA-3
 await page.locator('#lane-canvas').scrollIntoViewIfNeeded();
 
 const SLIDERS = [1, 10, 25, 50, 68, 75, 90, 100];
-const data = await page.evaluate((sliders) => {
+const measured = await page.evaluate((sliders) => {
   const order = ['theta', 'rho', 'pi', 'chi', 'iota'];
   const STEPS = 6000, EPS = 1e-4;
 
-  const measure = (v) => {
+  const measure = (v, opts) => {
+    const steps = (opts && opts.steps) || STEPS;
     document.getElementById('speed-slider').value = String(v);
     document.getElementById('speed-slider').dispatchEvent(new Event('input'));
     sha3.blocksDone = 0; sha3.roundsInBlock = 0;
@@ -63,6 +64,11 @@ const data = await page.evaluate((sliders) => {
 
     // Arm a REAL pi transit — the true KECCAK_PI_LANE_MAP image of each lane's current slot,
     // with the shelves the page itself assigns — then drive the real sha3PhaseProgress.
+    // `keep` leaves the permuted arrangement in place afterwards, so successive calls walk pi's
+    // COMPOSITION ORBIT: round 2 permutes pi(identity), round 3 permutes pi(pi(identity)), and so
+    // on. Each arrangement is a different source->destination pairing AND a different liftShelf
+    // assignment (the shelf is keyed to the SOURCE slot), so measuring only the identity
+    // arrangement would pin one of twenty-four distinct geometries.
     const save = sha3.lanes.map(L => [L.sx, L.sy, L.prevSx, L.prevSy, L.fx, L.fy, L.lift, L.liftShelf]);
     sha3.lanes.forEach(L => {
       L.prevSx = L.sx; L.prevSy = L.sy;
@@ -74,8 +80,8 @@ const data = await page.evaluate((sliders) => {
     const end = new Array(sha3.lanes.length).fill(null);
     let maxSimul = 0, minSepSlide = Infinity, minSepAny = Infinity;
     let slideBeforeLift = false, slideAfterLift = false;
-    for (let i = 0; i <= STEPS; i++) {
-      const p = i / STEPS;
+    for (let i = 0; i <= steps; i++) {
+      const p = i / steps;
       sha3PhaseProgress({ type: 'pi' }, p);
       const lifted = sha3.lanes[0].lift >= 1 - 1e-12;
       let inMotion = 0;
@@ -102,7 +108,12 @@ const data = await page.evaluate((sliders) => {
         if (lifted && d < minSepSlide) minSepSlide = d;
       }
     }
-    sha3.lanes.forEach((L, i) => { [L.sx, L.sy, L.prevSx, L.prevSy, L.fx, L.fy, L.lift, L.liftShelf] = save[i]; });
+    if (opts && opts.keep) {
+      // settle on the new slots exactly as sha3FinishPhase does, ready for the next composition
+      sha3.lanes.forEach(L => { L.fx = L.sx; L.fy = L.sy; L.lift = 0; });
+    } else {
+      sha3.lanes.forEach((L, i) => { [L.sx, L.sy, L.prevSx, L.prevSy, L.fx, L.fy, L.lift, L.liftShelf] = save[i]; });
+    }
 
     const movers = start.map((s, k) => (s === null ? null : k)).filter(k => k !== null);
     // Distinct start INSTANTS. Lanes that move together as a group are one event to the eye, and
@@ -126,12 +137,31 @@ const data = await page.evaluate((sliders) => {
       groups: SHA3_PI_GROUPS, win: SHA3_PI_WIN,
     };
   };
-  const res = sliders.map(measure);
+  const res = sliders.map(v => measure(v));
+  // THE COMPOSITION ORBIT — the same closest-approach measurement, but walked across all 24 of
+  // pi's successive arrangements rather than the identity one alone. Coarser per arrangement
+  // (the identity sweep above is the fine one); the claim is that no OTHER arrangement is worse.
+  const orbitSave = sha3.lanes.map(L => [L.sx, L.sy, L.prevSx, L.prevSy, L.fx, L.fy, L.lift, L.liftShelf]);
+  const orbit = [];
+  for (let r = 0; r < 24; r++) orbit.push(measure(50, { steps: 1200, keep: true }));
+  sha3.lanes.forEach((L, i) => { [L.sx, L.sy, L.prevSx, L.prevSy, L.fx, L.fy, L.lift, L.liftShelf] = orbitSave[i]; });
+  const orbitStats = {
+    rounds: orbit.length,
+    minSepSlide: Math.min(...orbit.map(o => o.minSepSlide)),
+    worstRound: orbit.reduce((a, o, i) => (o.minSepSlide < orbit[a].minSepSlide ? i : a), 0),
+    maxSimul: Math.max(...orbit.map(o => o.maxSimul)),
+    events: [...new Set(orbit.map(o => o.events))],
+    slideOutsideLift: orbit.some(o => o.slideBeforeLift || o.slideAfterLift),
+  };
   document.getElementById('speed-slider').value = '50';
   document.getElementById('speed-slider').dispatchEvent(new Event('input'));
-  return res;
+  // Returned as an OBJECT, not an array with an extra property: page.evaluate serialises its
+  // result as JSON, and JSON drops non-index properties hung off an array.
+  return { rows: res, orbit: orbitStats };
 }, SLIDERS);
+const data = measured.rows;
 
+const orbit = measured.orbit;
 const by = Object.fromEntries(data.map(d => [d.slider, d]));
 console.log('\nslider  piMs   pi%    q     f(gated)  events  maxSimul  spread   gapCV    sepSlide');
 for (const d of data) {
@@ -235,6 +265,13 @@ check('two lanes are never co-located during the slide, at any slider position',
       `closest approach across the whole slider: ${Math.min(...data.map(d => d.minSepSlide)).toFixed(5)} world units ` +
       `(SHA3_CELL = 1.0; the design this replaces grazed 0.00030, and hit exactly 0 once the stagger was widened ` +
       `under the old SHA3_LIFT_SPREAD of 3.0)`);
+// ...and across ALL 24 of pi's arrangements, not just the one the lattice starts in. pi composes,
+// so each round presents a different source->destination pairing and a different shelf assignment.
+check('...and that holds for every one of pi\'s 24 successive arrangements, not just the first',
+      orbit.rounds === 24 && orbit.minSepSlide > 0.005 && orbit.maxSimul <= 10 &&
+      orbit.events.length === 1 && !orbit.slideOutsideLift,
+      `worst closest approach over the whole composition orbit: ${orbit.minSepSlide.toFixed(5)} world units ` +
+      `(at composition ${orbit.worstRound + 1}/24); max in flight ${orbit.maxSimul}, start events ${orbit.events.join('/')}`);
 // The shelf quantum must not be able to cancel a whole-slot offset — the failure that produced an
 // exact 0. q * k == m must have no solution for k in 1..24, m in 1..4.
 const quantum = await page.evaluate(() => SHA3_LIFT_SPREAD / 24);
