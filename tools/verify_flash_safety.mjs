@@ -376,6 +376,15 @@ assertSafe('SHA-3 slider 100, Hash re-clicked 10x mid-run (the reset seam)',
 // the meaningful assertion and the amplitude is reported as information. Measured there: a
 // biggest local excursion around 0.12 during pi's transit, occurring about once a second — which
 // is a bright object moving through a small patch, and is bounded by the same 3/second rule.
+// SLIDER 78 — the peak of the aliasing warp's swing, which none of the other cases cover. The pi
+// transit is drawn through w(p) = p + (1-f)*sin(2*pi*p)/(2*pi), so its instantaneous progress rate
+// at the start of the transit is (1 + (1-f)) — and f, the geometric alias factor, is at its most
+// negative (-0.217) around here, making the opening of pi run up to 2.2x faster than unwarped.
+// That is the same lift ramp that produces the largest ordinary mid-run luminance excursion, so
+// the band where the new code moves geometry hardest gets its own measurement rather than an
+// argument. (Slider 1, 32, 100 and REAL TIME leave 33..99 unmeasured otherwise.)
+assertSafe('SHA-3 slider 78, 4 rate-blocks (peak aliasing warp swing)',
+           await recordSha3(page, { input: 'x'.repeat(136 * 4), slider: 78 }), true);
 assertSafe('SHA-3 slider 100, 6x6 tiling (localised excursions, 4x finer than the standard)',
            await recordSha3(page, { input: 'x'.repeat(136 * 4), slider: 100, tiles: 6 }));
 // MD5's pacing is deliberately untouched (its escalation is correct per the page's owner), so

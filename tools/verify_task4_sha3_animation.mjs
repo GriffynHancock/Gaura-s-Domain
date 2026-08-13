@@ -418,21 +418,26 @@ console.log(`OK  speed changes brightness ONLY: at the same escalation, slider 1
 
 // ---- the phase hue must NEVER cost the rate/capacity read ----
 //
-// The tint is applied uniformly to every cube precisely so this holds by construction: it is an
-// affine map c -> (1-t)c + t*hue, identical for rate and capacity lanes, so it compresses the
-// gold/grey warmth gap by exactly (1-t) and can never invert or cross it. This checks the
-// rendered result anyway, on real hashed state, at the worst case: full gain, tint at its crest,
-// every lane glowing, escalation fully open (so the depth is SHA3_TINT_MAX, not MIN).
+// THIS TEST IS THE GUARANTEE, not a confirmation of one. The tint used to be a plain affine mix
+// applied identically to every cube, which compressed the gold/grey warmth gap by exactly (1-t)
+// and therefore could not invert or cross it at any depth — a proof, needing no measurement. It
+// is no longer affine: sha3TintAt renormalises each cube back onto its own pre-tint luminance, so
+// the map is per-cube and nonlinear, and the ordering is an empirical property of the palette and
+// the five phase hues. Measured, it shows: the affine version left exactly 38% of the at-rest gap
+// at t = 0.62, i.e. (1-t); the renormalised one leaves 42%. Close, different, and no longer
+// derivable. So this runs on real hashed state at the worst case on every knob — full gain, tint
+// at its crest, every lane glowing, escalation fully open so the depth is SHA3_TINT_MAX — and it
+// is what decides whether a change to the tint depth, the hues or the renormalisation is safe.
 //
 // UPDATED for the deliberately much more prominent tint (0.14/0.32 -> 0.34/0.62). Two changes,
 // and the net is a STRONGER statement than before, not a weaker one:
 //
-//   * the FILL-gap floor is now stated against the arithmetic instead of a round number. At
-//     t = SHA3_TINT_MAX = 0.62 an affine mix leaves (1-t) = 38% of the gap, so the old "> 50% of
-//     the gap at rest" was unsatisfiable BY CONSTRUCTION at the new depth — it would have been
-//     failing on the definition of the change, not on a regression. The floor is 0.30, which
-//     leaves real room below the 0.38 the maths predicts, so a genuine regression (a tint that
-//     stopped being uniform, a hue that dragged one family harder than the other) still trips it.
+//   * the FILL-gap floor is now stated against the measurement instead of a round number. At
+//     t = SHA3_TINT_MAX = 0.62 roughly (1-t) of the gap survives — 38% under the old affine mix,
+//     42% as actually drawn — so the old "> 50% of the gap at rest" was unsatisfiable at the new
+//     depth by definition of the change, not by regression. The floor is 0.30, which leaves real
+//     room below the ~0.40 measured, so a genuine regression (a tint that stopped being uniform,
+//     a hue that dragged one family harder than the other) still trips it.
 //   * a second, UNCOMPRESSED channel is asserted: the box outlines. They are drawn from the fill
 //     pulled SHA3_EDGE_IDENTITY of the way back to the lane's own untinted material, so their
 //     gap must survive at essentially its full at-rest value at every tint depth. That is a
@@ -480,7 +485,7 @@ for (const [t, r] of Object.entries(legibility)) {
     throw new Error(`during ${t} the rate and capacity lanes overlap in EDGE warmth (worst rate ${r.worstRateEdge.toFixed(1)} <= best capacity ${r.bestCapEdge.toFixed(1)})`);
   }
   if (!(r.gap > legibility.rest.gap * FILL_GAP_FLOOR)) {
-    throw new Error(`during ${t} the rate/capacity FILL gap collapsed to ${r.gap.toFixed(1)} from ${legibility.rest.gap.toFixed(1)} at rest (floor ${(FILL_GAP_FLOOR * 100)}%; an affine tint of depth ${r.tint.toFixed(2)} should leave ${((1 - r.tint) * 100).toFixed(0)}%)`);
+    throw new Error(`during ${t} the rate/capacity FILL gap collapsed to ${r.gap.toFixed(1)} from ${legibility.rest.gap.toFixed(1)} at rest (floor ${(FILL_GAP_FLOOR * 100)}%; a tint of depth ${r.tint.toFixed(2)} should leave roughly ${((1 - r.tint) * 100).toFixed(0)}%)`);
   }
   if (!(r.edgeGap > legibility.rest.edgeGap * EDGE_GAP_FLOOR)) {
     throw new Error(`during ${t} the rate/capacity EDGE gap collapsed to ${r.edgeGap.toFixed(1)} from ${legibility.rest.edgeGap.toFixed(1)} at rest — the outline channel is supposed to be the one the tint cannot consume`);

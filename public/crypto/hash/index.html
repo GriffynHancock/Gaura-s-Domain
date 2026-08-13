@@ -2285,15 +2285,30 @@ const SHA3_AFTERGLOW_AMP  = 0.30;  // the older per-lane decaying glow, now a su
 // lattice reads as a teal/oxblood/green object that happens to have a gold-and-dark grain, rather
 // than as a gold object with a wash over it. That is the requested reversal of emphasis.
 //
-// WHAT PAYS FOR IT. The tint is an affine map c -> (1-t)c + t*hue applied IDENTICALLY to every
-// cube, so it compresses the rate/capacity warmth gap by exactly (1-t) and can never invert or
-// cross it — the ordering "every rate lane is warmer than every capacity lane" is preserved by
-// construction at every t, for every hue. But at t = 0.62 the surviving gap is only 38% of the
-// gap at rest, which is a real legibility cost on a channel that carries a real structural fact
-// (17 rate lanes vs 8 capacity lanes). So the identity is now ALSO carried on a channel the tint
-// does not consume: see SHA3_EDGE_IDENTITY below, which keeps each box's outline part-way toward
-// its own UNTINTED material colour. The fill can be washed hard because the rim still says which
-// family the box belongs to.
+// WHAT PAYS FOR IT, AND ON WHAT BASIS. Read this before touching the tint depth or sha3TintAt.
+//
+// The tint USED to be a plain affine mix, c -> (1-t)c + t*hue, applied identically to every cube.
+// That carried a genuinely free guarantee: an affine map compresses the rate/capacity warmth gap
+// by exactly (1-t) and cannot invert or cross it, so "every rate lane is warmer than every
+// capacity lane" held BY CONSTRUCTION, at every t, for every hue, with nothing to tune.
+//
+// THAT ARGUMENT NO LONGER APPLIES. sha3TintAt renormalises each cube back onto its OWN pre-tint
+// luminance (it has to — see the call site for the flash measurement that forced it), and the
+// scale factor depends on the cube's own colour, so the map is per-cube and nonlinear. The
+// measured gap says so plainly: at t = 0.62 the affine version left exactly 38% of the at-rest
+// gap, i.e. (1-t) to two figures, and the renormalised version leaves 42%. Close, but not the
+// same number, and not for the same reason.
+//
+// So the ordering is now an EMPIRICAL result, not a theorem, and it is verified as one:
+// verify_task4_sha3_animation.mjs renders real hashed state at full gain with the escalation
+// fully open, and requires every rate lane to be warmer than every capacity lane under all five
+// phase hues, on the fill AND on the outlines. If you change the tint depth, the hues, or the
+// renormalisation, that test is the thing that decides whether it is still true.
+//
+// The identity is also carried on a second channel the tint cannot compress at all: see
+// SHA3_EDGE_IDENTITY below, which keeps each box's outline part-way toward its own UNTINTED
+// material colour. The fill can be washed hard because the rim still says which family the box
+// belongs to.
 const SHA3_TINT_MIN       = 0.34;  // phase tint at the very start of a run (was 0.14)
 const SHA3_TINT_MAX       = 0.62;  // phase tint once the escalation has fully opened up (was 0.32)
 // The tint no longer pulses all the way back to zero inside each phase. It used to be a bare
@@ -3288,13 +3303,14 @@ function sha3Render(opts) {
       // and "which 17 lanes are gold" stopped being answerable. Under pi's oxblood the same thing
       // happened in the other direction (capacity 74.9 vs rate 55.9).
       //
-      // A tint applied EQUALLY to every cube cannot do that. It is an affine map, c -> (1-t)c +
-      // t*phase, applied identically to rate and capacity lanes, so it compresses the gold/grey
-      // gap by (1-t) and can never invert or cross it — the ordering is preserved by construction,
-      // at every t, for every phase hue, with no tuning to get right. So: the phase colour washes
-      // the whole lattice while that phase is active (which is also what "tie the hue to the
-      // active phase" actually means), and the wavefront carries direction through brightness
-      // alone. `laneCol` and the density mix above are untouched either way.
+      // A tint applied EQUALLY to every cube does not do that: the whole lattice moves the same
+      // way, so the gold/grey gap is compressed rather than reordered. That used to be a proof —
+      // the mix was affine, so the ordering could not cross at any t — and it is now an
+      // empirical result instead, because sha3TintAt renormalises per cube; see the note at
+      // SHA3_TINT_MIN and the test that checks it. So: the phase colour washes the whole lattice
+      // while that phase is active (which is also what "tie the hue to the active phase" actually
+      // means), and the wavefront carries direction through brightness alone. `laneCol` and the
+      // density mix above are untouched either way.
       const wave = fType ? sha3FlashWave(fType, fPWave, L, k, fWiden) : 0;
       // THE HARD CLAMP. `hi` is the whole brightness excursion — travelling wavefront plus the
       // residual afterglow, which at speed sits pinned near 1 and is therefore mostly a DC
