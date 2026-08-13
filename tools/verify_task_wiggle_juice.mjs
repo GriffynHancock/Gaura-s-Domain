@@ -420,14 +420,20 @@ const sha3Curve = await page.evaluate(() => {
     return null;
   };
   return {
-    roundRate: SHA3_SPEED_ROUND_RATE, blockRate: SHA3_SPEED_BLOCK_RATE,
-    // exact curve, sampled through the real function by setting its inputs
+    roundRate: SHA3_ROUND_RATE, blockRate: SHA3_BLOCK_RATE,
+    speedRoundRate: SHA3_SPEED_ROUND_RATE, speedBlockRate: SHA3_SPEED_BLOCK_RATE,
+    tintMin: SHA3_TINT_MIN, tintMax: SHA3_TINT_MAX,
+    // exact curve, sampled through the real functions by setting their inputs, plus the two
+    // VISUAL channels the escalation drives (wavefront width and phase-tint depth) read back
+    // through the same debug hook the renderer's own values come from.
     samples: [[0, 0], [12, 0], [23, 0], [0, 1], [23, 3], [10, 26]].map(([r, b]) => {
       const keepR = sha3.roundsInBlock, keepB = sha3.blocksDone;
       sha3.roundsInBlock = r; sha3.blocksDone = b;
-      const I = sha3SpeedIntensity();
-      sha3.roundsInBlock = keepR; sha3.blocksDone = keepB;
-      return { r, b, I };
+      sha3.flashEsc = 1 - 1 / sha3Intensity();
+      const j = __sha3Debug.juice();
+      const out = { r, b, I: sha3Intensity(), S: sha3SpeedIntensity(), widen: j.flashWiden, tint: j.flashTint };
+      sha3.roundsInBlock = keepR; sha3.blocksDone = keepB; sha3.flashEsc = 0;
+      return out;
     }),
     scale: sha3PhaseScale(),
     theta: sha3PhaseDuration('theta'),
@@ -435,21 +441,47 @@ const sha3Curve = await page.evaluate(() => {
     perRound: ['theta', 'rho', 'pi', 'chi', 'iota'].reduce((s, t) => s + sha3PhaseDuration(t), 0),
   };
 });
-// The SHA-3 escalation used to drive three channels (camera shake, plane shake, speed). The two
-// shake channels are gone by owner decision — the lattice holds still — so the two-counter
-// escalation model now survives on the SPEED channel alone, and that is what is pinned here.
-if (sha3Curve.roundRate !== 1.04 || sha3Curve.blockRate !== 1.06) {
-  throw new Error(`SHA-3 speed rates should be 1.04/round and 1.06/block, got ${sha3Curve.roundRate}/${sha3Curve.blockRate}`);
+// The SHA-3 escalation used to drive three channels: camera shake, plane shake, and speed. The
+// two SHAKE channels are gone by owner decision — the lattice holds still — but the escalation
+// itself is NOT: a long input must still read as bigger work than a short one, exactly as MD5's
+// does. It now drives the wavefront's WIDTH and the phase TINT's depth instead, neither of which
+// moves anything, plus speed as before. Both the curve and its arrival at the two visual channels
+// are pinned here, so "no shaking" can never quietly become "no escalation".
+if (sha3Curve.roundRate !== 1.06 || sha3Curve.blockRate !== 1.1) {
+  throw new Error(`SHA-3 visual escalation rates should be 1.06/round and 1.1/block, got ${sha3Curve.roundRate}/${sha3Curve.blockRate}`);
+}
+if (sha3Curve.speedRoundRate !== 1.04 || sha3Curve.speedBlockRate !== 1.06) {
+  throw new Error(`SHA-3 pacing rates should be 1.04/round and 1.06/block, got ${sha3Curve.speedRoundRate}/${sha3Curve.speedBlockRate}`);
 }
 for (const s of sha3Curve.samples) {
-  const want = Math.pow(1.04, s.r) * Math.pow(1.06, s.b);
-  if (!near(s.I / want, 1, 1e-9)) throw new Error(`sha3SpeedIntensity(r=${s.r},b=${s.b}) should be ${want}, got ${s.I}`);
+  const want = Math.pow(1.06, s.r) * Math.pow(1.1, s.b);
+  if (!near(s.I / want, 1, 1e-9)) throw new Error(`sha3Intensity(r=${s.r},b=${s.b}) should be ${want}, got ${s.I}`);
+  const wantS = Math.pow(1.04, s.r) * Math.pow(1.06, s.b);
+  if (!near(s.S / wantS, 1, 1e-9)) throw new Error(`sha3SpeedIntensity(r=${s.r},b=${s.b}) should be ${wantS}, got ${s.S}`);
 }
 const oneBlockArc = sha3Curve.samples.find(s => s.r === 23 && s.b === 0).I;
-if (!(oneBlockArc > 2)) throw new Error(`a single SHA-3 block must visibly escalate across its 24 rounds, got only ${oneBlockArc}x`);
+if (!(oneBlockArc > 3.5)) throw new Error(`a single SHA-3 block must visibly escalate across its 24 rounds, got only ${oneBlockArc}x`);
 const laterBlock = sha3Curve.samples.find(s => s.b === 26).I;
-if (!(laterBlock > oneBlockArc * 1.5)) throw new Error(`later rate-blocks must be wilder than the first (5 layers < 100 layers), got ${laterBlock} vs ${oneBlockArc}`);
-console.log(`OK  SHA-3 escalation = 1.04^round * 1.06^block exactly (one block arcs 1 -> ${oneBlockArc.toFixed(2)}x; block 26 already at ${laterBlock.toFixed(1)}x)`);
+if (!(laterBlock > oneBlockArc * 2)) throw new Error(`later rate-blocks must be wilder than the first (5 layers < 100 layers), got ${laterBlock} vs ${oneBlockArc}`);
+// ...and it must actually reach the picture, not just exist as a number.
+const first = sha3Curve.samples.find(s => s.r === 0 && s.b === 0);
+const deep = sha3Curve.samples.find(s => s.b === 26);
+if (!(first.widen === 1 && first.tint === sha3Curve.tintMin)) {
+  throw new Error(`at the very start the flash must be at its narrowest and palest, got widen=${first.widen} tint=${first.tint}`);
+}
+if (!(deep.widen > first.widen * 1.5)) {
+  throw new Error(`the wavefront must widen as a long input grinds on: ${first.widen} -> ${deep.widen}`);
+}
+if (!(deep.tint > first.tint * 1.8)) {
+  throw new Error(`the phase tint must deepen as a long input grinds on: ${first.tint} -> ${deep.tint}`);
+}
+// Containment without a cap, same rule as everywhere else on this page: the factor is unbounded,
+// the rendered values are not. The tint ceiling in particular is the value the rate/capacity
+// separability in verify_task4 is verified at, so it must never be exceeded.
+if (!(deep.tint <= sha3Curve.tintMax + 1e-9)) {
+  throw new Error(`the phase tint must stay under its verified ceiling ${sha3Curve.tintMax}, got ${deep.tint}`);
+}
+console.log(`OK  SHA-3 escalation = 1.06^round * 1.1^block exactly (one block arcs 1 -> ${oneBlockArc.toFixed(2)}x; block 26 already at ${laterBlock.toFixed(1)}x) and reaches the picture without moving anything: wavefront ${first.widen.toFixed(2)}x -> ${deep.widen.toFixed(2)}x wide, phase tint ${first.tint.toFixed(2)} -> ${deep.tint.toFixed(2)} (ceiling ${sha3Curve.tintMax})`);
 
 // SHA-3 pacing remains a separate mechanism from MD5's (retained assertion).
 if (Math.abs(sha3Curve.scale - 0.28) > 0.001) throw new Error(`sha3PhaseScale() at default should be 0.28, got ${sha3Curve.scale}`);
@@ -476,7 +508,7 @@ await page.evaluate(() => { document.getElementById('algo-next').click(); docume
 const sha3Still = await page.evaluate(async () => {
   document.getElementById('input-custom').value = 'shake me';
   document.getElementById('input-custom').dispatchEvent(new Event('input', { bubbles: true }));
-  const seen = { blurDuringPi: false, firstI: null, lastI: null,
+  const seen = { blurDuringPi: false, firstI: null, lastI: null, maxWiden: 0, maxTint: 0,
                  maxRotDrift: 0, gains: [], flashTypes: new Set() };
   const rot0 = __sha3Debug.rotation();
   document.getElementById('output-digest').textContent = '—';
@@ -485,8 +517,10 @@ const sha3Still = await page.evaluate(async () => {
     const t0 = performance.now();
     const iv = setInterval(() => {
       const j = __sha3Debug.juice();
-      if (seen.firstI === null) seen.firstI = j.speedIntensity;
-      seen.lastI = j.speedIntensity;
+      if (seen.firstI === null) seen.firstI = j.intensity;
+      seen.lastI = j.intensity;
+      seen.maxWiden = Math.max(seen.maxWiden, j.flashWiden);
+      seen.maxTint = Math.max(seen.maxTint, j.flashTint);
       if (j.flashType) { seen.flashTypes.add(j.flashType); seen.gains.push(j.flashGain); }
       // The camera must never wander from wherever the user dragged it.
       const r = __sha3Debug.rotation();
@@ -516,14 +550,18 @@ if (sha3Still.noShake.shakeFns.length) {
 if (!(sha3Still.maxRotDrift === 0)) {
   throw new Error(`the camera must not move during a run — it is only ever moved by a drag — drifted ${sha3Still.maxRotDrift}deg`);
 }
-if (!(sha3Still.lastI > sha3Still.firstI * 1.5)) {
+if (!(sha3Still.lastI > sha3Still.firstI * 2)) {
   throw new Error(`SHA-3 escalation must still be visible across a run: ${sha3Still.firstI} -> ${sha3Still.lastI}`);
 }
+// Removing the shake must not have removed the crescendo with it: the two surviving visual
+// channels have to have genuinely moved during this real run.
+if (!(sha3Still.maxWiden > 1.2)) throw new Error(`the wavefront must have visibly widened during a real run, peaked at ${sha3Still.maxWiden}x`);
+if (!(sha3Still.maxTint > 0.2)) throw new Error(`the phase tint must have visibly deepened during a real run, peaked at ${sha3Still.maxTint}`);
 // And the thing that replaced the shake actually ran.
 if (sha3Still.flashTypesList.length < 4) {
   throw new Error(`the directional flash must arm for the phases that used to shake, saw only ${sha3Still.flashTypesList}`);
 }
-console.log(`OK  SHA-3 no longer shakes at all (no shake state, no shake functions, camera drift ${sha3Still.maxRotDrift}deg across a full run); the directional flash ran for ${sha3Still.flashTypesList.length} phase types instead; escalation ${sha3Still.firstI.toFixed(2)} -> ${sha3Still.lastI.toFixed(2)}`);
+console.log(`OK  SHA-3 no longer shakes at all (no shake state, no shake functions, camera drift ${sha3Still.maxRotDrift}deg across a full run), yet still escalates ${sha3Still.firstI.toFixed(2)} -> ${sha3Still.lastI.toFixed(2)}x through the flash's width (to ${sha3Still.maxWiden.toFixed(2)}x) and the phase tint (to ${sha3Still.maxTint.toFixed(2)}), across ${sha3Still.flashTypesList.length} phase types`);
 
 // ============================================================================================
 // 11. Motion blur: on during the fast rearrangement, off at idle and during drag

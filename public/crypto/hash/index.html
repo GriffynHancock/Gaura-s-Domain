@@ -1911,7 +1911,9 @@ const sha3 = {
   // wavefront is currently crossing the assembly, flashP its progress 0..1, flashGain the
   // speed-inverse brightness ceiling. flashGain persists after a phase ends so the afterglow
   // decays at the same brightness the flash that caused it was drawn at.
-  flashType: null, flashP: 0, flashGain: 1,
+  // flashEsc is the visual escalation, 0..1 (bounded `approach` of the uncapped intensity):
+  // it widens the wavefront and deepens the phase tint as a long input grinds on.
+  flashType: null, flashP: 0, flashGain: 1, flashEsc: 0,
   // juice escalation state (see the SHA3 juice block below)
   roundsInBlock: 0, blocksDone: 0,
 };
@@ -1954,11 +1956,31 @@ const sha3 = {
 //                        which is the precondition the painter's-algorithm depth sort relies on.
 //                        With the shake gone that precondition now holds trivially.
 //    The shaken unit was never a single box or lane: always a whole plane, or the whole assembly.
-//  The escalation model itself survives, on ONE channel:
-//    * speed — SHA3_PHASE_FLOOR is the per-phase physical floor, and it is the only thing that
-//              bounds it. See sha3SpeedIntensity, still used by sha3PhaseDuration.
-const SHA3_SPEED_ROUND_RATE = 1.04;   // per Keccak-f round within the current block
-const SHA3_SPEED_BLOCK_RATE = 1.06;   // per absorbed rate-block
+//
+//  The ESCALATION ITSELF SURVIVES — "no shaking" is about the lattice holding still, not about
+//  SHA-3 losing its crescendo. A long input must still read as bigger work than a short one, the
+//  same way MD5's does. It now drives three channels, none of which move anything:
+//    * flash reach — the travelling wavefront gets WIDER as the run escalates, so a late block
+//                    lights up much more of the assembly at once than the first one does. Bounded
+//                    by construction: a raised-cosine band of width w covers at most the whole
+//                    axis, so the widening saturates into "the whole thing pulses" and cannot run
+//                    away.
+//    * phase hue  — the tint toward the active phase's colour deepens from SHA3_TINT_MIN toward
+//                   SHA3_TINT_MAX. Colour, not luminance, is the right channel to escalate on:
+//                   it reads as intensity without adding the rapid brightness swings the
+//                   speed-inverse gain exists to suppress. Bounded by TINT_MAX, which is the
+//                   value the rate/capacity separability was verified at.
+//    * speed      — SHA3_PHASE_FLOOR is the per-phase physical floor, and it is the only thing
+//                   that bounds this one. See sha3SpeedIntensity, used by sha3PhaseDuration.
+//  The first two are driven through `approach` = 1 - 1/I, the same bounded-output-from-unbounded-
+//  input trick the MD5 colour channels use, so the raw uncapped I can be fed in as-is.
+const SHA3_ROUND_RATE = 1.06;         // visual escalation, per Keccak-f round within this block
+const SHA3_BLOCK_RATE = 1.1;          // visual escalation, per absorbed rate-block
+const SHA3_SPEED_ROUND_RATE = 1.04;   // pacing, per Keccak-f round within the current block
+const SHA3_SPEED_BLOCK_RATE = 1.06;   // pacing, per absorbed rate-block
+function sha3Intensity() {
+  return Math.pow(SHA3_ROUND_RATE, sha3.roundsInBlock) * Math.pow(SHA3_BLOCK_RATE, sha3.blocksDone);
+}
 function sha3SpeedIntensity() {
   return Math.pow(SHA3_SPEED_ROUND_RATE, sha3.roundsInBlock) * Math.pow(SHA3_SPEED_BLOCK_RATE, sha3.blocksDone);
 }
@@ -2043,7 +2065,9 @@ function sha3SpeedIntensity() {
 //  other, and it is the one the cat photo actually hits.
 const SHA3_FLASH_AMP      = 0.75;  // travelling wavefront's contribution to brightness
 const SHA3_AFTERGLOW_AMP  = 0.30;  // the older per-lane decaying glow, now a supporting channel
-const SHA3_TINT_MAX       = 0.32;  // strongest uniform mix toward the active phase's hue
+const SHA3_TINT_MIN       = 0.14;  // phase tint at the very start of a run
+const SHA3_TINT_MAX       = 0.32;  // phase tint once the escalation has fully opened up
+const SHA3_WIDEN          = 0.7;   // how much wider the wavefront grows across an escalating run
 const SHA3_FLASH_GAIN_MIN = 0.30;  // peak brightness at the fastest phases
 const SHA3_FLASH_FAST_MS  = 45;    // at/below this phase duration, gain is at its floor
 const SHA3_FLASH_SLOW_MS  = 170;   // at/above this phase duration, gain is full
@@ -2068,14 +2092,18 @@ function sha3RingDist(a, b) { const d = Math.abs(a - b) % 1; return d > 0.5 ? 1 
 function sha3Front(p, width) { return -width + p * (1 + 2 * width); }
 
 // Wavefront amplitude in [0,1] for one sub-cube: lane L, sub-cube k, under the active phase.
-function sha3FlashWave(type, p, L, k) {
+// `widen` (default 1) is the escalation channel: a long input makes the band wider, so a late
+// block lights much more of the assembly at once than the first one does. Bounded by
+// construction — however large it grows, a band can only cover the whole axis.
+function sha3FlashWave(type, p, L, k, widen) {
+  const wd = widen === undefined ? 1 : widen;
   const ux = L.fx / 4, uy = L.fy / 4;                 // current SCREEN slot, 0..1
   const uz = k / (SHA3_SUBS_PER_LANE - 1);            // depth along the lane, 0..1
   switch (type) {
     case 'theta': {
       // One solid x-plane travelling +x: depends on ux only, so all y and all z at that x light
       // together — the shape of "the whole column feeds this".
-      const W = 0.42;
+      const W = 0.42 * wd;
       return sha3Band(ux - sha3Front(p, W), W);
     }
     case 'chi': {
@@ -2088,7 +2116,7 @@ function sha3FlashWave(type, p, L, k) {
       // to 0.98). Scrambling the order — rows 0..4 start at 0, 1/2, 1, 1/4, 3/4 of the stagger —
       // keeps the y centroid pinned near the middle, so what you see is five races along x, not
       // one sweep across y.
-      const W = 0.28, STAG = 0.22;
+      const W = 0.28 * wd, STAG = 0.22;
       const stag = STAG * (((Math.round(L.fy) * 2) % 5) / 4);
       const pr = Math.max(0, Math.min(1, (p - stag) / (1 - STAG)));
       return sha3Band(ux - (1 - sha3Front(pr, W)), W);
@@ -2096,14 +2124,14 @@ function sha3FlashWave(type, p, L, k) {
     case 'rho': {
       // Along the lane's own depth, WRAPPING, with each lane's wave offset by its real rho amount
       // expressed as a fraction of the 64-bit ring.
-      const W = 0.30;
+      const W = 0.30 * wd;
       const off = (KECCAK_RHO_OFFSETS[L.cx][L.cy] % 64) / 64;
       return sha3Band(sha3RingDist(uz, (p + off) % 1), W);
     }
     case 'pi': {
       // A swirl about the centre of the 5x5 face. Strictly x-y: uz is not read here, because pi
       // does not touch z.
-      const W = 0.26;
+      const W = 0.26 * wd;
       const dx = L.fx - 2, dy = L.fy - 2;
       // The centre slot has no angle. Give it the wave's mean amplitude so it neither drops out
       // nor pretends to a direction it cannot have.
@@ -2112,8 +2140,10 @@ function sha3FlashWave(type, p, L, k) {
       return sha3Band(sha3RingDist(ang, p % 1), W);
     }
     case 'iota': {
-      // No sweep. One lane — looked up by canonical IDENTITY, so it is always the real (0,0) lane
-      // however far repeated pi has moved it on screen — flashing up and back down over the phase.
+      // No sweep, and deliberately NOT widened by the escalation either: iota is a point flash on
+      // one lane, and there is nothing for a wider band to reach. One lane — looked up by
+      // canonical IDENTITY, so it is always the real (0,0) lane however far repeated pi has moved
+      // it on screen — flashing up and back down over the phase.
       if (L.cx !== 0 || L.cy !== 0) return 0;
       return sha3Band(p - 0.5, 0.5);
     }
@@ -2314,11 +2344,14 @@ function sha3Render(opts) {
   // position sampled from the wave differs.
   const fType = sha3.flashType, fP = sha3.flashP, fGain = sha3.flashGain;
   const fCol = fType ? P[fType] : null;
+  const fEsc = sha3.flashEsc;
+  const fWiden = 1 + SHA3_WIDEN * fEsc;
   // Uniform phase tint, eased in and out across the phase (raised cosine) so consecutive phases
   // cross-fade through the untinted lattice instead of snapping from one hue to the next. Scaled
   // by the same speed-inverse gain as the flash, so a fast run is quiet in colour as well as in
   // brightness. Equal for every cube — see the note at the mix site for why that matters.
-  const fTint = fType ? SHA3_TINT_MAX * fGain * sha3Band(fP - 0.5, 0.5) : 0;
+  const fTint = fType ? (SHA3_TINT_MIN + (SHA3_TINT_MAX - SHA3_TINT_MIN) * fEsc)
+                        * fGain * sha3Band(fP - 0.5, 0.5) : 0;
   for (const L of sha3.lanes) {
     const spin = L.spin * Math.PI / 180;
     const cs = Math.cos(spin), sn = Math.sin(spin);
@@ -2360,7 +2393,7 @@ function sha3Render(opts) {
       // the whole lattice while that phase is active (which is also what "tie the hue to the
       // active phase" actually means), and the wavefront carries direction through brightness
       // alone. `laneCol` and the density mix above are untouched either way.
-      const wave = fType ? sha3FlashWave(fType, fP, L, k) : 0;
+      const wave = fType ? sha3FlashWave(fType, fP, L, k, fWiden) : 0;
       const hi = (wave * SHA3_FLASH_AMP + L.glow * SHA3_AFTERGLOW_AMP) * fGain;
       if (fTint > 0) base = mixRgb(base, fCol, fTint);
       // Read-only instrumentation for the regression scripts (same role as facesDrawn/lastBlur):
@@ -2505,7 +2538,7 @@ function sha3ResetState() {
   });
   sha3.phaseLog = [];
   sha3.roundsInBlock = 0; sha3.blocksDone = 0;
-  sha3.flashType = null; sha3.flashP = 0; sha3.flashGain = 1;
+  sha3.flashType = null; sha3.flashP = 0; sha3.flashGain = 1; sha3.flashEsc = 0;
   sha3SetPhaseIndicator(null);
 }
 
@@ -2533,6 +2566,7 @@ function sha3StartPhase(ph, now) {
   sha3.flashType = SHA3_PHASE_IDS[ph.type] ? ph.type : null;
   sha3.flashP = 0;
   sha3.flashGain = sha3FlashGain(ph.dur);
+  sha3.flashEsc = 1 - 1 / sha3Intensity();   // 0 at the very start, -> 1, never reaching it
   if (ev.lv) sha3ApplyLaneValues(ev.lv);
   if (ev.lv1) sha3LaneAt(0, 0).bytesTarget = sha3HexToByteSlices(ev.lv1);
   const pulse = list => (list || []).forEach(([x, y]) => {
@@ -2772,13 +2806,16 @@ function initSha3Canvas() {
       speedIntensity: sha3SpeedIntensity(),
       // The shake channels (shakeDecay / planeAxis / camShakeX / camShakeY / planeAmps) are gone
       // along with the shake itself; `noShake` below is what replaced them in the tests.
-      flashType: sha3.flashType, flashGain: sha3.flashGain,
+      intensity: sha3Intensity(),
+      flashType: sha3.flashType, flashGain: sha3.flashGain, flashEsc: sha3.flashEsc,
+      // the two escalating VISUAL channels, exactly as sha3Render computes them
+      flashWiden: 1 + SHA3_WIDEN * sha3.flashEsc,
+      flashTint: SHA3_TINT_MIN + (SHA3_TINT_MAX - SHA3_TINT_MIN) * sha3.flashEsc,
     }),
     // Proof that nothing shakes: the world position a lane is drawn at depends only on its slot
     // and pi's transit lift, and the camera depends only on the drag rotation. Recomputed here
     // from the same state sha3Render reads, so it cannot drift from the renderer.
     noShake: () => ({
-      camMatchesDrag: true,   // sha3Render now reads sha3.rotX/rotY directly, with no jitter term
       shakeStateKeys: Object.keys(sha3).filter(k => /shake|planeA/i.test(k)),
       shakeFns: ['sha3TriggerShake', 'sha3ShakeAxisFor'].filter(n => typeof window[n] === 'function'),
     }),

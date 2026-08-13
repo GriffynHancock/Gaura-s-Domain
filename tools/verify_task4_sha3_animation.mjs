@@ -355,7 +355,9 @@ console.log(`OK  flash brightness falls as speed rises (slider 1 -> ${gains.bySl
 const legibility = await page.evaluate(() => {
   const gold = c => c[0] - c[2];      // warmth: gold lanes are warm, capacity lanes neutral/cool
   const sample = (type) => {
-    sha3.flashType = type; sha3.flashP = 0.5; sha3.flashGain = 1;
+    // WORST CASE on every knob: full speed-gain, tint at its crest, and the escalation fully
+    // opened up so the tint sits at SHA3_TINT_MAX rather than SHA3_TINT_MIN.
+    sha3.flashType = type; sha3.flashP = 0.5; sha3.flashGain = 1; sha3.flashEsc = 1;
     sha3.lanes.forEach(L => { L.glow = type ? 0.9 : 0; });
     sha3Render();
     const rate = [], cap = [];
@@ -365,7 +367,7 @@ const legibility = await page.evaluate(() => {
   };
   const out = { rest: sample(null) };
   for (const t of ['theta', 'rho', 'pi', 'chi', 'iota']) out[t] = sample(t);
-  sha3.flashType = null; sha3.lanes.forEach(L => { L.glow = 0; }); sha3Render();
+  sha3.flashType = null; sha3.flashEsc = 0; sha3.lanes.forEach(L => { L.glow = 0; }); sha3Render();
   return out;
 });
 for (const [t, r] of Object.entries(legibility)) {
