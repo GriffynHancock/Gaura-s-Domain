@@ -91,21 +91,27 @@
     --accent:#b23a26; --gold:#a9772a; --ok:#3f7d52;
     --read-bg:#1a1812; --read-dim:#5e5a3a; --read-on:#f0bb4d;
     /* One distinct hue per Keccak-f step, for the phase-indicator boxes AND for the canvas
-       renderer's per-phase highlight. Three are reused straight from the existing palette
-       (rho=gold, pi=accent/oxblood, chi=ok/green); theta and iota are the two genuinely new
-       hues the palette didn't already carry, chosen to sit in the same muted, warm-editorial
-       register rather than as pure saturated primaries. Redefined in the dark block below.
+       renderer's per-phase highlight. Two are reused straight from the existing palette
+       (pi=accent/oxblood, chi=ok/green); theta, rho and iota are hues the palette didn't already
+       carry, chosen to sit in the same muted, warm-editorial register rather than as pure
+       saturated primaries. Redefined in the dark block below.
+       rho USED to be --gold, byte-identical. That was fine while these colours only lit little
+       indicator boxes, but the canvas now tints the cubes toward the active phase's hue, and gold
+       is the one colour on this page that already MEANS something structural: gold vs grey is
+       rate vs capacity. Tinting all 25 lanes toward gold during rho would have washed the
+       capacity lanes warm and collapsed the single most important read in the whole diagram. So
+       rho gets its own rose, deliberately far from both --gold and pi's oxblood.
        [ANALOGY] — which named step gets which colour is an arbitrary legibility choice; SHA-3
        itself has no colours. WHICH FIVE STEPS EXIST, and that exactly one runs at a time in a
        fixed order (theta, rho, pi, chi, iota, 24 times), is [EXACT] — see keccakF1600WithTrace. */
-    --ph-theta:#2c6f80; --ph-rho:#a9772a; --ph-pi:#b23a26; --ph-chi:#3f7d52; --ph-iota:#7a4e9c;
+    --ph-theta:#2c6f80; --ph-rho:#a8446a; --ph-pi:#b23a26; --ph-chi:#3f7d52; --ph-iota:#7a4e9c;
     --disp:"Fraunces",Georgia,serif; --ui:"Hanken Grotesk",system-ui,sans-serif;
     --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
   }
   html[data-theme="dark"]{
     --bg:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
     --ink:#ece3cd; --dim:#9a8f72; --accent:#e0593d; --gold:#c79338; --ok:#62ab77; --read-bg:#14120c;
-    --ph-theta:#4fadc0; --ph-rho:#c79338; --ph-pi:#e0593d; --ph-chi:#62ab77; --ph-iota:#a880d4;
+    --ph-theta:#4fadc0; --ph-rho:#d4789e; --ph-pi:#e0593d; --ph-chi:#62ab77; --ph-iota:#a880d4;
   }
   *{box-sizing:border-box}
   body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg);
@@ -1826,6 +1832,11 @@ const sha3 = {
   // controller
   runId: -1, queue: [], qi: 0, active: null, phaseLog: [], settleUntil: 0,
   running: false, onDone: null, lastFrame: 0, facesDrawn: 0, framesDrawn: 0,
+  // directional-flash state (see the DIRECTIONAL FLASH block below). flashType is the phase whose
+  // wavefront is currently crossing the assembly, flashP its progress 0..1, flashGain the
+  // speed-inverse brightness ceiling. flashGain persists after a phase ends so the afterglow
+  // decays at the same brightness the flash that caused it was drawn at.
+  flashType: null, flashP: 0, flashGain: 1,
   // juice escalation state (see the SHA3 juice block below)
   roundsInBlock: 0, blocksDone: 0,
   camShakeX: 0, camShakeY: 0, shakeDecay: 0, planeAxis: null, planeAmps: [0,0,0,0,0],
@@ -1905,6 +1916,163 @@ function sha3TriggerShake(type) {
   sha3.shakeDecay = 1;   // top up, don't reset — same convention as every other pulse here
 }
 
+// ============================================================================================
+//  THE DIRECTIONAL FLASH — one travelling wavefront per Keccak-f step, along the axis that step
+//  actually operates on.
+// ============================================================================================
+//
+//  The flash used to be omnidirectional: theta/chi/iota topped up a per-lane `glow` scalar and
+//  every cube in a lit lane brightened at once. It read as "something happened", which is fine,
+//  but it taught nothing about WHICH something. A step that XORs along x and a step that rotates
+//  along z looked identical. Now each step's highlight is a wave that sweeps the assembly along
+//  the axis the step is defined on, so the shape of the flash IS the shape of the operation.
+//
+//  DIRECTIONS, checked against FIPS 202 section 3.2 AND against this page's own implementation of
+//  each step in keccakF1600WithTrace above — not assumed:
+//
+//    theta  §3.2.1  D[x] = C[(x-1) mod 5] XOR ROT(C[(x+1) mod 5], 1), applied as A'[x,y,z] ^= D[x].
+//                   The column parity C sums over y, but the DEPENDENCY between columns is on
+//                   x-1 and x+1 — theta propagates along X. And because D[x] does not depend on
+//                   y at all, the honest wavefront is a whole x-PLANE: at a given x, all five y's
+//                   and all 64 z's are involved simultaneously. That plane-shaped front is also
+//                   exactly what distinguishes theta from chi below, which travels the same axis.
+//                   Direction along x is arbitrary (theta reads BOTH neighbours, so it is
+//                   symmetric in x); the plane shape is not.
+//
+//    rho    §3.2.2  A'[x,y,z] = A[x,y,(z - offset(x,y)) mod 64]. A pure rotation of each lane's
+//                   own 64-bit ring — along Z, and by a DIFFERENT amount per lane. So the wave
+//                   runs along the lane's depth, it WRAPS (a ring has no ends), and each lane's
+//                   wave is phase-offset by that lane's own real KECCAK_RHO_OFFSETS entry. Twenty
+//                   five lanes visibly out of step with each other is not decoration: it is what
+//                   rho does.
+//
+//    pi     §3.2.3  A'[x,y,z] = A[(x+3y) mod 5, x, z]. A permutation of lane POSITIONS in the x-y
+//                   plane; z is untouched entirely. So the sweep is rotational — a swirl about
+//                   the centre of the 5x5 face — and it must stay strictly in x-y. A helix or any
+//                   front with a z component would claim pi moves bits along the lane, which is
+//                   precisely what pi does not do.
+//
+//    chi    §3.2.4  A'[x,y,z] = A[x,y,z] XOR ((NOT A[(x+1) mod 5,y,z]) AND A[(x+2) mod 5,y,z]).
+//                   NOTE — this is the one direction in the original brief that was wrong. It was
+//                   specified as a y-sweep on the grounds that chi "mixes within rows". Chi does
+//                   mix within rows, but a Keccak row is indexed BY y and runs ALONG x: the
+//                   dependency is on x+1 and x+2 at FIXED y. Chi therefore sweeps along X, not y,
+//                   and this page's own chi trace event agrees — it lights lanes
+//                   [[0,0],[1,0],[2,0],[3,0],[4,0]], five lanes with x varying and y pinned.
+//                   Sweeping it along y would have taught students a false structure.
+//                     Theta and chi consequently share an axis, and NOTHING sweeps along y —
+//                   which is correct, because no step of Keccak-f propagates along y. They are
+//                   kept distinguishable by the two things that genuinely differ:
+//                     * SHAPE — theta's front is one solid x-plane (the whole column feeds the
+//                       parity); chi's is five INDEPENDENT sweeps racing side by side, one per
+//                       row, staggered, because rows never couple to each other under chi.
+//                     * SENSE — chi's dependency is strictly on HIGHER x, so information flows in
+//                       -x and its wave runs backwards. Theta's is symmetric, so its wave runs +x.
+//
+//    iota   §3.2.5  A'[0,0,z] = A[0,0,z] XOR RC. One lane, all 64 of its bits, nothing else in
+//                   the state. So: no sweep at all. A single point flash on lane (0,0), which is
+//                   the honest picture of the smallest step in the round, and a deliberate
+//                   contrast with the four that precede it.
+//
+//  [ANALOGY] that the flash exists and is drawn at all. [EXACT] which axis each wave runs along,
+//  which lane iota flashes (looked up by canonical identity cx/cy, so it is always the true lane),
+//  and rho's per-lane phase offsets (read from the real KECCAK_RHO_OFFSETS table).
+//  Carried over from the plane-shake above, and true here for the same reason: theta's, chi's and
+//  pi's waves are positioned by each box's CURRENT SCREEN SLOT (fx/fy), not by its canonical
+//  identity. After round 0 repeated pi has scattered identities across slots, so the five boxes a
+//  wavefront crosses together are not guaranteed to be the five lanes the real step grouped
+//  together — see the FINDING note on sha3MakeLanes. The AXIS is exact; the membership of each
+//  visual front is [ANALOGY] past the first round.
+//
+//  ---- brightness vs speed ----
+//  Peak brightness scales INVERSELY with how fast the animation is running. At the fast end of the
+//  slider (and deep into an escalating run, where sha3SpeedIntensity has already pushed phases
+//  down onto SHA3_PHASE_FLOOR) the flashes arrive more than ten times a second, and at full
+//  amplitude that is harsh strobing rather than legible punctuation — and rapid high-contrast
+//  flashing in the 3-60Hz band is a genuine photosensitivity risk, not just an aesthetic one.
+//  The gain is keyed off the phase's own EFFECTIVE DURATION rather than off the slider, because
+//  the slider is only one of the two things that shortens a phase; the uncapped escalation is the
+//  other, and it is the one the cat photo actually hits.
+const SHA3_FLASH_AMP      = 0.75;  // travelling wavefront's contribution to brightness
+const SHA3_AFTERGLOW_AMP  = 0.30;  // the older per-lane decaying glow, now a supporting channel
+const SHA3_TINT_MAX       = 0.32;  // strongest uniform mix toward the active phase's hue
+const SHA3_FLASH_GAIN_MIN = 0.30;  // peak brightness at the fastest phases
+const SHA3_FLASH_FAST_MS  = 45;    // at/below this phase duration, gain is at its floor
+const SHA3_FLASH_SLOW_MS  = 170;   // at/above this phase duration, gain is full
+
+function sha3FlashGain(durMs) {
+  if (!(durMs > 0)) return SHA3_FLASH_GAIN_MIN;   // REAL TIME mode: zero-length phases
+  const t = (durMs - SHA3_FLASH_FAST_MS) / (SHA3_FLASH_SLOW_MS - SHA3_FLASH_FAST_MS);
+  return SHA3_FLASH_GAIN_MIN + (1 - SHA3_FLASH_GAIN_MIN) * Math.max(0, Math.min(1, t));
+}
+
+// Raised cosine: 1 at the crest, easing to 0 at +/- width. Smooth at both ends, so a cube fades in
+// and out as the front passes instead of stepping.
+function sha3Band(dist, width) {
+  const d = Math.abs(dist) / width;
+  return d >= 1 ? 0 : 0.5 * (1 + Math.cos(Math.PI * d));
+}
+// Distance on a ring of circumference 1 — for the two waves that genuinely wrap (rho's 64-bit
+// lane ring, pi's swirl about the centre).
+function sha3RingDist(a, b) { const d = Math.abs(a - b) % 1; return d > 0.5 ? 1 - d : d; }
+// A front that enters before the near edge and exits past the far edge, so every cube gets a full
+// pass of the wave rather than the first and last ones being clipped.
+function sha3Front(p, width) { return -width + p * (1 + 2 * width); }
+
+// Wavefront amplitude in [0,1] for one sub-cube: lane L, sub-cube k, under the active phase.
+function sha3FlashWave(type, p, L, k) {
+  const ux = L.fx / 4, uy = L.fy / 4;                 // current SCREEN slot, 0..1
+  const uz = k / (SHA3_SUBS_PER_LANE - 1);            // depth along the lane, 0..1
+  switch (type) {
+    case 'theta': {
+      // One solid x-plane travelling +x: depends on ux only, so all y and all z at that x light
+      // together — the shape of "the whole column feeds this".
+      const W = 0.42;
+      return sha3Band(ux - sha3Front(p, W), W);
+    }
+    case 'chi': {
+      // Five independent x-sweeps, one per row, staggered and running -x (chi's dependency is on
+      // higher x, so information flows toward lower x). Rows never couple, and this is what that
+      // looks like.
+      // The per-row offsets are deliberately NOT monotonic in y. With a monotonic stagger the
+      // five sweeps line up into one diagonal wipe, and a diagonal wipe reads as a y-component
+      // that chi does not have (measured: the amplitude-weighted y centroid tracked p from 0.02
+      // to 0.98). Scrambling the order — rows 0..4 start at 0, 1/2, 1, 1/4, 3/4 of the stagger —
+      // keeps the y centroid pinned near the middle, so what you see is five races along x, not
+      // one sweep across y.
+      const W = 0.28, STAG = 0.22;
+      const stag = STAG * (((Math.round(L.fy) * 2) % 5) / 4);
+      const pr = Math.max(0, Math.min(1, (p - stag) / (1 - STAG)));
+      return sha3Band(ux - (1 - sha3Front(pr, W)), W);
+    }
+    case 'rho': {
+      // Along the lane's own depth, WRAPPING, with each lane's wave offset by its real rho amount
+      // expressed as a fraction of the 64-bit ring.
+      const W = 0.30;
+      const off = (KECCAK_RHO_OFFSETS[L.cx][L.cy] % 64) / 64;
+      return sha3Band(sha3RingDist(uz, (p + off) % 1), W);
+    }
+    case 'pi': {
+      // A swirl about the centre of the 5x5 face. Strictly x-y: uz is not read here, because pi
+      // does not touch z.
+      const W = 0.26;
+      const dx = L.fx - 2, dy = L.fy - 2;
+      // The centre slot has no angle. Give it the wave's mean amplitude so it neither drops out
+      // nor pretends to a direction it cannot have.
+      if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return 0.45;
+      const ang = (Math.atan2(dy, dx) / (2 * Math.PI) + 1) % 1;
+      return sha3Band(sha3RingDist(ang, p % 1), W);
+    }
+    case 'iota': {
+      // No sweep. One lane — looked up by canonical IDENTITY, so it is always the real (0,0) lane
+      // however far repeated pi has moved it on screen — flashing up and back down over the phase.
+      if (L.cx !== 0 || L.cy !== 0) return 0;
+      return sha3Band(p - 0.5, 0.5);
+    }
+  }
+  return 0;
+}
+
 // ---- colour plumbing: every colour comes from the page's own CSS custom properties ----
 function sha3ReadPalette() {
   const cs = getComputedStyle(document.documentElement);
@@ -1913,7 +2081,7 @@ function sha3ReadPalette() {
     bg: get('--bg', '#e7dec9'), panel: get('--panel', '#efe7d3'), panel2: get('--panel2', '#e2d8be'),
     edge: get('--edge', '#cdc09f'), ink: get('--ink', '#241f17'), dim: get('--dim', '#7c7259'),
     accent: get('--accent', '#b23a26'), gold: get('--gold', '#a9772a'),
-    theta: get('--ph-theta', '#2c6f80'), rho: get('--ph-rho', '#a9772a'),
+    theta: get('--ph-theta', '#2c6f80'), rho: get('--ph-rho', '#a8446a'),
     pi: get('--ph-pi', '#b23a26'), chi: get('--ph-chi', '#3f7d52'), iota: get('--ph-iota', '#7a4e9c'),
   };
 }
@@ -2095,6 +2263,16 @@ function sha3Render(opts) {
   // Build the draw list: one entry per sub-cube (25 lanes x SHA3_SUBS_PER_LANE).
   const items = [];
   const half = SHA3_CUBE / 2;
+  // The active phase's travelling wavefront and its hue. Hoisted out of the per-cube loop: the
+  // phase, its progress and its colour are the same for all 200 cubes in a frame; only the
+  // position sampled from the wave differs.
+  const fType = sha3.flashType, fP = sha3.flashP, fGain = sha3.flashGain;
+  const fCol = fType ? P[fType] : null;
+  // Uniform phase tint, eased in and out across the phase (raised cosine) so consecutive phases
+  // cross-fade through the untinted lattice instead of snapping from one hue to the next. Scaled
+  // by the same speed-inverse gain as the flash, so a fast run is quiet in colour as well as in
+  // brightness. Equal for every cube — see the note at the mix site for why that matters.
+  const fTint = fType ? SHA3_TINT_MAX * fGain * sha3Band(fP - 0.5, 0.5) : 0;
   for (const L of sha3.lanes) {
     const spin = L.spin * Math.PI / 180;
     const cs = Math.cos(spin), sn = Math.sin(spin);
@@ -2121,7 +2299,31 @@ function sha3Render(opts) {
       // zeroes, so rate (gold) and capacity (grey) stay tellable apart at rest and the legend
       // matches what is on screen. It does not soften the honest reading: 0.22 vs 1.0 is still a
       // wide brightness gap, so an empty lane still reads as clearly empty.
-      const base = mixRgb(mixRgb(P.bg, P.ink, 0.42), laneCol, 0.22 + 0.78 * density);
+      let base = mixRgb(mixRgb(P.bg, P.ink, 0.42), laneCol, 0.22 + 0.78 * density);
+      // DIRECTIONAL FLASH (brightness) and PHASE HUE (colour) are deliberately kept on separate
+      // channels, and the hue channel is deliberately UNIFORM across the whole assembly.
+      //
+      // The first attempt tied the tint to the wavefront, so only the cubes at the crest took the
+      // phase colour. It looked good and it broke the one read that must never break: measured on
+      // a real hashed state at full gain, a rate lane sitting under theta's teal crest fell to
+      // goldness 12.1 while an untinted capacity lane sat at 30.3 — the two families overlapped,
+      // and "which 17 lanes are gold" stopped being answerable. Under pi's oxblood the same thing
+      // happened in the other direction (capacity 74.9 vs rate 55.9).
+      //
+      // A tint applied EQUALLY to every cube cannot do that. It is an affine map, c -> (1-t)c +
+      // t*phase, applied identically to rate and capacity lanes, so it compresses the gold/grey
+      // gap by (1-t) and can never invert or cross it — the ordering is preserved by construction,
+      // at every t, for every phase hue, with no tuning to get right. So: the phase colour washes
+      // the whole lattice while that phase is active (which is also what "tie the hue to the
+      // active phase" actually means), and the wavefront carries direction through brightness
+      // alone. `laneCol` and the density mix above are untouched either way.
+      const wave = fType ? sha3FlashWave(fType, fP, L, k) : 0;
+      const hi = (wave * SHA3_FLASH_AMP + L.glow * SHA3_AFTERGLOW_AMP) * fGain;
+      if (fTint > 0) base = mixRgb(base, fCol, fTint);
+      // Read-only instrumentation for the regression scripts (same role as facesDrawn/lastBlur):
+      // the material colour and highlight of this lane's middle cube, AFTER the phase tint, so a
+      // test can prove the rate/capacity hue split survives every phase's wash.
+      if (k === 4) { L.lastCol = base; L.lastHi = hi; }
       const corners = [];
       let depthSum = 0;
       for (let i = 0; i < 8; i++) {
@@ -2133,7 +2335,7 @@ function sha3Render(opts) {
         corners.push(p);
         depthSum += p.z;
       }
-      items.push({ corners, depth: depthSum / 8, base, glow: L.glow, cs, sn, k });
+      items.push({ corners, depth: depthSum / 8, base, hi, cs, sn, k });
     }
   }
   // Painter's algorithm: farthest first. Exactly correct here — the boxes are rigid, convex and
@@ -2147,7 +2349,9 @@ function sha3Render(opts) {
   let faces = 0;
   ctx.lineJoin = 'round';
   for (const it of items) {
-    const bright = 1 + it.glow * 0.85;
+    // `hi` already carries the wavefront, the residual per-lane afterglow and the speed-inverse
+    // gain (see the DIRECTIONAL FLASH block) — one number, computed once per cube.
+    const bright = 1 + it.hi;
     for (const f of SHA3_FACES) {
       // spin the face normal the same way the corners were spun, then camera-rotate it
       const nx = f.n[0] * it.cs - f.n[1] * it.sn;
@@ -2260,6 +2464,7 @@ function sha3ResetState() {
   sha3.roundsInBlock = 0; sha3.blocksDone = 0;
   sha3.camShakeX = 0; sha3.camShakeY = 0; sha3.shakeDecay = 0;
   sha3.planeAxis = null; sha3.planeAmps = [0, 0, 0, 0, 0];
+  sha3.flashType = null; sha3.flashP = 0; sha3.flashGain = 1;
   sha3SetPhaseIndicator(null);
 }
 
@@ -2281,6 +2486,12 @@ function sha3StartPhase(ph, now) {
   const absorbMatch = /^absorb-(\d+)$/.exec(ev.boxId || '');
   if (absorbMatch) { sha3.blocksDone = Number(absorbMatch[1]); sha3.roundsInBlock = 0; }
   ph.dur = sha3PhaseDuration(ph.type);
+  // Arm this phase's travelling wavefront. The gain is computed from the duration just resolved,
+  // so it accounts for BOTH things that shorten a phase — the speed slider and the uncapped
+  // escalation — rather than only the one the user can see.
+  sha3.flashType = SHA3_PHASE_IDS[ph.type] ? ph.type : null;
+  sha3.flashP = 0;
+  sha3.flashGain = sha3FlashGain(ph.dur);
   sha3TriggerShake(ph.type);
   if (ev.lv) sha3ApplyLaneValues(ev.lv);
   if (ev.lv1) sha3LaneAt(0, 0).bytesTarget = sha3HexToByteSlices(ev.lv1);
@@ -2361,6 +2572,9 @@ function sha3PhaseProgress(ph, p) {
 }
 
 function sha3FinishPhase(ph, now) {
+  // The wavefront has left the assembly; only the decaying afterglow remains until the next
+  // phase arms its own.
+  sha3.flashType = null;
   if (ph.type === 'pi') {
     // commit to exact integer slots — an aborted or rounding-drifted transit can never leave a
     // lane at a fractional position for the next pi to permute from.
@@ -2396,6 +2610,7 @@ function sha3Ambient(dt) {
 function sha3Stop() {
   sha3.running = false; sha3.active = null;
   sha3.shakeDecay = 0; sha3.planeAxis = null;
+  sha3.flashType = null;   // motion must never outlive motion — same rule as the blur below
   sha3SetPhaseIndicator(null);
   sha3Render();
 }
@@ -2423,6 +2638,7 @@ function sha3Play(trace, onDone) {
 
     if (sha3.active) {
       const p = Math.min(1, (now - sha3.active.start) / sha3.active.dur);
+      sha3.flashP = p;               // drives the directional wavefront in sha3Render
       sha3PhaseProgress(sha3.active, p);
       if (p >= 1) { sha3FinishPhase(sha3.active, now); sha3.active = null; }
     }
