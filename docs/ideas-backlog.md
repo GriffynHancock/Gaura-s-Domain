@@ -50,3 +50,39 @@ reads as a colour shift rather than (or in addition to) a moving tick mark.
   brightness/hue driven by real content, twist/gradient driven by real rotation offset.
 
 Raised 2026-08-13 during hash-viz post-deploy feedback (SHA-3 animation pacing/legibility pass).
+
+## Trollface folder → QR polyglot → Snake puzzle box (Module 3 · Hashing, or standalone)
+A layered "demoscene puzzle box" challenge, spun out of the desktop-micro-theme idea (the 2015-era
+desktop theme includes a `Trollface` folder icon as set dressing). Recorded 2026-08-13 as a
+future research target — NOT being built in the current pass. The desktop theme should ship the
+folder/icon and a placeholder flag in a filename so the hook exists to build on later.
+
+Layers, outermost first:
+1. **The folder opens** to a pack of downloadable trollface/rage-face images (fairly HD).
+2. **Batch-processing puzzle:** each image carries a noise pattern; only when all of them are
+   combined/stacked does the pattern resolve into a QR code. Forces students to write a batch
+   process rather than eyeball one file — a real CTF skill.
+3. **The QR code is a polyglot:** a max-size QR whose payload, when saved to disk, is itself a
+   runnable file that a Chromium browser will execute.
+4. **The runnable file is a game of Snake** on a small grid (8×8 suggested) that only releases its
+   key/flag after a genuinely completed playthrough — the snake must eat enough fruit to max out
+   the board. Since it's the student's own browser, they control execution speed, so the intended
+   solve is writing a TAS (tool-assisted speedrun) / scripted perfect play rather than playing by
+   hand. The flag surfaces on completion (printed, or via a browser warning, or by flipping a
+   variable the player can then read).
+
+Open questions for the research agent(s):
+- **Is the QR-as-executable-polyglot actually feasible?** Max QR (version 40) holds ~2953 bytes
+  binary / ~4296 alphanumeric. Is that enough for a self-contained Snake that Chromium will run?
+  What file type — the user said "compiled ws file", which is ambiguous (WebAssembly `.wasm`?
+  Windows Script `.ws`? a self-contained `.html`?). Determine what a Chromium browser will actually
+  execute from a local file, and pick the format that makes the polyglot possible at all.
+- **Can the win-condition key be made genuinely unforgeable** — i.e. derived from the game state
+  such that you can't just read the flag out of the source without playing? (Deriving a decryption
+  key from the sequence of moves / final board state, rather than an `if (won) print(flag)` that
+  anyone can grep, is the interesting version. Note a determined student can always extract it from
+  a local file — the goal is making playing-it easier than defeating-it, not real security.)
+- Whether the noise-pattern-to-QR step should be steganographic (LSB) or something more visual.
+
+Worth splitting into more than one research pass — the QR polyglot feasibility and the
+tamper-resistant-win-condition design are fairly independent problems.
