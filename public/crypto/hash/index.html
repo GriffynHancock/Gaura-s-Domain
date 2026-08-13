@@ -3582,24 +3582,39 @@ function sha3Render(opts) {
   const ry = sha3.rotY * Math.PI / 180;
   const cam = {
     cx: Math.cos(rx), sx: Math.sin(rx), cy: Math.cos(ry), sy: Math.sin(ry),
-    // CONSTANT, AND EXACTLY THE SIZE IT ALWAYS WAS. There is no bloom-tracking zoom-out any
-    // more. That one moved WITH the bloom, which is a scale change applied to the whole assembly
-    // during pi, and it read (correctly) as the rows growing and shrinking — which is not what pi
-    // does to anything. The bloom fits without it: the largest radial displacement the scheme
-    // asks for is ~1.13 world units on a half-extent of 2 cells + a 0.33 cube half = 3.5, times
-    // ~1.13 of perspective divergence = 3.9, against the 5.5 the h/11 fit allows.
+    // CONSTANT — a flat 0.90, the same number every frame of every phase at every slider. There
+    // is no bloom-tracking zoom-out any more. That one moved WITH the bloom, which is a scale
+    // change applied to the whole assembly during pi, and it read (correctly) as the rows growing
+    // and shrinking — which is not what pi does to anything.
     //
-    // A FLAT PULLBACK WAS TRIED HERE AND REJECTED, and it is worth recording why rather than
-    // leaving it to be rediscovered. The dynamic zoom was also, incidentally, attenuating
-    // photosensitivity: everything pi moves was drawn up to 20% smaller in SCREEN space exactly
-    // while it moved. A constant 0.86 bought that back (slider 78's worst single-frame step went
-    // 0.095 -> 0.070) but broke the slow end: with the lattice smaller, more of the flash meter's
-    // centre tile is background, the tile's mean swings further when the lattice lights, and the
-    // luminance governor engaged at SLIDER 1 — share 0 -> 1, gain 1 -> 0.25 — attenuating the
-    // slow, discrete, legible phases that are the whole teaching content. Measured, both ways.
-    // The scale stays where it was and the flash budget is paid for at its real source instead
-    // (see the clearance-floor note in the position follower).
-    scale: Math.min(w / 12.5, h / 11),
+    // WHY A FLAT PULLBACK REPLACES IT RATHER THAN NOTHING, AND WHY 0.90 AND NOT MORE. The dynamic
+    // zoom was doing two jobs. Framing is the smaller one and the bloom fits without it (largest
+    // radial displacement ~1.13 world units on a half-extent of 2 cells + a 0.33 cube half = 3.5,
+    // times ~1.13 of perspective divergence = 3.9, against the 5.5 the h/11 fit allows). The other
+    // was photosensitivity, and it was substantial: because the old clearance floor held every
+    // in-transit lane at 0.9 world units, the zoom sat at essentially its full 20% pull-in for the
+    // whole of pi — so everything pi moves was drawn a fifth smaller in SCREEN space exactly while
+    // it moved. Removing it took the worst single-frame luminance step at slider 78 (the peak of
+    // the aliasing warp's swing, where pi's opening runs 2.2x faster than unwarped and the suite's
+    // hardest constructed case) from ~0.06 to ~0.09-0.10. MEASURED, and measured with the bloom
+    // and the clearance floor each zeroed in turn: neither moves it. What is left is pi's own
+    // slide, drawn at full size.
+    //
+    // 0.90 is the floor of the safe range, not a taste call. Below it the flash meter's centre
+    // tile picks up enough background that the tile mean swings further when the lattice lights,
+    // and the LUMINANCE GOVERNOR ENGAGES AT SLIDER 1 — measured: 0.90 and 0.94 leave it idle
+    // (share 0, gain 1); 0.88 trips it to share 0.85 / gain 0.37 and 0.86 to share 1 / gain 0.25,
+    // attenuating the slow, discrete, legible phases that are the whole teaching content. So the
+    // window is 0.90 upward, and 0.90 is where the most attenuation lives inside it.
+    //
+    // WHAT THAT LEAVES. At 0.90 every WCAG 2.3.1/2.3.2 assertion passes with zero flashes counted
+    // in every scenario, and every case clears the suite's own stricter 0.07 amplitude margin
+    // except slider 78, which measures 0.073-0.080 against a pre-change 0.038-0.078. That residual
+    // is the honest price of not scaling during pi: it can only be bought back by re-introducing a
+    // scale that moves with the motion (the thing being removed) or by shrinking the assembly past
+    // 0.90 permanently (which breaks the slow end, above). It is recorded here rather than papered
+    // over, and verify_flash_safety.mjs still asserts it, so it cannot drift further unnoticed.
+    scale: Math.min(w / 12.5, h / 11) * 0.90,
     f: 34, pw: sha3PerspWeight(sha3.rotX, sha3.rotY), ox: w / 2, oy: h / 2,
   };
   // Published for tools/verify_pi_pacing.mjs, which asserts it does not move while pi runs. The
