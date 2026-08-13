@@ -36,7 +36,17 @@ const BASE_URL = process.env.HASH_MODULE_URL || 'http://localhost:8787/public/cr
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const consoleErrors = [];
-page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+// Third-party console errors are ignored; same-origin ones are still hard failures.
+// The page pulls its webfonts from fonts.gstatic.com, and in a sandboxed/offline environment
+// that request intermittently 404s. It never reaches the local server (which logs zero 404s
+// ever), so it says nothing about the page -- but it used to fail this assertion at random.
+const SAME_ORIGIN = new URL(BASE_URL).origin;
+page.on('console', msg => {
+  if (msg.type() !== 'error') return;
+  const src = msg.location().url || '';
+  if (src && !src.startsWith(SAME_ORIGIN)) return;
+  consoleErrors.push(msg.text());
+});
 page.on('pageerror', err => consoleErrors.push(String(err)));
 
 await page.goto(BASE_URL + '?v=wigglejuice2');
@@ -459,14 +469,25 @@ await page.waitForTimeout(200);
 if (await page.evaluate(() => __sha3Debug.lastBlur())) throw new Error('drag-rotation must render crisply, not blurred');
 // aborting mid-run must also leave a crisp frame (the smear-on-abort case)
 const abortBlur = await page.evaluate(async () => {
-  document.getElementById('speed-slider').value = '1';   // slow, so we can reliably abort mid-pi
+  document.getElementById('speed-slider').value = '1';   // slow, so we can sit inside pi for a while
   document.getElementById('hash-btn').click();
-  await new Promise(r => setTimeout(r, 900));
+  // Wait for the controller to actually BE in pi rather than guessing with a fixed delay. A fixed
+  // 900ms landed in rho or theta often enough that this assertion survived deleting the very fix
+  // it exists to guard (sha3Stop's crisp repaint) — it only catches the bug if the last painted
+  // frame was a blurred one, which is only guaranteed mid-pi.
+  const t0 = performance.now();
+  while (performance.now() - t0 < 20000 && __sha3Debug.activePhase() !== 'pi') {
+    await new Promise(r => requestAnimationFrame(r));
+  }
+  const inPi = __sha3Debug.activePhase() === 'pi';
+  const blurAtAbort = __sha3Debug.lastBlur();
   document.getElementById('algo-next').click();          // switch to MD5 -> hard-cancels the run
-  await new Promise(r => setTimeout(r, 400));
-  return __sha3Debug.lastBlur();
+  await new Promise(r => setTimeout(r, 500));
+  return { inPi, blurAtAbort, blurAfter: __sha3Debug.lastBlur() };
 });
-if (abortBlur) throw new Error('aborting a run mid-pi left a motion-blurred frame on the canvas permanently');
+if (!abortBlur.inPi) throw new Error('could not get the controller into pi to test the abort case');
+if (!abortBlur.blurAtAbort) throw new Error('expected the canvas to be mid-blur at the moment of abort — the test is not exercising the smear case');
+if (abortBlur.blurAfter) throw new Error('aborting a run mid-pi left a motion-blurred frame on the canvas permanently');
 console.log('OK  motion blur engages during pi, and is off at idle, during drag, and after an aborted run');
 
 // ============================================================================================

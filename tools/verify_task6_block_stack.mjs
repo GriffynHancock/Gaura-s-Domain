@@ -5,7 +5,17 @@ const BASE_URL = process.env.HASH_MODULE_URL || 'http://localhost:8787/public/cr
 const browser = await chromium.launch();
 const page = await browser.newPage();
 const consoleErrors = [];
-page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+// Third-party console errors are ignored; same-origin ones are still hard failures.
+// The page pulls its webfonts from fonts.gstatic.com, and in a sandboxed/offline environment
+// that request intermittently 404s. It never reaches the local server (which logs zero 404s
+// ever), so it says nothing about the page -- but it used to fail this assertion at random.
+const SAME_ORIGIN = new URL(BASE_URL).origin;
+page.on('console', msg => {
+  if (msg.type() !== 'error') return;
+  const src = msg.location().url || '';
+  if (src && !src.startsWith(SAME_ORIGIN)) return;
+  consoleErrors.push(msg.text());
+});
 page.on('pageerror', err => consoleErrors.push(String(err)));
 
 await page.goto(BASE_URL + '?v=task6');
