@@ -267,8 +267,8 @@ const warp = await page.evaluate(() => {
     out.range.push({ f, lo, hi });
   }
   // Replay pi's transit and measure the closest approach of any two lanes, in WORLD units,
-  // exactly as sha3Render places them: x from the slot, y from the slot plus the transit lift
-  // (which is where each lane's distinct liftShelf separates them). Done for a range of alias
+  // through the page's OWN sha3LaneWorldXY — the single function the renderer also places boxes
+  // with, so this cannot drift from what is drawn. Done for a range of alias
   // factors, INCLUDING f = 1 — the unwarped transit that has always shipped — because f = 1 is
   // the control. The claim being tested is not "the warped transit clears some absolute margin"
   // (the un-warped one does not clear an arbitrary margin either; lanes pass each other closely
@@ -277,7 +277,7 @@ const warp = await page.evaluate(() => {
   const saveSlots = sha3.lanes.map(L => [L.sx, L.sy]);
   sha3.lanes.forEach(L => { L.prevSx = L.sx; L.prevSy = L.sy;
     const [nx, ny] = KECCAK_PI_LANE_MAP[L.sx][L.sy]; L.sx = nx; L.sy = ny;
-    L.liftShelf = (((L.prevSx * 5 + L.prevSy) / 24) - 0.5) * SHA3_LIFT_SPREAD; });
+    sha3ArmRadial(L); });
   out.sep = {};
   // f = 1 is swept far more finely than the rest: it is the CONTROL, and the claim it has to
   // support is "every configuration the warp draws is one the unwarped transit already draws at
@@ -288,7 +288,8 @@ const warp = await page.evaluate(() => {
   // DRIVEN THROUGH THE PAGE'S OWN sha3PhaseProgress, not through a copy of its arithmetic. This
   // block used to re-implement the lift/slide/drop windows inline, which meant the transit could
   // be redesigned in index.html and this test would keep cheerfully validating the OLD design and
-  // passing green. The alias factor is injected by stubbing the one function the transit reads it
+  // passing green. Same reason the world position comes from sha3LaneWorldXY and the radial bloom
+  // from sha3ArmRadial. The alias factor is injected by stubbing the one function the transit reads it
   // from (sha3AliasGeoTransit), so the code under test is the shipped code.
   const realGate = window.sha3AliasGeoTransit;
   for (const f of [1, 0.5, 0, -0.22, -1]) {
@@ -297,8 +298,7 @@ const warp = await page.evaluate(() => {
     const steps = f === 1 ? 20000 : 600;
     for (let i = 0; i <= steps; i++) {
       sha3PhaseProgress({ type: 'pi' }, i / steps);
-      const pos = sha3.lanes.map(L =>
-        [(L.fx - 2) * SHA3_CELL, (2 - L.fy) * SHA3_CELL + L.lift * (SHA3_LIFT_BASE + L.liftShelf)]);
+      const pos = sha3.lanes.map(L => sha3LaneWorldXY(L, L.fx, L.fy, L.lift * L.radMag));
       for (let a = 0; a < pos.length; a++) for (let b = a + 1; b < pos.length; b++) {
         const d = Math.hypot(pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]);
         if (d < minSep) minSep = d;
@@ -308,7 +308,7 @@ const warp = await page.evaluate(() => {
   }
   window.sha3AliasGeoTransit = realGate;
   sha3.lanes.forEach((L, i) => { L.sx = saveSlots[i][0]; L.sy = saveSlots[i][1];
-    L.fx = L.sx; L.fy = L.sy; L.prevSx = L.sx; L.prevSy = L.sy; L.lift = 0; L.liftShelf = 0; });
+    L.fx = L.sx; L.fy = L.sy; L.prevSx = L.sx; L.prevSy = L.sy; L.lift = 0; L.radMag = 0; });
   return out;
 });
 check('the aliasing warp has EXACT endpoints (pi still lands on its true slot)',

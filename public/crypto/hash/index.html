@@ -2066,7 +2066,7 @@ function pulseBoxOrCube(boxId, sample) {
 //  bytes, and painter's-algorithm sorting is not an approximation here but *exactly* correct:
 //  for rigid, convex, non-interpenetrating boxes, one is always strictly nearer than the other
 //  along the view axis. Keeping that precondition true during pi is the one thing the animation
-//  has to be careful about — see the lift/slide/drop note on sha3PhaseProgress.
+//  has to be careful about — see the bloom/slide/close note on sha3PhaseProgress.
 //
 //  GEOMETRY DECISION — how the 64-bit depth is represented:
 //  Keccak-f[1600]'s state is 5 x 5 lanes x 64 bits. We draw each lane as a run of 8 small cubes
@@ -2079,7 +2079,7 @@ function pulseBoxOrCube(boxId, sample) {
 //  it stands for, so the picture is a true (if coarse-grained) view of the actual state.
 //  ("Popcount" = population count = how many of a byte's 8 bits are set to 1 — a byte with more
 //  1-bits is drawn brighter.) SUMMARY: the 8-cubes-per-lane coarsening is [FAIRLY ACCURATE] (real
-//  data, reduced resolution, disclosed on-page); the camera, cube geometry/shading, lift/fan-out
+//  data, reduced resolution, disclosed on-page); the camera, cube geometry/shading, radial bloom
 //  arc used for the pi rearrangement below, and all colour/motion choices are [ANALOGY].
 const SHA3_SUBS_PER_LANE = 8;                                   // cubes drawn per lane
 const SHA3_BITS_PER_SUB = 64 / SHA3_SUBS_PER_LANE;              // = 8 real bits per drawn cube
@@ -2091,35 +2091,111 @@ const SHA3_SUB_PITCH = 1.0;   // world-unit pitch between sub-cubes along a lane
 // which for e=0.66 is 0.467 < 0.5 * pitch. That inequality is what keeps the depth sort exactly
 // correct while the lanes are twisting.
 const SHA3_CUBE = 0.66;
-// pi's transit arc. NOTE the shape this settled into and why: pi moves 24 of the 25 lanes (only
-// the slot (0,0) is a fixed point), so lifting every moving lane "clear of the lattice" is just a
-// global translation — it slides the whole object off the canvas and communicates nothing. What
-// actually reads as a rearrangement is a CENTRED FAN-OUT: a small overall rise plus a per-lane
-// shelf offset that is symmetric about zero, so the lattice visibly comes apart into separated
-// layers, shuffles, and closes back up without the assembly leaving frame.
-const SHA3_LIFT_BASE = 0.9;
-// Every lane gets its own shelf height during transit (spread symmetric about 0). Two lanes on
-// different shelves cannot interpenetrate however their horizontal paths cross, which is what
-// keeps the painter's-algorithm precondition true through pi.
+
+// ============================================================================================
+//  PI'S TRANSIT — RADIAL DISPLACEMENT, MAGNITUDE PROPORTIONAL TO HOW FAR THE LANE IS ABOUT TO GO
+// ============================================================================================
 //
-// THE VALUE IS 2.88 AND NOT 3.00, AND THAT IS A CORRECTNESS FIX, NOT A TASTE ONE. The shelves are
-// an arithmetic ramp: lane n sits at (n/24 - 0.5) * SPREAD, so consecutive lanes are one QUANTUM
-// q = SPREAD/24 apart. A lane that is not currently sliding sits at an exact INTEGER multiple of
-// SHA3_CELL (= 1.0) in y. So two lanes are exactly co-located whenever q * dLane == dSlotY for
-// integers dLane in 1..24 and dSlotY in 1..4 — and at SPREAD = 3.0, q = 0.125 and 8 * 0.125 = 1.0
-// hits that dead on. Measured: lanes (0,1)->(1,3) and (1,4)->(4,4), eight apart in lane order and
-// one slot apart in y, land on the SAME world point mid-transit. That is the exact configuration
-// the depth sort cannot resolve. (It was always latent; the old fully-overlapped stagger merely
-// meant no lane was ever sitting still at an integer slot while another was, so it grazed the
-// degeneracy at 3e-4 world units instead of hitting it at 0.)
+//  WHAT THIS REPLACED, AND WHY. The previous arc was a global upward rise plus a per-lane
+//  vertical "shelf" offset: the whole lattice translated up and fanned into horizontal layers.
+//  It guaranteed non-interpenetration cheaply (two lanes on different shelves cannot meet), but
+//  the owner's reading of it was "a 3D translate and shear upwards the whole cube does at the
+//  start of pi — it looks weird", which is fair: a global translation is not a picture of a
+//  permutation, and the shelf ordering is arbitrary with respect to what pi actually does.
 //
-// 2.88 makes q = 0.12 = 3/25 exactly, and q * k == m requires 3k == 25m; 25 is coprime to 3, so
-// the smallest solution is k = 25 — one more than the 24 lanes that exist. The collision is
-// therefore ruled out by integer arithmetic rather than by luck, for every pair, at every slot
-// separation. A sweep over the plausible range shows 2.88 is also the value that MAXIMISES the
-// worst-case miss (0.04 world units, vs 0.0003 before); the fan-out is 4% shallower and visually
-// identical. See tools/measure_pi_pacing.mjs, which reports the closest approach it can find.
-const SHA3_LIFT_SPREAD = 2.88;
+//  THE NEW ARC, AND IT IS EXACTLY TWO STAGES. Stage one: every moving lane is displaced RADIALLY
+//  OUTWARD, in the x-y plane, from the centre of the metacube — by an amount PROPORTIONAL TO THE
+//  DISTANCE IT IS ABOUT TO TRAVEL in this pi step. Lanes with a long journey bow far out; lanes
+//  with a short hop barely leave their slot; lane (0,0), pi's only fixed point, travels zero and
+//  therefore does not displace at all. Stage two: each row, in turn, FALLS IN — one single move
+//  from where the bloom left it straight onto its destination slot, arriving with the radial
+//  displacement already spent. There is no third stage. There used to be: the bloom was a shared
+//  envelope that closed again at the end of the phase, so a lane finished its slide while still
+//  displaced (the "skewed position nearly back in place") and only reached its slot when the
+//  envelope collapsed under it. The owner read that as a redundant extra step, and it was one —
+//  the close is now folded INTO the slide, which is what "translate out, then fall in" means.
+//
+//  NOTHING SCALES. The camera used to zoom out in proportion to the bloom so the wider assembly
+//  stayed framed; that is a whole-assembly scale change during pi and it read as the rows growing
+//  and shrinking. It is gone, and tools/verify_pi_pacing.mjs asserts cam.scale is constant across
+//  the whole phase. The bloom fits the frame without it (worst case ~4.3 world units of projected
+//  half-extent against the 5.5 the vertical fit allows), so nothing had to be traded for it.
+//
+//  The direction is the unit vector from the lattice centre to the lane's SOURCE slot, so the
+//  lane leaves along the line it already sits on. Degenerate only for the lane parked exactly at
+//  the centre slot (2,2), which gets the perpendicular of its own travel vector instead.
+const SHA3_RAD_BASE = 0.05;   // world units every moving lane gets, regardless of distance
+const SHA3_RAD_GAIN = 0.20;   // ...plus this much per world unit it is about to travel
+// The tiebreak, and it is load-bearing. Two lanes with the SAME travel distance would otherwise
+// sit at the same radius, and the depth sort's precondition (no two boxes co-located, ever) has
+// no defence against that. Each lane's radius is nudged by (sourceSlotIndex/24 - 0.5) * TIE,
+// which is distinct per lane because the source slot is. It stays PURELY RADIAL — no residual
+// vertical component survives from the old scheme, which is the whole point of the change.
+const SHA3_RAD_TIE = 0.24;
+// A lagging lane (see THE POSITION FOLLOWER) is off-slot without the phase envelope having put
+// it there, so the envelope's own displacement is not available to keep it clear. This is the
+// radial clearance it is guaranteed instead — the direct successor of the old SHA3_LIFT_BASE
+// (0.9), and deliberately the same size.
+const SHA3_RAD_CLEARANCE = 0.9;
+// ---- THE TWO NUMBERS THAT MAKE THE PLANAR MOTION COLLISION-FREE, AND WHY THEY EXIST ----
+// A first cut at "translate out, then fall straight in" collided EXACTLY, and the collision was
+// not bad luck — it was geometry. Measured: on the identity arrangement, the lane at (1,3) goes
+// to (3,1). Its outward direction from the centre is anti-parallel to its own travel, so
+// "bloomed source -> destination" is a straight line THROUGH the lattice centre, and the lane at
+// (3,2) -> (2,2) has already landed on that exact point (its group moves earlier). Two boxes, one
+// world point, separation 0.000. Landed lanes sit bare on integer slots, so any mover whose path
+// crosses one is an exact hit, not a near miss.
+//
+// Two changes fix it, and both are the SAME motion with a different shape rather than an extra
+// stage:
+//  * SWIRL. The outward direction is rotated by this angle, so no lane's displacement is ever
+//    collinear with its own travel and no flight path is a straight line through the centre. 0.16
+//    rad is 9.2 degrees — small enough that the bloom still reads as radial, and honest besides:
+//    pi IS a swirl (it is the step the x-y swirl flash axis exists for).
+//  * HOLD. The fall-in is not spent linearly across the slide. The lane keeps its full
+//    displacement for the first 36% of its own move — while it is crossing the crowded middle —
+//    and spends it over the back 64%, settling as it arrives. Still ONE continuous move with one
+//    rise and one fall in the radius; it is a curve on the motion, not a third stage.
+//
+// MEASURED, over all 24 compositions and the whole phase clock, they take the worst-case
+// separation from 0.000 to 0.054 world units. The neighbourhood matters more than the cell: over
+// the nine cells of swirl +/-0.02 x hold +/-0.04 the worst case ranges 0.015 to 0.059 and never
+// comes near zero — so this is a property of the shape rather than a lucky point in a search
+// grid, which is exactly what the old SHA3_LIFT_SPREAD = 3.0 bug (an exact 0) exists to warn
+// about. The weakest corner (swirl 0.18, hold 0.40, 0.015) is still above the 0.0113 the shelf
+// scheme achieved at its own centre.
+const SHA3_RAD_SWIRL = 0.15;
+const SHA3_RAD_HOLD  = 0.36;
+//
+//  NON-INTERPENETRATION, WHICH IS THE PRECONDITION THE PAINTER'S-ALGORITHM DEPTH SORT DEPENDS ON.
+//  These three numbers are not taste. The claim they have to support is that no two of the 200
+//  boxes are ever co-located, over the whole phase clock, for every one of pi's 24 successive
+//  compositions. Three things establish it, and tools/verify_pi_pacing.mjs asserts all three:
+//
+//   (a) THE EXACT-ZERO FAMILY, ENUMERATED EXHAUSTIVELY. A separation can only be exactly zero
+//       when both lanes are stationary (a moving lane is on a continuous path and meets a given
+//       point only instantaneously). With the close folded into the slide there are exactly two
+//       stationary states a lane can be in: NOT YET MOVED — parked at its source slot, pushed out
+//       by its full radial displacement — or ALREADY LANDED, sitting on its destination slot with
+//       zero displacement. So the family is finite: 24 compositions x 300 lane pairs x 4
+//       state combinations, computed in closed form. The one case that could be exactly zero is
+//       a landed lane sitting on slot D while the lane whose SOURCE is D has not left yet; that
+//       one is separated by the waiting lane's own radMag, which is at least
+//       SHA3_RAD_BASE + SHA3_RAD_GAIN * 1 - SHA3_RAD_TIE/2 = 0.19 for every lane that moves at
+//       all, and the only lane with radMag 0 is pi's fixed point, whose slot no other lane ever
+//       lands on. Measured minimum over the family: 0.250 world units. That is a proof over the
+//       family, not a sample of it — and it is strictly stronger than the scalar "shelf quantum
+//       cannot cancel a whole-slot offset" argument it replaces, which only covered one axis.
+//   (b) EVERYTHING ELSE, MEASURED. A dense sweep of the phase clock over all 24 compositions,
+//       with a ternary refinement around the closest sample, gives a worst case of 0.054 world
+//       units (SHA3_CELL = 1.0) — about five times the 0.0113 the shelf scheme achieved.
+//   (c) THE FOLLOWER PATH. At speeds where the governor trips, what is drawn is not the
+//       controller's position but the follower's, and that is a different curve. It is measured
+//       separately rather than assumed, and SHA3_RAD_CLEARANCE is what backstops it.
+//
+//  The five-group source-row stagger below does most of the temporal work: only ~10 of the 24
+//  moving lanes are ever in flight at once, so most pairs are park-vs-park (family (a)) rather
+//  than two moving paths crossing.
 
 // pi's slide is staggered in FIVE group moves — one per source row, because pi sends source row y
 // into destination column y (see the stagger block in sha3PhaseProgress). Five is structural, not
@@ -2656,7 +2732,17 @@ const SHA3_SAFE_EXCURSION = 0.045;  // hard cap on one cube's dark->bright lumin
 const SHA3_SAFE_TINT_EXCURSION = 0.02; // ...and on how far the phase tint may move its luminance
 const SHA3_SMOOTH_TAU_MS = 110;     // temporal smoothing at full attenuation (see the tweening block)
 const SHA3_POS_TAU_SCALE = 0.8;     // the position follower's time constant, as a share of the above
-const SHA3_LIFT_FLOOR_GAIN = 3;     // how hard an off-slot lane is held clear of the lattice
+// How hard a LAGGING lane is held clear of the lattice: it reaches the full SHA3_RAD_CLEARANCE
+// once the follower is 1/GAIN of a cell behind its own target. RAISED FROM 3 TO 11 when the
+// measure of "off" changed from "distance to the destination slot" to "distance to the target the
+// controller is currently asking for" (see the note at the floor itself). The old measure jumped
+// to the whole travel distance the instant pi re-slotted a lane, so a gain of 3 was already
+// saturated on the first frame; against real lag, 3 leaves a lane most of the way through its
+// transit with almost no clearance, and the measured worst separation of the DRAWN path fell to
+// 0.008 world units. 11 puts it at 0.042 — better than either the 0.021 the old measure gave or
+// the 0.0113 the vertical-shelf scheme managed — and the 9..13 neighbourhood is a flat plateau at
+// that value, so it is not a lucky cell.
+const SHA3_LIFT_FLOOR_GAIN = 11;
 const SHA3_BLUR_TAIL_MS = 260;      // how long a motion-blur trail takes to dissolve back to crisp
 const SHA3_BLUR_ATTACK_TAU = 80;    // ...and the time constant for DEEPENING one (see the wipe filter)
 
@@ -3085,9 +3171,17 @@ function rgbCss(c, mul) {
 function sha3MakeLanes() {
   const lanes = [];
   for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
+    // The resting radial direction is the lane's own slot seen from the lattice centre (unit
+    // length), so a lane that somehow needs clearance before its first pi still has an outward
+    // way to go. The centre slot (2,2) has no such direction and gets +y until pi assigns it one.
+    const ux = x - 2, uy = 2 - y, ul = Math.hypot(ux, uy);
     lanes.push({
       cx: x, cy: y, sx: x, sy: y, fx: x, fy: y, prevSx: x, prevSy: y,
-      lift: 0, liftShelf: 0,
+      // lift = this lane's own radial ENVELOPE, 0..1 (0 at rest and once it has landed, 1 while
+      // it is bloomed out waiting for its group's turn). radMag/radDirX/radDirY = the size and
+      // direction of the displacement that envelope scales; see SHA3_RAD_GAIN.
+      lift: 0, radMag: 0,
+      radDirX: ul > 0 ? ux / ul : 0, radDirY: ul > 0 ? uy / ul : 1,
       spin: 0, spinTarget: 0, spinTrue: 0,
       bytes: new Array(SHA3_SUBS_PER_LANE).fill(0),
       bytesTarget: new Array(SHA3_SUBS_PER_LANE).fill(0),
@@ -3098,6 +3192,42 @@ function sha3MakeLanes() {
   return lanes;
 }
 function sha3LaneAt(cx, cy) { return sha3.lanes[cx * 5 + cy]; }
+
+// Arm one lane's RADIAL DISPLACEMENT for the pi transit that has just been set up on it — i.e.
+// after prevSx/prevSy hold the source slot and sx/sy the destination. See the SHA3_RAD_* block.
+// Called at pi's start, and by the tests, so the geometry under test is the geometry that ships.
+function sha3ArmRadial(L) {
+  const ax = (L.prevSx - 2) * SHA3_CELL, ay = (2 - L.prevSy) * SHA3_CELL;
+  const bx = (L.sx - 2) * SHA3_CELL,     by = (2 - L.sy) * SHA3_CELL;
+  const tx = bx - ax, ty = by - ay;
+  const travel = Math.hypot(tx, ty);
+  if (travel === 0) { L.radMag = 0; return; }   // pi's fixed point: it does not move, so it does not bloom
+  const alen = Math.hypot(ax, ay);
+  if (alen > 1e-9) { L.radDirX = ax / alen; L.radDirY = ay / alen; }
+  // ...unless the lane is parked exactly at the centre, where "outward" is undefined. Then it
+  // leaves perpendicular to its own path, which is the direction that opens the most room.
+  else { L.radDirX = -ty / travel; L.radDirY = tx / travel; }
+  // Distance-proportional, with a per-lane radial tiebreak keyed to the (distinct) source slot so
+  // that two lanes travelling the same distance never share a radius.
+  L.radMag = SHA3_RAD_BASE + SHA3_RAD_GAIN * travel
+           + (((L.prevSx * 5 + L.prevSy) / 24) - 0.5) * SHA3_RAD_TIE;
+  // ...and rotated off true radial by SHA3_RAD_SWIRL, which is what stops a lane whose travel is
+  // anti-parallel to its own outward direction from flying in a straight line through the lattice
+  // centre and hitting whatever has already landed there. See the SHA3_RAD_SWIRL block.
+  const c = Math.cos(SHA3_RAD_SWIRL), s = Math.sin(SHA3_RAD_SWIRL);
+  const dx = L.radDirX, dy = L.radDirY;
+  L.radDirX = dx * c - dy * s;
+  L.radDirY = dx * s + dy * c;
+}
+
+// THE ONE PLACE a lane's world (x, y) is computed. The renderer calls it with the FOLLOWER triple
+// (rx, ry, and the followed radial amount); tools/verify_pi_pacing.mjs calls it with whichever
+// triple it is measuring. Nothing re-derives this arithmetic anywhere else — a test that did
+// would be pinning its own copy of the geometry rather than the geometry that ships.
+function sha3LaneWorldXY(L, fx, fy, rad) {
+  return [(fx - 2) * SHA3_CELL + rad * L.radDirX,
+          (2 - fy) * SHA3_CELL + rad * L.radDirY];
+}
 
 // Byte k of a 64-bit lane = bits [8k, 8k+8), read out of the 16-char big-endian hex the trace
 // carries. k=0 is the LSB byte and sits at the lane's -z end; k=7 (the MSB byte) sits at +z,
@@ -3357,7 +3487,7 @@ function sha3Render(opts) {
   ctx.fillRect(0, 0, w, h);
 
   // Zoom out slightly while lanes are lifted, so pi's transit arc (which rises above the whole
-  // lattice by design — see SHA3_LIFT) still fits inside the canvas.
+  // lattice by design — see SHA3_RAD_GAIN) still fits inside the canvas.
   // Temporal smoothing constant for this frame, shared by every filter below. ZERO whenever the
   // governor is not tripped, and zero whenever the controller is not running — so a drag, an
   // idle repaint, sha3Stop's final crisp frame and every static test render all snap straight to
@@ -3377,20 +3507,31 @@ function sha3Render(opts) {
   //  luminance step in the whole animation — bigger than any flash. Continuous motion is a
   //  safety fix as much as an aesthetic one.)
   //
-  //  So the controller now drives TARGETS (fx, fy, lift) and the renderer draws FOLLOWERS
-  //  (rx, ry, rlift) that ease toward them. The follower's time constant is zero unless the
+  //  So the controller now drives TARGETS (fx, fy, and lift*radMag) and the renderer draws FOLLOWERS
+  //  (rx, ry, rrad) that ease toward them. The follower's time constant is zero unless the
   //  measured governor has tripped, so the slow end is bit-identical to before: at any speed
   //  where the phases are legible on their own, nothing is smoothed at all. As speed rises the
   //  follower lags further, phases start overlapping in what is drawn, and the assembly reads as
   //  one continuous twisting flow — which is what it physically IS; the discrete phases were
   //  always a teaching device laid over a permutation that does not pause between steps.
   //
-  //  THE LIFT FLOOR is what keeps this legal. The painter's-algorithm depth sort is only correct
-  //  because boxes never interpenetrate, and a lagging box is by definition not in its slot. So
-  //  a lane that has not arrived is held clear of the lattice plane in proportion to how far off
-  //  it is — the same fanned-out transit regime pi already uses, just triggered by distance
-  //  rather than by phase progress. It relaxes continuously to zero as the lane arrives, so
-  //  there is no moment where the lift drops out from under a box that is still moving.
+  //  THE CLEARANCE FLOOR is what keeps this legal. The painter's-algorithm depth sort is only
+  //  correct because boxes never interpenetrate, and a lagging box is by definition not in its
+  //  slot. So a lane that has not arrived is pushed radially clear in proportion to how far off
+  //  it is — the same bloom regime pi already uses, just triggered by distance rather than by
+  //  phase progress. It relaxes continuously to zero as the lane arrives, so there is no moment
+  //  where the clearance drops out from under a box that is still moving.
+  //
+  //  IT IS A SEPARATE CHANNEL FROM THE ENVELOPE, AND THAT IS DELIBERATE. pi's own displacement is
+  //  proportional to travel distance, so a SHORT-hop lane's is small — under half a cell. Scaling
+  //  that by the floor would give a lagging short-hop lane almost no clearance at all, which is
+  //  exactly the case the floor exists for. So the floor asks for SHA3_RAD_CLEARANCE world units
+  //  outright (the direct successor of the old SHA3_LIFT_BASE = 0.9) and the drawn displacement is
+  //  the larger of the two. Both are along the same radial direction, so they never fight.
+  //
+  //  Note posK is exactly 1 whenever the governor has not tripped, and then this whole branch is
+  //  skipped: at every speed up to and including the default, what is drawn is the controller's
+  //  own position, unfiltered, and the floor is identically zero.
   // ...and the same follower is borrowed, briefly, to ease a STATE WIPE in rather than let it
   // land in one frame (see THE RESET SEAM at sha3ResetState). sha3.resetEase counts down from
   // SHA3_RESET_EASE_MS at the start of every run; while it is positive the follower runs on its
@@ -3399,25 +3540,58 @@ function sha3Render(opts) {
   if (sha3.resetEase > 0) posTau = Math.max(posTau, SHA3_RESET_TAU_MS);
   const posK = (sha3.running && posTau > 0) ? 1 - Math.exp(-sdt / posTau) : 1;
   for (const L of sha3.lanes) {
-    if (L.rx === undefined || posK >= 1) { L.rx = L.fx; L.ry = L.fy; L.rlift = L.lift; continue; }
+    if (L.rx === undefined || posK >= 1) {
+      L.rx = L.fx; L.ry = L.fy; L.rrad = L.lift * L.radMag; continue;
+    }
     L.rx += (L.fx - L.rx) * posK;
     L.ry += (L.fy - L.ry) * posK;
-    const off = Math.max(Math.abs(L.rx - L.sx), Math.abs(L.ry - L.sy));
-    const floor = Math.min(1, off * SHA3_LIFT_FLOOR_GAIN);
-    L.rlift += (Math.max(L.lift, floor) - L.rlift) * posK;
-    if (L.rlift < floor) L.rlift = floor;   // a guarantee, not a target: never eased into
+    if (L.rrad === undefined) L.rrad = 0;
+    L.rrad += (L.lift * L.radMag - L.rrad) * posK;
+    // MEASURED AGAINST THE LANE'S OWN TARGET (fx, fy), NOT ITS DESTINATION SLOT (sx, sy), and
+    // that distinction was a real single-frame flash. sx/sy JUMP to the destination at pi's start
+    // — that is what pi is — so an `off` measured against them went from 0 to the whole travel
+    // distance between two frames, and the floor, which is a hard snap by design, threw every
+    // lagging lane a full SHA3_RAD_CLEARANCE outward in one frame. Measured on painted pixels at
+    // slider 78: a 0.081 single-frame luminance step, the largest anywhere in the page, landing
+    // on the rho->pi frame of every round. It predates the transit redesign; the camera's
+    // bloom-tracking zoom-out was incidentally shrinking the assembly on the same frame and
+    // masking a third of it, which is not a mechanism worth keeping a zoom for. Lag is what the
+    // floor is actually about — the follower being behind the controller — and |r - f| starts at
+    // zero and grows continuously, so the floor now ramps in instead of snapping on. Same
+    // guarantee, no step.
+    const off = Math.max(Math.abs(L.rx - L.fx), Math.abs(L.ry - L.fy));
+    const floor = Math.min(1, off * SHA3_LIFT_FLOOR_GAIN) * SHA3_RAD_CLEARANCE;
+    if (L.rrad < floor) L.rrad = floor;   // a guarantee, not a target: never eased into
   }
-  let maxLift = 0;
-  for (const L of sha3.lanes) if (L.rlift > maxLift) maxLift = L.rlift;
   // The camera is exactly where the user last dragged it. There is no jitter term: the
   // whole-assembly shake that used to be added here is gone (see NO SHAKE above).
   const rx = sha3.rotX * Math.PI / 180;
   const ry = sha3.rotY * Math.PI / 180;
   const cam = {
     cx: Math.cos(rx), sx: Math.sin(rx), cy: Math.cos(ry), sy: Math.sin(ry),
-    scale: Math.min(w / 12.5, h / 11) * (1 - 0.18 * Math.min(1, maxLift)),
+    // CONSTANT — a fixed 0.86 pullback, the same every frame of every phase. There is no
+    // bloom-tracking zoom-out any more. That one moved WITH the bloom, which is a scale change
+    // applied to the whole assembly during pi, and it read (correctly) as the rows growing and
+    // shrinking — which is not what pi does to anything.
+    //
+    // WHY A CONSTANT REPLACES IT RATHER THAN NOTHING. The dynamic zoom was doing two jobs. The
+    // first was framing, and the bloom fits without it (largest radial displacement ~1.13 world
+    // units on a half-extent of 2 cells + a 0.33 cube half = 3.5, times ~1.13 of perspective
+    // divergence = 3.9, against the 5.5 the h/11 fit allows). The second was photosensitivity:
+    // everything pi moves was being drawn up to 20% smaller in SCREEN space exactly while it
+    // moved, which shrinks every luminance excursion pi can produce. Measured on painted pixels
+    // at slider 78 — the peak of the aliasing warp's swing, where pi's opening runs 2.2x faster
+    // than unwarped and is the hardest case the suite constructs — dropping the zoom outright
+    // took the worst single-frame step from ~0.065 to ~0.095. A flat pullback buys that back
+    // without reintroducing a moving scale: it is a property of the canvas, not of the animation,
+    // so nothing changes size at any point in a run and verify_pi_pacing.mjs's no-scale assertion
+    // holds exactly.
+    scale: Math.min(w / 12.5, h / 11) * 0.86,
     f: 34, pw: sha3PerspWeight(sha3.rotX, sha3.rotY), ox: w / 2, oy: h / 2,
   };
+  // Published for tools/verify_pi_pacing.mjs, which asserts it does not move while pi runs. The
+  // whole point of removing the zoom-out is that this is now a function of the canvas size alone.
+  sha3.camScale = cam.scale;
 
   // Build the draw list: one entry per sub-cube (25 lanes x SHA3_SUBS_PER_LANE).
   const items = [];
@@ -3524,10 +3698,9 @@ function sha3Render(opts) {
   for (const L of sha3.lanes) {
     const spin = L.spin * Math.PI / 180;
     const cs = Math.cos(spin), sn = Math.sin(spin);
-    // A lane's world position is now exactly its slot plus pi's transit lift — nothing else. The
+    // A lane's world position is exactly its slot plus pi's radial bloom — nothing else. The
     // per-plane shake offset that used to be added here is gone; the lattice holds still.
-    const wx = (L.rx - 2) * SHA3_CELL;
-    const wy = (2 - L.ry) * SHA3_CELL + L.rlift * (SHA3_LIFT_BASE + L.liftShelf);
+    const [wx, wy] = sha3LaneWorldXY(L, L.rx, L.ry, L.rrad || 0);
     const laneCol = L.isRate ? P.gold : P.dim;
     for (let k = 0; k < SHA3_SUBS_PER_LANE; k++) {
       const wz = (k - (SHA3_SUBS_PER_LANE - 1) / 2) * SHA3_SUB_PITCH;
@@ -3629,7 +3802,8 @@ function sha3Render(opts) {
   }
   // Painter's algorithm: farthest first. Exactly correct here — the boxes are rigid, convex and
   // never interpenetrate (guaranteed by SHA3_CUBE < pitch for the spin, and by pi's staggered
-  // lift shelves for the transit), so for any two, one is strictly nearer along the view axis.
+  // radial bloom for the transit — see the SHA3_RAD_* block, which measures the worst separation
+  // over pi's whole composition orbit), so for any two, one is strictly nearer along the view axis.
   // (Plain English: draw distant cubes first, nearer ones over the top, like an old-school
   // painter working back-to-front — cheap, and correct here because these particular cubes are
   // guaranteed to never overlap or poke through each other.)
@@ -3924,16 +4098,16 @@ function sha3ResetState() {
   sha3.lanes.forEach(L => {
     L.sx = L.cx; L.sy = L.cy; L.fx = L.cx; L.fy = L.cy; L.prevSx = L.cx; L.prevSy = L.cy;
     L.lift = 0; L.spinTarget = 0; L.spinTrue = 0;
-    // L.spin and L.liftShelf are NOT snapped, for the same reason as the byte values: the drawn
+    // L.spin and L.radMag are NOT snapped, for the same reason as the byte values: the drawn
     // spin is what decides which faces catch the light, so dropping 25 lanes' rotation to zero in
     // one frame is a real luminance step (measured as the largest one left in a re-clicked run).
-    // sha3Ambient eases spin toward the target it has just been given, and liftShelf only has any
-    // effect while a lane is lifted — the next pi recomputes it before it can matter again.
+    // sha3Ambient eases spin toward the target it has just been given, and radMag only has any
+    // effect while a lane is blooming — the next pi recomputes it before it can matter again.
     L.bytesTarget.fill(0);
     // Followers deliberately NOT snapped onto the targets — see the RESET SEAM note above. On a
     // first run they are already there (sha3MakeLanes builds them at home with zero data), so
     // this is a no-op then and only does work when a run is replacing a run.
-    if (L.rx === undefined) { L.rx = L.cx; L.ry = L.cy; L.rlift = 0; }
+    if (L.rx === undefined) { L.rx = L.cx; L.ry = L.cy; L.rrad = 0; }
   });
   sha3.resetEase = SHA3_RESET_EASE_MS;
   // A new run starts from an un-attenuated, un-smoothed state: no measured history, no residual
@@ -3984,16 +4158,17 @@ const sha3Ease = t => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
 //  either be dead or would re-apply the mutation. Two typed-array allocations per phase is
 //  nothing next to the per-frame work the renderer already does, and it makes the invariant
 //  simple — every phase that has started has a restore point.
-const SHA3_SNAP_SCALARS = 15;   // per lane, see the write order below
+const SHA3_SNAP_SCALARS = 17;   // per lane, see the write order below
 function sha3TakeSnapshot() {
   const n = sha3.lanes.length, subs = SHA3_SUBS_PER_LANE;
   const a = new Float64Array(n * SHA3_SNAP_SCALARS), b = new Float64Array(n * subs * 2);
   for (let i = 0; i < n; i++) {
     const L = sha3.lanes[i], o = i * SHA3_SNAP_SCALARS;
     a[o] = L.sx; a[o+1] = L.sy; a[o+2] = L.fx; a[o+3] = L.fy;
-    a[o+4] = L.prevSx; a[o+5] = L.prevSy; a[o+6] = L.lift; a[o+7] = L.liftShelf;
+    a[o+4] = L.prevSx; a[o+5] = L.prevSy; a[o+6] = L.lift; a[o+7] = L.radMag;
     a[o+8] = L.glow; a[o+9] = L.spin; a[o+10] = L.spinTarget; a[o+11] = L.spinTrue;
-    a[o+12] = L.rx; a[o+13] = L.ry; a[o+14] = L.rlift;
+    a[o+12] = L.rx; a[o+13] = L.ry;
+    a[o+14] = L.radDirX; a[o+15] = L.radDirY; a[o+16] = L.rrad || 0;
     const p = i * subs * 2;
     for (let k = 0; k < subs; k++) { b[p+k] = L.bytes[k]; b[p+subs+k] = L.bytesTarget[k]; }
   }
@@ -4009,9 +4184,10 @@ function sha3RestoreSnapshot(s) {
   for (let i = 0; i < n; i++) {
     const L = sha3.lanes[i], o = i * SHA3_SNAP_SCALARS, a = s.a;
     L.sx = a[o]; L.sy = a[o+1]; L.fx = a[o+2]; L.fy = a[o+3];
-    L.prevSx = a[o+4]; L.prevSy = a[o+5]; L.lift = a[o+6]; L.liftShelf = a[o+7];
+    L.prevSx = a[o+4]; L.prevSy = a[o+5]; L.lift = a[o+6]; L.radMag = a[o+7];
     L.glow = a[o+8]; L.spin = a[o+9]; L.spinTarget = a[o+10]; L.spinTrue = a[o+11];
-    L.rx = a[o+12]; L.ry = a[o+13]; L.rlift = a[o+14];
+    L.rx = a[o+12]; L.ry = a[o+13];
+    L.radDirX = a[o+14]; L.radDirY = a[o+15]; L.rrad = a[o+16];
     const p = i * subs * 2;
     for (let k = 0; k < subs; k++) { L.bytes[k] = s.b[p+k]; L.bytesTarget[k] = s.b[p+subs+k]; }
   }
@@ -4082,9 +4258,7 @@ function sha3StartPhase(ph, now) {
       L.prevSx = L.sx; L.prevSy = L.sy;
       const [nx, ny] = KECCAK_PI_LANE_MAP[L.sx][L.sy];
       L.sx = nx; L.sy = ny;
-      // distinct shelf per lane, keyed off its (distinct) starting slot, spread symmetrically
-      // about zero so the fan-out stays centred — see SHA3_LIFT_SPREAD
-      L.liftShelf = (((L.prevSx * 5 + L.prevSy) / 24) - 0.5) * SHA3_LIFT_SPREAD;
+      sha3ArmRadial(L);
     });
   } else if (ph.type === 'box') {
     pulseBoxOrCube(ev.boxId, ev.sample);
@@ -4118,29 +4292,46 @@ function sha3PhaseProgress(ph, p) {
   // transit already draws at some other instant, and hence that the warp cannot invent a
   // near-collision. Warping each lane's own s instead would break exactly that.
   p = sha3AliasWarp(p, sha3AliasGeoTransit());
-  // LIFT / SLIDE / DROP, not a straight lerp. A straight lerp would send lanes through the
-  // lattice interior, momentarily interpenetrating other boxes and breaking the one precondition
-  // the depth sort relies on. Rising clear of the whole lattice first keeps every box either at
-  // its resting depth or strictly above everything, so the sort stays exactly correct — and it
-  // also reads better: you can follow a lane picking itself up and moving to its new slot.
-  // 0.18/0.82, WIDENED FROM 0.26/0.74, and this is the second half of answering "way too fast".
-  // Sequencing five group moves inside the slide span necessarily makes each individual move
-  // SHORTER than the old all-at-once one — measured, at the default slider the per-lane slide went
-  // from 72.5ms to 28ms even though the phase itself got longer. The span is where that time has
-  // to come from, and the ramps are the only place to find it: the old split spent 52% of pi
-  // lifting and dropping, with nothing translating for either half of it. Moving 8% off each end
-  // widens the span 0.48 -> 0.64, which is +33% to the group window AND +33% to the gap between
-  // groups at once — it buys legibility on both channels without touching the group count, the
-  // overlap, or the RISE <= t0 < t1 <= FALL invariant below. The fan-out itself still gets 0.18 of
-  // the phase at each end, which at the default slider is ~33ms: enough to read as the lattice
-  // coming apart rather than snapping apart.
-  const RISE = 0.18, FALL = 0.82;
-  const lift = p < RISE ? sha3Ease(p / RISE)
-             : p < FALL ? 1
-             : 1 - sha3Ease((p - FALL) / (1 - FALL));
-  const span = FALL - RISE;
+  // ---- TWO STAGES: BLOOM OUT, THEN FALL IN. Not three, and not a straight lerp. ----
+  //
+  // A straight lerp would send lanes through the lattice interior, momentarily interpenetrating
+  // other boxes and breaking the one precondition the depth sort relies on. Blooming outward
+  // first thins the interior out before anything crosses it, so the sort stays exactly correct
+  // (measured worst separation 0.054 world units, see the SHA3_RAD_* block) — and it reads as
+  // what was asked for: the rows lean out from the centre, then fall into place.
+  //
+  // WHAT CHANGED, AND WHY IT IS SAFE. The envelope used to be SHARED and SYMMETRIC — every lane
+  // held at full displacement across the whole stagger, then a global close ramp at the end. That
+  // made a third stage: a lane finished its slide still displaced, and the close then carried it
+  // the rest of the way in. The close is now folded into each lane's OWN slide: `1 - s`, so the
+  // lane travels from (source + full radial) to (destination + nothing) as one move and lands
+  // exactly on its slot.
+  //
+  // An even earlier draft did something that LOOKS like this and collided exactly: it gave each
+  // lane its own bloom hump, so a lane not currently moving sat on its slot with ZERO
+  // displacement. A group-0 lane parked on destination slot D then coincided precisely with the
+  // group-1 lane whose source is D and which had not left yet — two boxes on one point. The
+  // difference here is the asymmetry: the OUT ramp is still shared and still happens once, at the
+  // top of the phase, so a lane that has not moved yet is ALWAYS at its full radius. Only a lane
+  // that has already landed sits on a bare slot, and by then the lane it might have met has its
+  // own radMag (>= 0.19 for every mover; the only radMag-0 lane is pi's fixed point, whose slot
+  // no other lane lands on) holding it clear. Measured, not assumed — see verify_pi_pacing.mjs.
+  //
+  // RISE = 0.18: the bloom gets 18% of the phase (~33ms at the default slider — enough to read as
+  // the lattice opening out rather than snapping open) and the remaining 82% is the slide span,
+  // up from 0.64 when a close ramp still had to be paid for. That is +28% to every group's window
+  // and to the gap between groups, which is the rest of the answer to "way too fast".
+  const RISE = 0.18;
+  const bloom = p < RISE ? sha3Ease(p / RISE) : 1;
+  const span = 1 - RISE;
+  // Instrumented hook, read by tools/verify_pi_pacing.mjs. The OUT ramp used to be readable off
+  // any lane's `lift` because it was shared; now `lift` is per-lane (it carries each lane's own
+  // fall-in as well), so the shared stage-one scalar has to be published deliberately. Nothing in
+  // the renderer reads it — asserting the invariant "no lane slides while the bloom is opening"
+  // otherwise means the test re-deriving RISE, which is the test pinning its own copy of the
+  // geometry rather than the geometry that ships.
+  sha3.piBloom = bloom;
   sha3.lanes.forEach((L) => {
-    L.lift = lift;
     // ---- THE STAGGER: five GROUP moves, not twenty-five overlapping lane moves ----
     //
     // WHY IT CHANGED. The stagger used to key off the lane's index in sha3.lanes and spread the
@@ -4168,15 +4359,23 @@ function sha3PhaseProgress(ph, p) {
     const gap = (1 - SHA3_PI_WIN) / (SHA3_PI_GROUPS - 1);
     const t0 = RISE + grp * gap * span;
     const t1 = t0 + SHA3_PI_WIN * span;
-    // INVARIANT, load-bearing: RISE <= t0 < t1 <= FALL for every group, so no lane is ever
-    // sliding while `lift` is still ramping. The per-lane shelves (SHA3_LIFT_SPREAD) are only at
-    // full separation once lift == 1; a slide that started during the rise would have the shelves
-    // partially collapsed underneath it, and two crossing lanes could genuinely interpenetrate —
-    // which is the precondition the painter's-algorithm depth sort depends on. By construction
-    // t0 is minimised at grp=0 (= RISE) and t1 maximised at grp=4 (= RISE + span = FALL).
+    // INVARIANT, load-bearing: RISE <= t0 < t1 <= 1 for every group, so no lane is ever sliding
+    // while the bloom is still ramping. The radial displacements are only at full extent once
+    // bloom == 1; a slide that started during the bloom would have the lattice still packed
+    // underneath it, and two crossing lanes could genuinely interpenetrate — which is the
+    // precondition the painter's-algorithm depth sort depends on. By construction t0 is minimised
+    // at grp=0 (= RISE) and t1 maximised at grp=4 (= RISE + span = 1).
     const s = p <= t0 ? 0 : p >= t1 ? 1 : sha3Ease((p - t0) / (t1 - t0));
     L.fx = L.prevSx + (L.sx - L.prevSx) * s;
     L.fy = L.prevSy + (L.sy - L.prevSy) * s;
+    // STAGE TWO IS ONE MOVE. `bloom` opens the displacement and the lane's own slide spends it:
+    // held at full extent for the first SHA3_RAD_HOLD of the slide (crossing the crowded middle),
+    // then eased away over the rest so the lane settles as it arrives. Because t0 >= RISE the
+    // opening and the spending are never both in motion, so the drawn radius is one rise, a hold,
+    // and one fall — per lane, monotone in each run. At s == 1 it is exactly 0 and the lane is
+    // exactly on its destination slot: no residual offset for a third stage to clean up.
+    const spend = s <= SHA3_RAD_HOLD ? 0 : sha3Ease((s - SHA3_RAD_HOLD) / (1 - SHA3_RAD_HOLD));
+    L.lift = bloom * (1 - spend);
   });
 }
 
@@ -4614,6 +4813,10 @@ function initSha3Canvas() {
       spin: L.spin, spinTarget: L.spinTarget, spinTrue: L.spinTrue,
       bytes: L.bytesTarget.slice(),
       value: L.bytesTarget.reduce((s, b) => s + b, 0),
+      // pi's radial bloom, as armed for the transit currently set up on this lane, and the
+      // follower's drawn amount. Read by tools/verify_pi_pacing.mjs.
+      radMag: L.radMag, radDirX: L.radDirX, radDirY: L.radDirY, rrad: L.rrad || 0,
+      lift: L.lift, fx: L.fx, fy: L.fy, rx: L.rx, ry: L.ry,
     })),
   };
 }

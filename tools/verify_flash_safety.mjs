@@ -255,7 +255,7 @@ check('at slider 1 the governor does not engage while the run is still slow',
 // on their targets, which is what makes the slow end bit-identical to the pre-governor renderer.
 const slowExact = await page.evaluate(() => {
   const bad = sha3.lanes.filter(L => Math.abs(L.rx - L.fx) > 1e-12 || Math.abs(L.ry - L.fy) > 1e-12
-                                  || Math.abs(L.rlift - L.lift) > 1e-12).length;
+                                  || Math.abs(L.rrad - L.lift * L.radMag) > 1e-12).length;
   return { bad, n: sha3.lanes.length };
 });
 check('with the governor idle every lane is drawn exactly on its target (no tweening at all)',

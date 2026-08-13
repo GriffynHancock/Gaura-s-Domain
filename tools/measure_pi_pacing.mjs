@@ -24,11 +24,11 @@ const out = await page.evaluate(() => {
     const piMs = durs.pi;
 
     // arm a real pi transit: every lane moves to its pi image
-    const save = sha3.lanes.map(L => [L.sx, L.sy, L.prevSx, L.prevSy, L.fx, L.fy, L.lift, L.liftShelf]);
+    const save = sha3.lanes.map(L => [L.sx, L.sy, L.prevSx, L.prevSy, L.fx, L.fy, L.lift, L.radMag, L.radDirX, L.radDirY]);
     sha3.lanes.forEach(L => {
       L.prevSx = L.sx; L.prevSy = L.sy;
       const [nx, ny] = KECCAK_PI_LANE_MAP[L.sx][L.sy]; L.sx = nx; L.sy = ny;
-      L.liftShelf = (((L.prevSx * 5 + L.prevSy) / 24) - 0.5) * SHA3_LIFT_SPREAD;
+      sha3ArmRadial(L);
     });
 
     const start = new Array(sha3.lanes.length).fill(null);
@@ -57,7 +57,7 @@ const out = await page.evaluate(() => {
           if (s >= 1 - EPS && end[k] === null && start[k] !== null) end[k] = p;
           if (s > EPS && s < 1 - EPS) inMotion++;
         }
-        pos.push([(L.fx - 2) * SHA3_CELL, (2 - L.fy) * SHA3_CELL + L.lift * (SHA3_LIFT_BASE + L.liftShelf)]);
+        pos.push(sha3LaneWorldXY(L, L.fx, L.fy, L.lift * L.radMag));
       });
       if (inMotion > maxSimul) maxSimul = inMotion;
       for (let a = 0; a < pos.length; a++) for (let b = a + 1; b < pos.length; b++) {
@@ -67,7 +67,7 @@ const out = await page.evaluate(() => {
       }
     }
     sha3.lanes.forEach((L, i) => {
-      [L.sx, L.sy, L.prevSx, L.prevSy, L.fx, L.fy, L.lift, L.liftShelf] = save[i];
+      [L.sx, L.sy, L.prevSx, L.prevSy, L.fx, L.fy, L.lift, L.radMag, L.radDirX, L.radDirY] = save[i];
     });
 
     const movers = start.map((s, k) => (s === null ? null : k)).filter(k => k !== null);
