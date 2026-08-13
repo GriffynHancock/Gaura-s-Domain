@@ -2101,7 +2101,37 @@ const SHA3_LIFT_BASE = 0.9;
 // Every lane gets its own shelf height during transit (spread symmetric about 0). Two lanes on
 // different shelves cannot interpenetrate however their horizontal paths cross, which is what
 // keeps the painter's-algorithm precondition true through pi.
-const SHA3_LIFT_SPREAD = 3.0;
+//
+// THE VALUE IS 2.88 AND NOT 3.00, AND THAT IS A CORRECTNESS FIX, NOT A TASTE ONE. The shelves are
+// an arithmetic ramp: lane n sits at (n/24 - 0.5) * SPREAD, so consecutive lanes are one QUANTUM
+// q = SPREAD/24 apart. A lane that is not currently sliding sits at an exact INTEGER multiple of
+// SHA3_CELL (= 1.0) in y. So two lanes are exactly co-located whenever q * dLane == dSlotY for
+// integers dLane in 1..24 and dSlotY in 1..4 — and at SPREAD = 3.0, q = 0.125 and 8 * 0.125 = 1.0
+// hits that dead on. Measured: lanes (0,1)->(1,3) and (1,4)->(4,4), eight apart in lane order and
+// one slot apart in y, land on the SAME world point mid-transit. That is the exact configuration
+// the depth sort cannot resolve. (It was always latent; the old fully-overlapped stagger merely
+// meant no lane was ever sitting still at an integer slot while another was, so it grazed the
+// degeneracy at 3e-4 world units instead of hitting it at 0.)
+//
+// 2.88 makes q = 0.12 = 3/25 exactly, and q * k == m requires 3k == 25m; 25 is coprime to 3, so
+// the smallest solution is k = 25 — one more than the 24 lanes that exist. The collision is
+// therefore ruled out by integer arithmetic rather than by luck, for every pair, at every slot
+// separation. A sweep over the plausible range shows 2.88 is also the value that MAXIMISES the
+// worst-case miss (0.04 world units, vs 0.0003 before); the fan-out is 4% shallower and visually
+// identical. See tools/measure_pi_pacing.mjs, which reports the closest approach it can find.
+const SHA3_LIFT_SPREAD = 2.88;
+
+// pi's slide is staggered in FIVE group moves — one per source row, because pi sends source row y
+// into destination column y (see the stagger block in sha3PhaseProgress). Five is structural, not
+// tunable: it is how many rows a Keccak state has.
+const SHA3_PI_GROUPS = 5;
+// Each group's slide window, as a fraction of the slide span. Starts are spaced evenly at
+// (1 - SHA3_PI_WIN) / (GROUPS - 1) = 0.17 of the span, so a group's window is shorter than TWO
+// gaps (0.32 < 0.34) and AT MOST TWO groups — ten of the twenty-five lanes — are ever in motion
+// at the same instant. Raising it past 0.34 would put three groups in flight and start blurring
+// the sequence back together; lowering it buys separation the wall clock cannot spend, since the
+// window is only ~36ms at the default slider as it is.
+const SHA3_PI_WIN = 0.32;
 
 const sha3 = {
   canvas: null, ctx: null, w: 0, h: 0, dpr: 1,
@@ -2330,6 +2360,47 @@ function sha3AliasFactor(rate, shutterHz) {
   return Math.sin(Math.PI * q) / (Math.PI * q);
 }
 function sha3AliasGeo() { return sha3AliasFactor(sha3RoundRate(), SHA3_ALIAS_GEO_HZ); }
+
+// ---- THE SHUTTER GATE, for pi's transit only ----
+//
+// The warp below is a SINE FOLDING of the phase clock, so it is non-linear in time: the apparent
+// rate runs at 1 + (1-f) at the ends of the phase and 1 - (1-f) in the middle. pi's five group
+// moves are staggered at even intervals of that clock, so any warp at all makes the intervals
+// UNEVEN in wall-clock time. Measured with the warp ungated (tools/measure_pi_pacing.mjs), the
+// coefficient of variation of the gaps between group starts was 0.16 at the DEFAULT slider — the
+// gaps ran 20ms, 29ms, 29ms, 20ms instead of five even beats. That is the reported "they aren't
+// even", and at the default it is a defect rather than an effect.
+//
+// The shutter effect itself is wanted and is not being weakened: it is the whole point at the
+// fast end, and it must still freeze around slider 68 and run retrograde above it. What is wrong
+// is that a sinc() shutter model has NO threshold — sinc is already 0.64 at half the shutter
+// rate, so a strobe artefact was being drawn at speeds where the eye can plainly resolve every
+// individual move and there is nothing to alias.
+//
+// So the warp's amplitude is ramped in over q = true rate / shutter rate in [0.62, 1.00]:
+//   * q <= 0.62 (up to about slider 53, which covers the whole slow half and the default) —
+//     amplitude 0. The transit is drawn truthfully and the five group starts are exactly even.
+//   * q >= 1.00 (slider 68 up, the freeze point and everything beyond) — amplitude 1, the full
+//     unmodified fold. The freeze, the retrograde band and the re-folds are bit-for-bit what they
+//     were: at q >= 1 this function returns f unchanged.
+//   * in between, a smoothstep, so nothing snaps on as the slider crosses the threshold.
+// The upper anchor is deliberately q = 1 — the exact rate at which apparent motion first stops —
+// so the gate finishes ramping in precisely where the aliasing becomes the point.
+//
+// NOT applied to: rho's dial counter-rotation or the colour wavefront (sha3AliasCol, whose own
+// threshold is 3x later anyway). Those are per-round scalars, not a staggered sequence, so the
+// non-linearity has nothing to make uneven and there is nothing to fix.
+const SHA3_ALIAS_GATE_LO = 0.62;
+const SHA3_ALIAS_GATE_HI = 1.00;
+function sha3AliasGeoTransit() {
+  const f = sha3AliasGeo();
+  const q = sha3RoundRate() / SHA3_ALIAS_GEO_HZ;
+  if (q >= SHA3_ALIAS_GATE_HI) return f;
+  if (q <= SHA3_ALIAS_GATE_LO) return 1;
+  const u = (q - SHA3_ALIAS_GATE_LO) / (SHA3_ALIAS_GATE_HI - SHA3_ALIAS_GATE_LO);
+  const g = u * u * (3 - 2 * u);          // smoothstep — C1 at both anchors
+  return 1 - (1 - f) * g;
+}
 function sha3AliasCol() { return sha3AliasFactor(sha3RoundRate(), SHA3_ALIAS_COL_HZ); }
 
 // Warp a phase's progress 0..1 into APPARENT progress, for the aliased quantities that still have
@@ -3642,7 +3713,24 @@ function sha3RequestRender() {
 //  human can watch one step happen, then the next, without them blurring together. [ANALOGY]:
 //  the pacing/holding/easing described here. [EXACT]: the SEQUENCE of steps being paced (theta,
 //  rho, pi, chi, iota, 24 times, per real absorbed block) comes straight from the real trace.
-const SHA3_PHASE_BASE  = { theta:300, rho:420, pi:560, chi:320, iota:220, box:320 };
+//
+//  THE SPLIT IS NOT PROPORTIONAL TO THE STEPS' IMPORTANCE IN THE ALGORITHM — it is proportional
+//  to how much each step has to SHOW. pi is the only step that RELOCATES anything: it is the
+//  "Rubik's cube move" the whole lattice visual exists to make watchable, and it has to lift 24
+//  lanes clear, slide them, and set them down in a legible order (see sha3PhaseProgress). iota
+//  XORs one lane and is honestly a flash. Giving them comparable time made pi read as a swarm.
+//
+//  pi therefore takes 658/1820 = 36% of the round, up from 560/1820 = 31%, and its per-lane
+//  motion is reorganised on top of that (see the stagger block in sha3PhaseProgress, which is the
+//  larger half of the fix). THE ROUND TOTAL IS UNCHANGED AT 1820ms, deliberately and not by
+//  coincidence: the other four are rescaled by 1162/1260 to absorb pi's extra 98ms exactly. That matters for two separate reasons —
+//    * the slider's calibrated run lengths (~195s / 8.1s / 1.7s at slider 1 / 50 / 100) are a
+//      function of this sum times sha3PhaseScale, so redistributing inside it moves none of them;
+//    * sha3RoundRate — the "true rate" the whole TEMPORAL ALIASING model folds — is 1000 divided
+//      by this same sum, so the aliasing thresholds, the freeze point around slider 68 and the
+//      retrograde band above it all stay exactly where they were calibrated.
+//  A rebalance inside a fixed budget is the only kind of change to this table that is free.
+const SHA3_PHASE_BASE  = { theta:277, rho:387, pi:658, chi:295, iota:203, box:320 };
 // Floors, per phase rather than one global minimum. Each floor is the shortest duration at which
 // that phase still reads as something happening rather than a dropped frame.
 //
@@ -3656,7 +3744,29 @@ const SHA3_PHASE_BASE  = { theta:300, rho:420, pi:560, chi:320, iota:220, box:32
 // something (pi slides every lane to a new slot, rho eases 25 spins), so they keep a floor of more
 // than one 60Hz frame — a snapping pi is the failure mode the phase controller exists to prevent.
 // theta, chi and iota only flash: a flash has no in-between state to lose, so it can be short.
-const SHA3_PHASE_FLOOR = { theta:12,  rho:18,  pi:20,  chi:12,  iota:9,   box:16 };
+// RETUNED WITH THE BASE TABLE ABOVE (was theta:12 rho:18 pi:20 chi:12 iota:9), and the reason is
+// not cosmetic — it is the one genuinely surprising coupling in this file.
+//
+// sha3RoundVRate is 1000 / (the sum of the five phase durations), and that rate is the input to
+// EVERY temporal-aliasing threshold on the page. So the phase table does not only decide how long
+// things take; at the top of the slider, where the floors are what the durations actually ARE, it
+// decides where the shutter effect sits. Moving time into pi without retuning the floors pushed
+// the round at slider 100 from 73ms to 80ms, which moved the true rate enough that the colour and
+// geometry shutters — which are supposed to be visibly out of phase up there — collapsed onto
+// each other at -0.05 apiece instead of -0.09 and -0.13. Nothing about the aliasing code changed;
+// the rate it folds did. (Measured, both directions: tools/verify_sha3_aliasing.mjs.)
+//
+// THE FIX IS pi's OWN FLOOR, RAISED 20 -> 26, and that is what makes the whole thing tractable.
+// With pi floored at slider 100, the round total there stops depending on pi's BASE at all — it
+// is just the sum of the five floors — so pi's share of the mid-slider round can be retuned
+// without moving the aliasing thresholds by a microsecond. (The base is held at 658 so that pi
+// does floor: 658 * 0.039 = 25.7 < 26.) It is also the right floor on its own merits: pi is the
+// phase that MOVES twenty-four lanes, it now gets 26ms rather than 21.8ms at the fastest setting,
+// and it is the last phase that should be allowed to degenerate into a snap.
+//
+// Round at slider 100: 73.5ms, against 73.3ms before — i.e. the fast end is where it was
+// calibrated, and so is every shutter threshold that reads from it.
+const SHA3_PHASE_FLOOR = { theta:11,  rho:17,  pi:26,  chi:11,  iota:8,   box:16 };
 const SHA3_PHASE_IDS = { theta:'phase-theta', rho:'phase-rho', pi:'phase-pi', chi:'phase-chi', iota:'phase-iota' };
 
 // Slider 1..100 -> a scale applied to the base phase durations.
@@ -3988,11 +4098,19 @@ function sha3StartPhase(ph, now) {
 function sha3PhaseProgress(ph, p) {
   if (ph.type !== 'pi') return;
   // APPARENT progress, not true progress — the shared-clock aliasing warp (see sha3AliasWarp and
-  // the TEMPORAL ALIASING block). At slow settings this is the identity and the line below does
-  // nothing at all; past the geometric threshold the rearrangement visibly stalls, and past the
-  // fold it backs up part-way before completing. w(1) = 1 exactly, so pi still finishes on its
-  // true slots and sha3FinishPhase's integer commit is untouched.
-  p = sha3AliasWarp(p, sha3AliasGeo());
+  // the TEMPORAL ALIASING block). Through the slow half and the default this is EXACTLY the
+  // identity and the line below does nothing at all (that is what sha3AliasGeoTransit's gate
+  // buys, and it is what keeps the five group starts evenly spaced in wall-clock time); past the
+  // geometric threshold the rearrangement visibly stalls, and past the fold it backs up part-way
+  // before completing. w(1) = 1 exactly, so pi still finishes on its true slots and
+  // sha3FinishPhase's integer commit is untouched.
+  //
+  // STILL THE SHARED CLOCK, STILL ONE SCALAR. Every lane's window below is read off this same
+  // warped p, so the whole configuration remains a function of one number that maps [0,1] into
+  // [0,1] — which is the argument that any picture the warp draws is a picture the unwarped
+  // transit already draws at some other instant, and hence that the warp cannot invent a
+  // near-collision. Warping each lane's own s instead would break exactly that.
+  p = sha3AliasWarp(p, sha3AliasGeoTransit());
   // LIFT / SLIDE / DROP, not a straight lerp. A straight lerp would send lanes through the
   // lattice interior, momentarily interpenetrating other boxes and breaking the one precondition
   // the depth sort relies on. Rising clear of the whole lattice first keeps every box either at
@@ -4003,15 +4121,41 @@ function sha3PhaseProgress(ph, p) {
              : p < FALL ? 1
              : 1 - sha3Ease((p - FALL) / (1 - FALL));
   const span = FALL - RISE;
-  sha3.lanes.forEach((L, i) => {
+  sha3.lanes.forEach((L) => {
     L.lift = lift;
-    // Each lane also slides in its OWN sub-window of the slide phase. Two lanes that swap slots
-    // would otherwise cross at the exact same instant at the exact same point (a straight lerp
-    // puts both at the midpoint at p=0.5), which is the one configuration that can co-locate two
-    // boxes and defeat a centroid depth sort. Staggered windows make that coincidence impossible.
-    const stag = (i / sha3.lanes.length) * 0.26;
-    const t0 = RISE + stag * span;
-    const t1 = FALL - (0.26 - stag) * span;
+    // ---- THE STAGGER: five GROUP moves, not twenty-five overlapping lane moves ----
+    //
+    // WHY IT CHANGED. The stagger used to key off the lane's index in sha3.lanes and spread the
+    // twenty-five start times over 0.26 of a window that was itself 0.355 wide. Measured (see
+    // tools/measure_pi_pacing.mjs): all 24 moving lanes were mid-transit SIMULTANEOUSLY at every
+    // slider position, with the whole spread of starts equal to a third of one single lane's own
+    // slide. That is not a sequence of moves, it is one blob that shears — the reported "they
+    // push on each other". A stagger only reads as a stagger if consecutive starts are separated
+    // by an appreciable fraction of the thing being staggered.
+    //
+    // WHY GROUPS AND NOT 25 LANES. At the default slider pi's slide span is ~113ms of wall clock.
+    // Twenty-five sequential moves inside that is under one frame each — evenly spaced and
+    // completely illegible. Five is what the budget actually affords: each group gets ~36ms
+    // (2-3 frames) to move, and successive groups are ~19ms apart, so you see five distinct
+    // events instead of one smear. At the slow end the same fractions give each group ~870ms.
+    //
+    // WHY *THESE* GROUPS — by the lane's SOURCE ROW, which is a fact about pi rather than a
+    // convenience. pi is A'[x,y] = A[(x+3y), x], i.e. the lane at (x,y) moves to (y, 2x+3y). The
+    // destination's x coordinate is the SOURCE'S y and nothing else, so every lane sharing a
+    // source row y=k lands somewhere in destination COLUMN x=k. Moving row 0, then row 1, then
+    // row 2... shows the permutation doing the one thing it does: standing each row up as a
+    // column. Grouping by array index would have shown the same 24 moves in an order that means
+    // nothing.
+    const grp = L.prevSy;                              // 0..4 — pi's source row
+    const gap = (1 - SHA3_PI_WIN) / (SHA3_PI_GROUPS - 1);
+    const t0 = RISE + grp * gap * span;
+    const t1 = t0 + SHA3_PI_WIN * span;
+    // INVARIANT, load-bearing: RISE <= t0 < t1 <= FALL for every group, so no lane is ever
+    // sliding while `lift` is still ramping. The per-lane shelves (SHA3_LIFT_SPREAD) are only at
+    // full separation once lift == 1; a slide that started during the rise would have the shelves
+    // partially collapsed underneath it, and two crossing lanes could genuinely interpenetrate —
+    // which is the precondition the painter's-algorithm depth sort depends on. By construction
+    // t0 is minimised at grp=0 (= RISE) and t1 maximised at grp=4 (= RISE + span = FALL).
     const s = p <= t0 ? 0 : p >= t1 ? 1 : sha3Ease((p - t0) / (t1 - t0));
     L.fx = L.prevSx + (L.sx - L.prevSx) * s;
     L.fy = L.prevSy + (L.sy - L.prevSy) * s;

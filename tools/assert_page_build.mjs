@@ -37,6 +37,13 @@ export async function assertPageBuild(page, url, fields) {
         if (!lanes.length || !Number.isFinite(lanes[0][key])) out.push(f);
       } else if (f.startsWith('window.')) {
         if (typeof window[f.slice(7)] !== 'function') out.push(f);
+      } else if (f.startsWith('const.')) {
+        // A tuning CONSTANT the test is written against, rather than a function. Same purpose:
+        // a build that predates the constant is a build these assertions do not describe.
+        // Looked up by EVALUATING the bare name, not off `window`: a top-level `const` is a
+        // lexical global binding and is deliberately NOT a property of the window object, so
+        // `window[name]` reports every one of them missing on a page that has them all.
+        try { if (eval(f.slice(6)) === undefined) out.push(f); } catch (e) { out.push(f); }
       } else if (typeof dbg[f] !== 'function') {
         out.push('__sha3Debug.' + f);
       }

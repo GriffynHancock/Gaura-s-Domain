@@ -285,23 +285,20 @@ const warp = await page.evaluate(() => {
   // the warped clock w alone, and w maps [0,1] into [0,1] — so a dense unwarped sweep must find
   // an approach at least as close as any warped one. A coarse control could miss it and turn a
   // proof into a coin flip.
+  // DRIVEN THROUGH THE PAGE'S OWN sha3PhaseProgress, not through a copy of its arithmetic. This
+  // block used to re-implement the lift/slide/drop windows inline, which meant the transit could
+  // be redesigned in index.html and this test would keep cheerfully validating the OLD design and
+  // passing green. The alias factor is injected by stubbing the one function the transit reads it
+  // from (sha3AliasGeoTransit), so the code under test is the shipped code.
+  const realGate = window.sha3AliasGeoTransit;
   for (const f of [1, 0.5, 0, -0.22, -1]) {
+    window.sha3AliasGeoTransit = () => f;
     let minSep = Infinity;
     const steps = f === 1 ? 20000 : 600;
     for (let i = 0; i <= steps; i++) {
-      const w = sha3AliasWarp(i / steps, f);
-      // exactly what sha3PhaseProgress does, with the warped progress
-      const RISE = 0.26, FALL = 0.74;
-      const ease = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
-      const lift = w < RISE ? ease(w / RISE) : w < FALL ? 1 : 1 - ease((w - FALL) / (1 - FALL));
-      const span = FALL - RISE;
-      const pos = sha3.lanes.map((L, idx) => {
-        const stag = (idx / sha3.lanes.length) * 0.26;
-        const t0 = RISE + stag * span, t1 = FALL - (0.26 - stag) * span;
-        const s = w <= t0 ? 0 : w >= t1 ? 1 : ease((w - t0) / (t1 - t0));
-        const fx = L.prevSx + (L.sx - L.prevSx) * s, fy = L.prevSy + (L.sy - L.prevSy) * s;
-        return [(fx - 2) * SHA3_CELL, (2 - fy) * SHA3_CELL + lift * (SHA3_LIFT_BASE + L.liftShelf)];
-      });
+      sha3PhaseProgress({ type: 'pi' }, i / steps);
+      const pos = sha3.lanes.map(L =>
+        [(L.fx - 2) * SHA3_CELL, (2 - L.fy) * SHA3_CELL + L.lift * (SHA3_LIFT_BASE + L.liftShelf)]);
       for (let a = 0; a < pos.length; a++) for (let b = a + 1; b < pos.length; b++) {
         const d = Math.hypot(pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]);
         if (d < minSep) minSep = d;
@@ -309,6 +306,7 @@ const warp = await page.evaluate(() => {
     }
     out.sep[f] = minSep;
   }
+  window.sha3AliasGeoTransit = realGate;
   sha3.lanes.forEach((L, i) => { L.sx = saveSlots[i][0]; L.sy = saveSlots[i][1];
     L.fx = L.sx; L.fy = L.sy; L.prevSx = L.sx; L.prevSy = L.sy; L.lift = 0; L.liftShelf = 0; });
   return out;
