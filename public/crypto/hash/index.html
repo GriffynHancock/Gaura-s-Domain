@@ -2170,12 +2170,12 @@ const SHA3_RAD_CLEARANCE = 0.25;
 //    rise and one fall in the radius; it is a curve on the motion, not a third stage.
 //
 // MEASURED, over all 24 compositions and the whole phase clock, they take the worst-case
-// separation from 0.000 to 0.054 world units. The neighbourhood matters more than the cell: over
-// the nine cells of swirl +/-0.02 x hold +/-0.04 the worst case ranges 0.015 to 0.059 and never
-// comes near zero — so this is a property of the shape rather than a lucky point in a search
+// separation from 0.000 to 0.055 world units. The neighbourhood matters more than the cell: over
+// swirl 0.14..0.16 x hold 0.30..0.42 the worst case ranges 0.047 to 0.057 — a flat plateau that
+// never comes near zero, so this is a property of the shape rather than a lucky point in a search
 // grid, which is exactly what the old SHA3_LIFT_SPREAD = 3.0 bug (an exact 0) exists to warn
-// about. The weakest corner (swirl 0.18, hold 0.40, 0.015) is still above the 0.0113 the shelf
-// scheme achieved at its own centre.
+// about. It degrades gracefully outside it too: swirl 0.18 gives 0.031-0.039 and swirl 0.20
+// gives 0.016-0.024, both still above the 0.0113 the shelf scheme managed at its own centre.
 const SHA3_RAD_SWIRL = 0.15;
 const SHA3_RAD_HOLD  = 0.36;
 //
@@ -2193,13 +2193,14 @@ const SHA3_RAD_HOLD  = 0.36;
 //       state combinations, computed in closed form. The one case that could be exactly zero is
 //       a landed lane sitting on slot D while the lane whose SOURCE is D has not left yet; that
 //       one is separated by the waiting lane's own radMag, which is at least
-//       SHA3_RAD_BASE + SHA3_RAD_GAIN * 1 - SHA3_RAD_TIE/2 = 0.19 for every lane that moves at
-//       all, and the only lane with radMag 0 is pi's fixed point, whose slot no other lane ever
-//       lands on. Measured minimum over the family: 0.250 world units. That is a proof over the
-//       family, not a sample of it — and it is strictly stronger than the scalar "shelf quantum
+//       SHA3_RAD_BASE + SHA3_RAD_GAIN * 1 - SHA3_RAD_TIE/2 = 0.13 by construction for every lane
+//       that moves at all (0.19 measured, since the shortest hop and the lowest tiebreak never
+//       land on the same lane), and the only lane with radMag 0 is pi's fixed point, whose slot
+//       no other lane ever lands on. Measured minimum over the family: 0.190 world units.
+//       That is a proof over the family, not a sample of it — and it is strictly stronger than the scalar "shelf quantum
 //       cannot cancel a whole-slot offset" argument it replaces, which only covered one axis.
 //   (b) EVERYTHING ELSE, MEASURED. A dense sweep of the phase clock over all 24 compositions,
-//       with a ternary refinement around the closest sample, gives a worst case of 0.054 world
+//       with a ternary refinement around the closest sample, gives a worst case of 0.055 world
 //       units (SHA3_CELL = 1.0) — about five times the 0.0113 the shelf scheme achieved.
 //   (c) THE FOLLOWER PATH. At speeds where the governor trips, what is drawn is not the
 //       controller's position but the follower's, and that is a different curve. It is measured
@@ -4309,7 +4310,7 @@ function sha3PhaseProgress(ph, p) {
   // A straight lerp would send lanes through the lattice interior, momentarily interpenetrating
   // other boxes and breaking the one precondition the depth sort relies on. Blooming outward
   // first thins the interior out before anything crosses it, so the sort stays exactly correct
-  // (measured worst separation 0.054 world units, see the SHA3_RAD_* block) — and it reads as
+  // (measured worst separation 0.055 world units, see the SHA3_RAD_* block) — and it reads as
   // what was asked for: the rows lean out from the centre, then fall into place.
   //
   // WHAT CHANGED, AND WHY IT IS SAFE. The envelope used to be SHARED and SYMMETRIC — every lane
@@ -4326,8 +4327,8 @@ function sha3PhaseProgress(ph, p) {
   // difference here is the asymmetry: the OUT ramp is still shared and still happens once, at the
   // top of the phase, so a lane that has not moved yet is ALWAYS at its full radius. Only a lane
   // that has already landed sits on a bare slot, and by then the lane it might have met has its
-  // own radMag (>= 0.19 for every mover; the only radMag-0 lane is pi's fixed point, whose slot
-  // no other lane lands on) holding it clear. Measured, not assumed — see verify_pi_pacing.mjs.
+  // own radMag (0.19 at its smallest over the whole orbit; the only radMag-0 lane is pi's fixed
+  // point, whose slot no other lane lands on) holding it clear. Measured, not assumed — see verify_pi_pacing.mjs.
   //
   // RISE = 0.18: the bloom gets 18% of the phase (~33ms at the default slider — enough to read as
   // the lattice opening out rather than snapping open) and the remaining 82% is the slide span,

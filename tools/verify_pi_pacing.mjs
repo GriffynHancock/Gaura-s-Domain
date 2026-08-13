@@ -440,8 +440,8 @@ check('pi resolves in exactly two stages: one push out, then one fall in',
 check('no lane ever finishes its slide while still displaced (the "skewed near-final pose" is gone)',
       orbit.landedRad < 1e-6 && SLOWD.every(d => d.landedRad < 1e-6),
       `largest displacement still on an arrived lane: ${orbit.landedRad.toExponential(2)} world units ` +
-      `(the three-stage build left up to ${1.43.toFixed(2)} — a whole lane's radius — to be cleaned ` +
-      `up afterwards by the close ramp)`);
+      `(the three-stage build left a whole lane's radius — up to ${orbit.maxRadMag.toFixed(2)} — ` +
+      `to be cleaned up afterwards by the close ramp)`);
 // NOTHING SCALES. Sampled off the live renderer during a real run — sha3Render publishes the
 // scale it drew each frame — rather than off the source, so a zoom reintroduced anywhere in the
 // projection path is caught. Sampled from a rAF loop in the page (the automation tab backgrounds
