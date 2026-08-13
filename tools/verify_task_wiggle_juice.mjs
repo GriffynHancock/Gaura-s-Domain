@@ -520,6 +520,51 @@ if (!(rtRun.realMs < rtRun.normalMs * 0.35)) {
 if (!/slower than the machine/.test(rtRun.readout)) throw new Error(`readout should state the slowdown factor, got "${rtRun.readout}"`);
 console.log(`OK  REAL TIME collapses a 5-block MD5 from ${rtRun.normalMs.toFixed(0)}ms to ${rtRun.realMs.toFixed(0)}ms; readout: "${rtRun.readout.replace(/\s+/g, ' ').slice(0, 160)}…"`);
 
+// SHA-3's real-time path is a DIFFERENT mechanism from MD5's (zero-length phases drained by the
+// controller's bounded while-loop, rather than a tiny per-event spacing in playTrace), so it
+// needs its own arm. It is also the only escape hatch for a long SHA-3 input: the per-phase
+// floors make a multi-rate-block run take minutes at ANY slider setting.
+const rtSha3 = await page.evaluate(async () => {
+  document.getElementById('algo-next').click();          // -> SHA-3
+  document.getElementById('speed-slider').value = '100';
+  const time = async () => {
+    document.getElementById('output-digest').textContent = '—';
+    const t0 = performance.now();
+    document.getElementById('hash-btn').click();
+    await new Promise(resolve => {
+      const iv = setInterval(() => {
+        const d = document.getElementById('output-digest').textContent;
+        if ((d && d.length === 64) || performance.now() - t0 > 120000) { clearInterval(iv); resolve(); }
+      }, 8);
+    });
+    return { ms: performance.now() - t0, digest: document.getElementById('output-digest').textContent };
+  };
+  document.getElementById('realtime-toggle').checked = false;
+  const normal = await time();
+  document.getElementById('realtime-toggle').checked = true;
+  const real = await time();
+  // pi mutates slot integers and commits them on finish; through the zero-duration path the
+  // start/progress/finish all happen in one frame, so verify the commit still landed on exact
+  // integer slots — a fractional slot would be permuted from by the next pi and drift the lattice.
+  const lanes = __sha3Debug.lanes();
+  const slotsAreIntegers = lanes.every(L => Number.isInteger(L.sx) && Number.isInteger(L.sy));
+  const slotSet = new Set(lanes.map(L => `${L.sx},${L.sy}`));
+  document.getElementById('realtime-toggle').checked = false;
+  document.getElementById('algo-prev').click();
+  return { normal, real, slotsAreIntegers, distinctSlots: slotSet.size, blur: __sha3Debug.lastBlur() };
+});
+if (rtSha3.normal.digest !== rtSha3.real.digest) {
+  throw new Error(`REAL TIME changed the SHA-3 digest — it must be presentation only (${rtSha3.normal.digest} vs ${rtSha3.real.digest})`);
+}
+if (rtSha3.real.digest.length !== 64) throw new Error('SHA-3 real-time run did not produce a digest');
+if (!(rtSha3.real.ms < rtSha3.normal.ms * 0.2)) {
+  throw new Error(`REAL TIME must collapse the SHA-3 run: normal ${rtSha3.normal.ms.toFixed(0)}ms vs real-time ${rtSha3.real.ms.toFixed(0)}ms`);
+}
+if (!rtSha3.slotsAreIntegers) throw new Error('pi did not commit to integer slots through the zero-duration real-time path');
+if (rtSha3.distinctSlots !== 25) throw new Error(`the 25 lanes must still occupy 25 distinct slots after a real-time run, got ${rtSha3.distinctSlots}`);
+if (rtSha3.blur) throw new Error('a real-time SHA-3 run left the canvas blurred');
+console.log(`OK  REAL TIME collapses a SHA-3 run from ${rtSha3.normal.ms.toFixed(0)}ms to ${rtSha3.real.ms.toFixed(0)}ms, same digest, pi still committed to 25 distinct integer slots, canvas crisp`);
+
 if (consoleErrors.length) throw new Error('console errors: ' + consoleErrors.join(' | '));
 
 console.log('\nOK  count-based multiplicative juice escalation verified on MD5 and SHA-3 (uncapped and contained), plane/assembly shake, motion blur, and the real-time switch — no console errors');
