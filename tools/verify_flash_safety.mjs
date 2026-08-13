@@ -267,6 +267,21 @@ assertSafe('SHA-3 REAL TIME, 8 rate-blocks', await recordSha3(page, { input: 'x'
 assertSafe('MD5 slider 100, 57 blocks', await recordMd5(page, { input: 'x'.repeat(64 * 56), slider: 100 }));
 assertSafe('MD5 slider 25, 57 blocks', await recordMd5(page, { input: 'x'.repeat(64 * 56), slider: 25 }));
 
+// DARK THEME. The two hard caps are solved against whichever palette is in use, so the dark
+// theme is a genuinely different solve, not the same numbers on different colours — and dark
+// backgrounds make a given brightness excursion a LARGER share of the tile's luminance. Measured
+// rather than argued from the light-theme result.
+note('\n-- dark theme (the caps are re-solved per palette)');
+const darkCaps = await page.evaluate(() => {
+  document.documentElement.setAttribute('data-theme', 'dark');
+  sha3ReadPalette();
+  return __sha3Debug.governor().caps;
+});
+console.log(`    dark-theme caps: brightness <= ${darkCaps.hi.toFixed(4)}, tint <= ${darkCaps.tint.toFixed(4)}`);
+check('the dark theme gets its own solved caps', darkCaps.hi > 0 && darkCaps.tint > 0);
+assertSafe('SHA-3 slider 100, dark theme, 4 rate-blocks', await recordSha3(page, { input: 'x'.repeat(136 * 4), slider: 100 }), true);
+await page.evaluate(() => { document.documentElement.removeAttribute('data-theme'); sha3ReadPalette(); });
+
 // ============================================================================================
 //  5. prefers-reduced-motion
 // ============================================================================================
