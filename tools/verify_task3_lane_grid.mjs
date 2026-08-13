@@ -131,6 +131,28 @@ if (Math.abs(afterTheme.mean - beforeTheme.mean) < 5) {
 }
 console.log(`OK  theme toggle repaints the canvas (mean brightness ${beforeTheme.mean.toFixed(1)} -> ${afterTheme.mean.toFixed(1)})`);
 
+// ---- 9. first paint after switching to SHA-3 is sized to the REAL box, on a narrow viewport ----
+// Regression guard: the canvas starts inside a display:none subtree (MD5 is the default), and a
+// hidden element reports a zero-size getBoundingClientRect — so the load-time sizing fell back to
+// the element's hardcoded width/height attributes instead of its real width:100% CSS box. On a
+// phone that meant a stretched first paint. Must be checked BEFORE any drag/theme/resize, since
+// any of those would mask it.
+const narrow = await browser.newPage({ viewport: { width: 420, height: 800 } });
+await narrow.goto(BASE_URL + '?v=task3narrow');
+await narrow.waitForFunction(() => !!window.__sha3Debug, { timeout: 5000 });
+await narrow.click('#algo-next');
+await narrow.waitForTimeout(150);
+const sizing = await narrow.evaluate(() => {
+  const c = document.getElementById('lane-canvas');
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  return { cssW: Math.round(c.getBoundingClientRect().width), backing: c.width, expected: Math.round(c.getBoundingClientRect().width * dpr) };
+});
+await narrow.close();
+if (Math.abs(sizing.backing - sizing.expected) > 2) {
+  throw new Error(`canvas mis-sized on first SHA-3 paint at a narrow viewport: backing store ${sizing.backing}px for a ${sizing.cssW}px box (expected ~${sizing.expected}px)`);
+}
+console.log(`OK  first SHA-3 paint is correctly sized on a 420px viewport (${sizing.cssW}px box -> ${sizing.backing}px backing store)`);
+
 if (consoleErrors.length) throw new Error('console errors: ' + consoleErrors.join(' | '));
 
 console.log('All Task 3 (Keccak state canvas) checks passed.');

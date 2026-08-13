@@ -921,6 +921,16 @@ function renderHistory() {
 function showDiagramFor(algo) {
   document.getElementById('diagram-md5').style.display = algo === 'md5' ? '' : 'none';
   document.getElementById('diagram-sha3').style.display = algo === 'sha3' ? '' : 'none';
+  // The SHA-3 canvas is inside a display:none subtree until this moment, and a hidden element
+  // reports a ZERO-SIZE getBoundingClientRect — so the backing store sized at page load fell back
+  // to the element's hardcoded 560x360 attributes rather than its real CSS box (which is
+  // width:100%, i.e. much narrower on a phone). Re-measure and repaint the instant the diagram
+  // becomes visible, or the first paint is stretched until some unrelated resize fixes it.
+  // Additive: MD5's branch is untouched and this is a no-op before the canvas is initialised.
+  if (algo === 'sha3' && typeof sha3ResizeCanvas === 'function' && sha3.ctx) {
+    sha3ResizeCanvas();
+    sha3Render();
+  }
 }
 
 function renderAlgorithmBox() {
