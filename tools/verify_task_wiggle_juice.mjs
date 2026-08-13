@@ -77,18 +77,34 @@ if (!(curve.at56 > 200)) throw new Error(`no cap expected — I(56) should be ~2
 console.log(`OK  MD5 intensity is exactly 1.1^n and uncapped (I(10)=${curve.samples[0].ratio10.toFixed(3)}, I(50)=${curve.at50.toFixed(0)}, I(56)=${curve.at56.toFixed(0)})`);
 
 // ============================================================================================
-// 2. Starting amplitude is ~2x the pre-escalation one, and the wiggle now includes translation
+// 2. The wiggle RAMPS IN: nearly imperceptible at the start of a run, building from there.
+//    (This replaces an earlier "start at 2x the old 0.6deg" assertion. That tuning put a 1.2deg
+//    tilt and a 5.5px jump on the very first register step of every hash, however short, which is
+//    the opposite of what is wanted: the escalation should be something you notice arriving.)
 // ============================================================================================
 const start = await page.evaluate(() => {
-  const j0 = md5JuiceFor(0, 1), j1 = md5JuiceFor(1, 1);
-  return { baseRot: MD5_BASE_ROT, rot0: j0.rot, tx0: j0.tx, ty0: j0.ty, rot1: j1.rot,
+  const at = n => { const j = md5JuiceFor(n, 1); return { rot: j.rot, tx: j.tx, ty: j.ty }; };
+  return { baseRot: MD5_BASE_ROT, n0: at(0), n1: at(1), n5: at(5), n50: at(50),
            txMax: MD5_TX_MAX, tyMax: MD5_TY_MAX };
 });
-// the pre-escalation implementation started at 0.6deg
-if (!near(start.rot0 / 0.6, 2, 0.01)) throw new Error(`starting rotation should be ~2x the old 0.6deg, got ${start.rot0}deg`);
-if (Math.abs(start.tx0) < 0.5) throw new Error(`wiggle must include real horizontal translation at n=0, got tx=${start.tx0}px`);
-if (Math.abs(start.ty0) < 0.2) throw new Error(`wiggle must include real vertical translation at n=0, got ty=${start.ty0}px`);
-console.log(`OK  starting amplitude doubled (${start.rot0}deg vs the old 0.6deg) and includes translation (tx=${start.tx0.toFixed(2)}px, ty=${start.ty0.toFixed(2)}px)`);
+// At n=0 there must be NO perceptible motion at all — every channel starts from a standstill.
+for (const [ch, v] of Object.entries(start.n0)) {
+  if (Math.abs(v) > 1e-9) throw new Error(`the wiggle must start from a standstill; ${ch} at n=0 was ${v}`);
+}
+// Sub-pixel / sub-degree through the first chained block, so a short hash barely moves at all.
+if (!(Math.abs(start.n1.rot) < 0.25)) throw new Error(`the wiggle must still be nearly imperceptible after one block, got ${start.n1.rot}deg`);
+if (!(Math.abs(start.n1.tx) < 1 && Math.abs(start.n1.ty) < 1)) {
+  throw new Error(`translation must still be sub-pixel after one block, got tx=${start.n1.tx}px ty=${start.n1.ty}px`);
+}
+// ...but it must genuinely build, or the ramp has just turned the effect off.
+if (!(Math.abs(start.n5.rot) > Math.abs(start.n1.rot) * 3)) {
+  throw new Error(`the wiggle must build with the block count: ${start.n1.rot}deg at n=1 vs ${start.n5.rot}deg at n=5`);
+}
+if (!(Math.abs(start.n50.rot) > 50)) throw new Error(`the wiggle must still go wild on long inputs, got ${start.n50.rot}deg at n=50`);
+if (!(Math.abs(start.n50.tx) > 1 || Math.abs(start.n50.ty) > 1)) {
+  throw new Error('translation must still be a real channel late in a run');
+}
+console.log(`OK  the wiggle ramps in from a standstill (n=0: 0deg/0px; n=1: ${start.n1.rot.toFixed(2)}deg, ${start.n1.tx.toFixed(2)}px; n=5: ${start.n5.rot.toFixed(2)}deg; n=50: ${start.n50.rot.toFixed(0)}deg)`);
 
 // ============================================================================================
 // 3. Containment WITHOUT a cap: the factor is unbounded, the rendered values are bounded
@@ -404,14 +420,14 @@ const sha3Curve = await page.evaluate(() => {
     return null;
   };
   return {
-    roundRate: SHA3_ROUND_RATE, blockRate: SHA3_BLOCK_RATE,
+    roundRate: SHA3_SPEED_ROUND_RATE, blockRate: SHA3_SPEED_BLOCK_RATE,
     // exact curve, sampled through the real function by setting its inputs
     samples: [[0, 0], [12, 0], [23, 0], [0, 1], [23, 3], [10, 26]].map(([r, b]) => {
       const keepR = sha3.roundsInBlock, keepB = sha3.blocksDone;
       sha3.roundsInBlock = r; sha3.blocksDone = b;
-      const I = sha3Intensity(), S = sha3SpeedIntensity();
+      const I = sha3SpeedIntensity();
       sha3.roundsInBlock = keepR; sha3.blocksDone = keepB;
-      return { r, b, I, S };
+      return { r, b, I };
     }),
     scale: sha3PhaseScale(),
     theta: sha3PhaseDuration('theta'),
@@ -419,18 +435,21 @@ const sha3Curve = await page.evaluate(() => {
     perRound: ['theta', 'rho', 'pi', 'chi', 'iota'].reduce((s, t) => s + sha3PhaseDuration(t), 0),
   };
 });
-if (sha3Curve.roundRate !== 1.06 || sha3Curve.blockRate !== 1.1) {
-  throw new Error(`SHA-3 rates should be 1.06/round and 1.1/block, got ${sha3Curve.roundRate}/${sha3Curve.blockRate}`);
+// The SHA-3 escalation used to drive three channels (camera shake, plane shake, speed). The two
+// shake channels are gone by owner decision — the lattice holds still — so the two-counter
+// escalation model now survives on the SPEED channel alone, and that is what is pinned here.
+if (sha3Curve.roundRate !== 1.04 || sha3Curve.blockRate !== 1.06) {
+  throw new Error(`SHA-3 speed rates should be 1.04/round and 1.06/block, got ${sha3Curve.roundRate}/${sha3Curve.blockRate}`);
 }
 for (const s of sha3Curve.samples) {
-  const want = Math.pow(1.06, s.r) * Math.pow(1.1, s.b);
-  if (!near(s.I / want, 1, 1e-9)) throw new Error(`sha3Intensity(r=${s.r},b=${s.b}) should be ${want}, got ${s.I}`);
+  const want = Math.pow(1.04, s.r) * Math.pow(1.06, s.b);
+  if (!near(s.I / want, 1, 1e-9)) throw new Error(`sha3SpeedIntensity(r=${s.r},b=${s.b}) should be ${want}, got ${s.I}`);
 }
 const oneBlockArc = sha3Curve.samples.find(s => s.r === 23 && s.b === 0).I;
-if (!(oneBlockArc > 3.5)) throw new Error(`a single SHA-3 block must visibly escalate across its 24 rounds, got only ${oneBlockArc}x`);
+if (!(oneBlockArc > 2)) throw new Error(`a single SHA-3 block must visibly escalate across its 24 rounds, got only ${oneBlockArc}x`);
 const laterBlock = sha3Curve.samples.find(s => s.b === 26).I;
-if (!(laterBlock > oneBlockArc * 2)) throw new Error(`later rate-blocks must be wilder than the first (5 layers < 100 layers), got ${laterBlock} vs ${oneBlockArc}`);
-console.log(`OK  SHA-3 intensity = 1.06^round * 1.1^block exactly (one block arcs 1 -> ${oneBlockArc.toFixed(2)}x; block 26 already at ${laterBlock.toFixed(1)}x)`);
+if (!(laterBlock > oneBlockArc * 1.5)) throw new Error(`later rate-blocks must be wilder than the first (5 layers < 100 layers), got ${laterBlock} vs ${oneBlockArc}`);
+console.log(`OK  SHA-3 escalation = 1.04^round * 1.06^block exactly (one block arcs 1 -> ${oneBlockArc.toFixed(2)}x; block 26 already at ${laterBlock.toFixed(1)}x)`);
 
 // SHA-3 pacing remains a separate mechanism from MD5's (retained assertion).
 if (Math.abs(sha3Curve.scale - 0.28) > 0.001) throw new Error(`sha3PhaseScale() at default should be 0.28, got ${sha3Curve.scale}`);
@@ -450,26 +469,28 @@ for (const [t, ms] of fastest) {
 console.log(`OK  SHA-3 phase floors still hold at max escalation: ${fastest.map(([t, m]) => `${t}=${m.toFixed(0)}ms`).join(' ')}`);
 
 // ============================================================================================
-// 10. SHA-3 shakes PLANES / the whole assembly — never an individual cube
+// 10. SHA-3 does NOT shake — the lattice holds still (owner decision; the directional flash now
+//     carries the per-step axis information the shake used to gesture at, without moving anything)
 // ============================================================================================
 await page.evaluate(() => { document.getElementById('algo-next').click(); document.getElementById('speed-slider').value = '60'; });
-const sha3Shake = await page.evaluate(async () => {
+const sha3Still = await page.evaluate(async () => {
   document.getElementById('input-custom').value = 'shake me';
   document.getElementById('input-custom').dispatchEvent(new Event('input', { bubbles: true }));
-  const seen = { axes: new Set(), maxPlaneAmp: 0, maxCam: 0, blurDuringPi: false, blurAtIdlePhase: false,
-                 planeAmpCount: 0, intensityGrew: false, firstI: null, lastI: null };
+  const seen = { blurDuringPi: false, firstI: null, lastI: null,
+                 maxRotDrift: 0, gains: [], flashTypes: new Set() };
+  const rot0 = __sha3Debug.rotation();
   document.getElementById('output-digest').textContent = '—';
   document.getElementById('hash-btn').click();
   await new Promise(resolve => {
     const t0 = performance.now();
     const iv = setInterval(() => {
       const j = __sha3Debug.juice();
-      if (seen.firstI === null) seen.firstI = j.intensity;
-      seen.lastI = j.intensity;
-      seen.axes.add(String(j.planeAxis));
-      seen.planeAmpCount = j.planeAmps.length;
-      seen.maxPlaneAmp = Math.max(seen.maxPlaneAmp, ...j.planeAmps.map(Math.abs));
-      seen.maxCam = Math.max(seen.maxCam, Math.abs(j.camShakeX), Math.abs(j.camShakeY));
+      if (seen.firstI === null) seen.firstI = j.speedIntensity;
+      seen.lastI = j.speedIntensity;
+      if (j.flashType) { seen.flashTypes.add(j.flashType); seen.gains.push(j.flashGain); }
+      // The camera must never wander from wherever the user dragged it.
+      const r = __sha3Debug.rotation();
+      seen.maxRotDrift = Math.max(seen.maxRotDrift, Math.abs(r.rotX - rot0.rotX), Math.abs(r.rotY - rot0.rotY));
       const ph = __sha3Debug.activePhase();
       if (ph === 'pi' && __sha3Debug.lastBlur()) seen.blurDuringPi = true;
       const d = document.getElementById('output-digest').textContent;
@@ -479,30 +500,36 @@ const sha3Shake = await page.evaluate(async () => {
   // after the run fully settles the canvas must be repainted CRISP — no permanent smear
   await new Promise(r => setTimeout(r, 1400));
   seen.blurAfterRun = __sha3Debug.lastBlur();
-  seen.shakeAfterRun = __sha3Debug.juice().shakeDecay;
-  seen.planeShakeMax = __sha3Debug.planeShakeMax;
-  seen.camShakeMax = __sha3Debug.camShakeMax;
-  seen.axesList = [...seen.axes];
+  seen.noShake = __sha3Debug.noShake();
+  seen.flashTypesList = [...seen.flashTypes];
   return seen;
 });
-if (!sha3Shake.axesList.includes('x') || !sha3Shake.axesList.includes('y')) {
-  throw new Error(`expected both x-plane (theta) and y-plane (chi) shakes, saw axes ${sha3Shake.axesList}`);
+// Structural: no shake state, no shake functions. If either comes back, this fails loudly rather
+// than the shake quietly returning because some later edit reinstated a "small" jitter.
+if (sha3Still.noShake.shakeStateKeys.length) {
+  throw new Error(`the SHA-3 renderer must carry no shake state, found ${sha3Still.noShake.shakeStateKeys}`);
 }
-if (sha3Shake.planeAmpCount !== 5) throw new Error(`plane shake must be one amplitude per PLANE (5), got ${sha3Shake.planeAmpCount} — anything per-lane or per-cube is wrong`);
-if (!(sha3Shake.maxPlaneAmp > 0.01)) throw new Error('plane shake never actually fired');
-if (sha3Shake.maxPlaneAmp > sha3Shake.planeShakeMax + 1e-9) {
-  throw new Error(`plane shake ${sha3Shake.maxPlaneAmp} exceeded its interpenetration-safe bound ${sha3Shake.planeShakeMax}`);
+if (sha3Still.noShake.shakeFns.length) {
+  throw new Error(`the SHA-3 shake functions must be gone, found ${sha3Still.noShake.shakeFns}`);
 }
-if (!(sha3Shake.maxCam > 0.05)) throw new Error('whole-assembly (camera) shake never fired');
-if (!(sha3Shake.lastI > sha3Shake.firstI * 2)) throw new Error(`SHA-3 escalation must be visible across a run: ${sha3Shake.firstI} -> ${sha3Shake.lastI}`);
-console.log(`OK  SHA-3 shakes 5 planes (max ${sha3Shake.maxPlaneAmp.toFixed(3)} < ${sha3Shake.planeShakeMax} clearance bound) + the whole assembly via the camera (max ${sha3Shake.maxCam.toFixed(2)}deg); intensity ${sha3Shake.firstI.toFixed(2)} -> ${sha3Shake.lastI.toFixed(2)}`);
+// Behavioural: the camera stayed exactly where it was for the whole run.
+if (!(sha3Still.maxRotDrift === 0)) {
+  throw new Error(`the camera must not move during a run — it is only ever moved by a drag — drifted ${sha3Still.maxRotDrift}deg`);
+}
+if (!(sha3Still.lastI > sha3Still.firstI * 1.5)) {
+  throw new Error(`SHA-3 escalation must still be visible across a run: ${sha3Still.firstI} -> ${sha3Still.lastI}`);
+}
+// And the thing that replaced the shake actually ran.
+if (sha3Still.flashTypesList.length < 4) {
+  throw new Error(`the directional flash must arm for the phases that used to shake, saw only ${sha3Still.flashTypesList}`);
+}
+console.log(`OK  SHA-3 no longer shakes at all (no shake state, no shake functions, camera drift ${sha3Still.maxRotDrift}deg across a full run); the directional flash ran for ${sha3Still.flashTypesList.length} phase types instead; escalation ${sha3Still.firstI.toFixed(2)} -> ${sha3Still.lastI.toFixed(2)}`);
 
 // ============================================================================================
 // 11. Motion blur: on during the fast rearrangement, off at idle and during drag
 // ============================================================================================
-if (!sha3Shake.blurDuringPi) throw new Error('motion blur never engaged during the pi rearrangement');
-if (sha3Shake.blurAfterRun) throw new Error('motion blur is still on after the run finished — it would smear permanently');
-if (sha3Shake.shakeAfterRun !== 0) throw new Error(`shake did not settle to zero after the run (${sha3Shake.shakeAfterRun})`);
+if (!sha3Still.blurDuringPi) throw new Error('motion blur never engaged during the pi rearrangement');
+if (sha3Still.blurAfterRun) throw new Error('motion blur is still on after the run finished — it would smear permanently');
 // drag must repaint crisply
 const canvas = await page.locator('#lane-canvas').boundingBox();
 await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2);
@@ -566,6 +593,18 @@ if (!/64-bit/.test(rt.note) || !/32-bit/.test(rt.note)) {
 }
 if (!/(not a fair race|see below|not comparable)/i.test(rt.text)) {
   throw new Error(`the readout line itself must flag that the two figures are not a like-for-like comparison, got "${rt.text}"`);
+}
+// The note was cut from a paragraph to a single line: the module is presented live and explained
+// out loud, so the page carries the qualifier and not the essay. The qualifier itself cannot move
+// to a comment — it disclaims a claim the readout directly above it still makes on the page — but
+// the reasoning behind it can, and must stay findable there. Both halves are checked: short on the
+// page, complete in the source.
+if (rt.note.replace(/\s+/g, ' ').trim().length > 220) {
+  throw new Error(`the caveat must stay a one-liner, not grow back into a paragraph (${rt.note.trim().length} chars)`);
+}
+const rtSource = await page.content();
+if (!/<!--[^]*?not a fair race between the algorithms[^]*?-->/i.test(rtSource)) {
+  throw new Error('the full benchmark caveat must remain in the page source as a comment for anyone who wants the detail');
 }
 console.log(`OK  benchmark measured MD5 ${rt.md5PerBlockUs.toFixed(3)} us/block, SHA-3 ${rt.sha3PerBlockUs.toFixed(2)} us/block, with an honest caveat note that disclaims the cross-algorithm comparison`);
 
@@ -645,5 +684,5 @@ console.log(`OK  REAL TIME collapses a SHA-3 run from ${rtSha3.normal.ms.toFixed
 
 if (consoleErrors.length) throw new Error('console errors: ' + consoleErrors.join(' | '));
 
-console.log('\nOK  count-based multiplicative juice escalation verified on MD5 and SHA-3 (uncapped and contained), plane/assembly shake, motion blur, and the real-time switch — no console errors');
+console.log('\nOK  count-based multiplicative juice escalation verified on MD5 and SHA-3 (uncapped and contained), a still SHA-3 lattice, motion blur, and the real-time switch — no console errors');
 await browser.close();

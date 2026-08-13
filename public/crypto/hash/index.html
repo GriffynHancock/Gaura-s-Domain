@@ -49,7 +49,7 @@
                         legibility. The page always says in plain text where the simplification
                         is (e.g. "one drawn cube stands for 8 real bits", "this highlight shows
                         one representative row per round"); it is never silently implied.
-    [ANALOGY]        — presentation only: colour, motion, shake/wiggle, timing/pacing, camera
+    [ANALOGY]        — presentation only: colour, motion, flash/wiggle, timing/pacing, camera
                         angle, "juice" (the escalating flashiness the longer a hash runs). None of
                         this is part of any specification. It exists to make the invisible bit-math
                         legible and satisfying to watch, and it carries no cryptographic meaning by
@@ -59,7 +59,7 @@
   Keccak permutation's rho/pi/theta/chi/iota formulas, the real published MD5 collision pair) is
   [EXACT]. The geometry used to DRAW the SHA-3 internal state (a 5x5 grid of 64-bit "lanes", each
   drawn as a stack of 8 small cubes instead of 64) is [FAIRLY ACCURATE] — real, but coarsened for
-  legibility, and stated as such on the page. The wiggle, glow, colour ramp, camera shake, and
+  legibility, and stated as such on the page. The wiggle, glow, colour ramp, directional flash, and
   pacing that make the animation feel alive as a hash runs longer are [ANALOGY] — real hashing has
   none of that; it is silent, instant (microseconds — this page even measures and displays that),
   and invisible.
@@ -575,9 +575,24 @@
              are never touched directly by input or output — they're SHA-3's hidden security
              margin. [EXACT] which lanes are which (17 rate / 8 capacity, matching the real
              136-byte rate for SHA3-256); the colour choice itself is [ANALOGY]. -->
+        <!-- MOVED OFF-PAGE (the presenter explains this out loud; the page should not make anyone
+             read a paragraph mid-demo). The legend used to read "rate — exposed (17 lanes)" and
+             "capacity — hidden (8 lanes)". What "exposed" and "hidden" meant, in full:
+               RATE lanes are the part of the state the outside world ever touches. Input is XORed
+               into them, and the digest is read back out of them. For SHA3-256 the rate is 136
+               bytes = 17 lanes.
+               CAPACITY lanes are never written to or read from directly by anything outside the
+               permutation. Data only ever reaches them by diffusing in through theta/rho/pi/chi,
+               which is exactly why they are SHA-3's security margin: an attacker who controls the
+               input and sees the output still never gets to touch these 8 lanes. That is the whole
+               structural idea of a sponge construction, and it is why the capacity lanes start
+               visibly dark on the canvas and only light up as the permutation stirs data into them.
+             The two words "rate" and "capacity" stay on the page because they are the LABELS the
+             colours mean; the lane counts stay because the canvas shows exactly 25 lanes and a
+             student should be able to check the split by counting. -->
         <div class="cube-legend">
-          <span class="legend-rate">rate — exposed (17 lanes)</span>
-          <span class="legend-capacity">capacity — hidden (8 lanes)</span>
+          <span class="legend-rate">rate (17)</span>
+          <span class="legend-capacity">capacity (8)</span>
         </div>
         <!-- Honesty note, required on the page and not just in a code comment: the state really is
              5x5x64 bits. We draw 8 cubes per lane, not 64, and each drawn cube stands for 8 real
@@ -594,13 +609,33 @@
              accumulated on-screen path rather than snapping back to a strict grid every round —
              see the θ/χ comments on sha3StartPhase in the script for the full explanation; this is
              flagged [ANALOGY] there and in this task's report, not asserted as true onscreen. -->
+        <!-- MOSTLY MOVED OFF-PAGE. What was cut, verbatim in substance, for anyone reading source:
+               "Each lane also turns about its own axis by its ρ offset — that turn IS ρ rotating
+                the lane's 64-bit ring. Drag to rotate the whole thing."
+               "π shuffles the 25 lanes every round. Its shuffle happens to come full circle after
+                exactly 24 rounds, so the lattice ends a run back in its starting arrangement — it
+                went all the way around, it was not undone."
+             Both claims are [EXACT] and worth keeping somewhere: pi really is an order-24
+             permutation of the 25 lane positions, because its underlying 2x2 matrix over the
+             integers mod 5 has multiplicative order exactly 24 — a property of the standard's pi
+             step, not an accident of this implementation. See KECCAK_PI_LANE_MAP and the pi branch
+             of sha3StartPhase. Neither is honesty-critical, though: nothing on the page asserts
+             anything that would become misleading without them, so out they go.
+
+             WHAT STAYS, AND WHY IT MUST. The one sentence left on the page is the reduction: the
+             real state is 5 x 5 lanes of 64 bits, and this canvas draws 8 cubes per lane, so each
+             drawn cube stands for 8 real bits. Without it a student counts eight cubes along a
+             lane and concludes SHA-3 uses 8-bit lanes, which is both wrong and exactly the kind of
+             wrong that sticks. This is a disclosed coarsening, never a silent one, so it cannot be
+             demoted to a comment however much prose gets cut around it.
+             (Not claimed on the page, and worth knowing if you are reading this: "which lane is
+             drawn where on screen" drifts out of alignment with "which 5 lanes form a real
+             mathematical row/column" after round 0, because each box follows its own accumulated
+             path under repeated pi rather than snapping back to a strict grid. See the FINDING on
+             sha3MakeLanes.) -->
         <div class="cube-note" id="cube-note">
-          The real state is <strong>5 × 5 lanes × 64 bits</strong> = 1600 bits. Each lane is drawn here as
-          <strong>8 small cubes</strong>, so <strong>one cube = 8 real bits</strong>: bright = mostly 1s, dark = mostly 0s.
-          Each lane also turns about its own axis by its ρ offset — that turn <em>is</em> ρ rotating the lane's 64-bit ring.
-          Drag to rotate the whole thing.
-          <br>π shuffles the 25 lanes every round. Its shuffle happens to come full circle after exactly 24 rounds,
-          so the lattice ends a run back in its starting arrangement — it went all the way around, it was not undone.
+          <strong>5 × 5 lanes × 64 bits</strong> — drawn <strong>8 cubes per lane</strong>, so
+          <strong>1 cube = 8 real bits</strong>. Bright = mostly 1s.
         </div>
         <!-- The five named steps of one Keccak-f round, lit up one at a time in the fixed order
              theta -> rho -> pi -> chi -> iota, 24 times per rate-block absorbed. In plain terms:
@@ -609,18 +644,33 @@
              chi is the only NON-LINEAR step (the one step you can't undo by just XORing something
              back — this is most of where a hash's one-way-ness comes from); iota breaks any
              leftover symmetry between rounds by XORing a different constant into one lane each
-             round, so round 3 doesn't just look like round 1 repeated. [EXACT] — real Keccak-f. -->
+             round, so round 3 doesn't just look like round 1 repeated. [EXACT] — real Keccak-f.
+             The one-line description each box used to carry is MOVED OFF-PAGE — the presenter says
+             these out loud, and five captions is five things to read while the animation is the
+             thing to watch. They were, and the fuller versions are above and in the DIRECTIONAL
+             FLASH block in the script:
+               theta  "mix columns"                          — each column's parity, XORed into
+                                                               every lane, spread along x
+               rho    "twist each lane"                      — rotate each lane's own 64-bit ring
+                                                               by its own fixed offset
+               pi     "shuffle positions"                    — move every lane to a new grid slot
+               chi    "mix rows (the only non-linear step)"  — combine each lane with the next two
+                                                               along its row; the only step you
+                                                               cannot undo by XORing something back
+               iota   "stamp round constant on one lane"     — break the symmetry between rounds
+             The glyph and the name stay on the page: those are labels, and they are what the
+             presenter points at and what the round counter is counted against. -->
         <div class="phase-row" id="sha3-phase-row">
           <div class="phase-box" id="phase-theta" style="--ph-col:var(--ph-theta)">
-            <span class="ph-glyph">θ</span><span class="ph-name">theta</span><span class="ph-what">mix columns</span></div>
+            <span class="ph-glyph">θ</span><span class="ph-name">theta</span></div>
           <div class="phase-box" id="phase-rho" style="--ph-col:var(--ph-rho)">
-            <span class="ph-glyph">ρ</span><span class="ph-name">rho</span><span class="ph-what">twist each lane</span></div>
+            <span class="ph-glyph">ρ</span><span class="ph-name">rho</span></div>
           <div class="phase-box" id="phase-pi" style="--ph-col:var(--ph-pi)">
-            <span class="ph-glyph">π</span><span class="ph-name">pi</span><span class="ph-what">shuffle positions</span></div>
+            <span class="ph-glyph">π</span><span class="ph-name">pi</span></div>
           <div class="phase-box" id="phase-chi" style="--ph-col:var(--ph-chi)">
-            <span class="ph-glyph">χ</span><span class="ph-name">chi</span><span class="ph-what">mix rows (the only non-linear step)</span></div>
+            <span class="ph-glyph">χ</span><span class="ph-name">chi</span></div>
           <div class="phase-box" id="phase-iota" style="--ph-col:var(--ph-iota)">
-            <span class="ph-glyph">ι</span><span class="ph-name">iota</span><span class="ph-what">stamp round constant on one lane</span></div>
+            <span class="ph-glyph">ι</span><span class="ph-name">iota</span></div>
         </div>
         <div class="round-counter" id="round-counter">round — / 24</div>
       </div>
@@ -675,14 +725,28 @@
       </label>
     </div>
     <div id="realtime-readout">measuring this browser's real hashing speed&hellip;</div>
+    <!-- CUT DOWN, NOT DELETED. This note exists to stop a specific false conclusion — "the page
+         says SHA-3 is 45x slower than MD5, so SHA-3 is a slow algorithm" — which the readout right
+         above it would otherwise invite, since it prints the two numbers side by side. That makes
+         it honesty-critical: it qualifies a claim that is still on the page, so it cannot become a
+         comment. It CAN become one line instead of a paragraph, and it is not a tooltip, because
+         the audience is on phones and a title= attribute is unreachable on touch.
+         The full text, for anyone reading source:
+           "Measured by timing this page's own JavaScript MD5 / Keccak with the animation's tracing
+            switched off. Native and hardware implementations are faster still, so treat these as
+            an upper bound on how long a real hash takes — the point is the order of magnitude.
+            These two numbers are not a fair race between the algorithms. SHA-3 does its maths on
+            64-bit chunks, which JavaScript can only fake with a slow number type, while MD5's
+            32-bit chunks run at full speed here — so our SHA-3 is held back far more than our MD5
+            is. In real optimised code the two are much closer than these numbers make them look."
+         The mechanism, in more detail than belongs on any version of the page: JavaScript has no
+         native 64-bit integer type, so this page's Keccak runs on BigInt — heap-allocated, not a
+         machine word. MD5's 32-bit arithmetic maps straight onto JS's native bitwise operators,
+         which are exactly 32-bit. So the comparison measures the language's data types at least as
+         much as it measures the two algorithms. See runHashBenchmark. -->
     <div class="rt-note" id="realtime-note">
-      Measured by timing this page's own JavaScript MD5 / Keccak with the animation's tracing
-      switched off. Native and hardware implementations are faster still, so treat these as an
-      upper bound on how long a real hash takes — the point is the order of magnitude.
-      <strong>These two numbers are not a fair race between the algorithms.</strong> SHA-3 does its maths on
-      64-bit chunks, which JavaScript can only fake with a slow number type, while MD5's 32-bit
-      chunks run at full speed here — so our SHA-3 is held back far more than our MD5 is. In real
-      optimised code the two are much closer than these numbers make them look.
+      <strong>Not a fair race:</strong> SHA-3's 64-bit maths is slow in JavaScript, MD5's 32-bit maths isn't.
+      Both are far faster in native code.
     </div>
   </div>
 </div>
@@ -1506,7 +1570,14 @@ function pulseBox(boxId, sample) {
 //                  seen at all. See md5SpeedMsForN.
 const MD5_JUICE_RATE  = 1.1;    // intensity multiplier per chained block (owner-specified)
 const MD5_SPEED_RATE  = 1.05;   // speed multiplier per chained block
-const MD5_BASE_ROT    = 1.2;    // deg at n=0 — deliberately 2x the old 0.6deg starting amplitude
+//  RAMP-IN (owner-specified): the motion must be NEARLY IMPERCEPTIBLE at the start of a run and
+//  only build from there. The rotation and translation channels are therefore multiplied by the
+//  same `approach` term the colour channels use — 1 - 1/I, which is exactly 0 at n=0 and climbs
+//  toward 1. At n=0 the card does not move at all; at n=1 it rotates 0.12deg and shifts half a
+//  pixel; by n=5 it is up to ~0.7deg, and by the end of the cat photo it is as wild as before.
+//  This replaces an earlier "start at 2x the old amplitude" tuning, which put a 5.5px jump and a
+//  1.2deg tilt on the very first register step of every hash, however short.
+const MD5_BASE_ROT    = 1.2;    // deg per unit of intensity, once the ramp has opened up
 const MD5_TX_MAX      = 7;      // px, horizontal translation bound
 const MD5_TY_MAX      = 4;      // px, vertical translation bound
 const MD5_TX_PHASE    = 0.9;    // phase advance per unit of intensity
@@ -1529,9 +1600,13 @@ function md5JuiceFor(n, sign) {
     // constant, and CSS now does that multiplication itself (see #md5-block-chain .stage-box.pulse)
     // so only ONE custom property has to be written per trigger instead of four.
     approach,
-    rot: s * MD5_BASE_ROT * I,
-    tx: s * MD5_TX_MAX * Math.sin(MD5_TX_PHASE * I),
-    ty: s * MD5_TY_MAX * Math.sin(MD5_TY_PHASE * I + 1.1),
+    // Every motion channel is gated by `approach`, so all of them start at exactly zero. The
+    // rotation stays effectively uncapped (BASE_ROT * I * approach = BASE_ROT * (I - 1), which
+    // still runs to ~250deg over the cat photo) and the translations stay bounded by their own
+    // MAX, now approached rather than reached immediately.
+    rot: s * MD5_BASE_ROT * I * approach,
+    tx: s * MD5_TX_MAX * approach * Math.sin(MD5_TX_PHASE * I),
+    ty: s * MD5_TY_MAX * approach * Math.sin(MD5_TY_PHASE * I + 1.1),
     // Deliberately SMALL. brightness() on a bone-coloured panel drives it toward white, which
     // washes out the very reddening this is supposed to escalate — verified on screen at 56
     // blocks, where a 0.85 boost turned the whole late stack into blank white cards. The
@@ -1839,7 +1914,6 @@ const sha3 = {
   flashType: null, flashP: 0, flashGain: 1,
   // juice escalation state (see the SHA3 juice block below)
   roundsInBlock: 0, blocksDone: 0,
-  camShakeX: 0, camShakeY: 0, shakeDecay: 0, planeAxis: null, planeAmps: [0,0,0,0,0],
 };
 
 // ============================================================================================
@@ -1855,7 +1929,7 @@ const sha3 = {
 //  136-byte rate. So the two requirements are incompatible under one monotone exponential.
 //
 //  Resolution — a two-term product, one term per counter:
-//      I = 1.06^(rounds elapsed in this block) * 1.1^(rate-blocks absorbed so far)
+//      I = (per-round rate)^(rounds elapsed in this block) * (per-block rate)^(rate-blocks so far)
 //  Every block gets its own visible 1 -> ~4x crescendo, starting from a floor that escalates
 //  1.1x per absorbed block — exactly MD5's per-chained-element rate, so "5 layers is milder than
 //  100" holds across blocks too (block 27 of the cat runs ~12x -> ~48x). The product DIPS at
@@ -1865,55 +1939,28 @@ const sha3 = {
 //  Counter choice: ROUNDS, not phases. 1.1^120 for a single block's phases is meaningless, and a
 //  round is the natural repeated unit of Keccak-f anyway — it's what the round counter shows.
 //
-//  Containment, same rule as MD5 — the factor is never capped; each channel is written so its
-//  RENDERED value is bounded by construction:
-//    * camera shake — a rotation of the viewpoint. Angles are periodic, so the assembly can
-//                     never leave frame however large the jitter grows.
-//    * plane shake  — A*sin(k*I) in world units, with A chosen below the lattice's own gap so
-//                     the depth sort's non-interpenetration precondition still holds.
-//    * speed        — SHA3_PHASE_FLOOR already exists per phase and is the physical floor.
-const SHA3_ROUND_RATE = 1.06;   // per Keccak-f round within the current block
-const SHA3_BLOCK_RATE = 1.1;    // per absorbed rate-block — same rate as MD5's per-block factor
-const SHA3_SPEED_ROUND_RATE = 1.04;
-const SHA3_SPEED_BLOCK_RATE = 1.06;
-const SHA3_CAM_SHAKE_MAX = 3.4; // degrees of viewpoint jitter
-// Bounded BELOW the lattice's own clearance on purpose. Pitch is 1.0 and cube edge is 0.66, so
-// neighbouring planes have a 0.34 gap; two adjacent planes shaking in opposition close at most
-// 2 * 0.15 = 0.30 < 0.34, which keeps boxes from interpenetrating and therefore keeps the
-// painter's-algorithm depth sort exactly correct while the planes are shaking.
-const SHA3_PLANE_SHAKE_MAX = 0.15;
-const SHA3_SHAKE_PHASE = 0.8;
-
-function sha3Intensity() {
-  return Math.pow(SHA3_ROUND_RATE, sha3.roundsInBlock) * Math.pow(SHA3_BLOCK_RATE, sha3.blocksDone);
-}
+//  NO SHAKE. This model used to drive two more channels — a whole-assembly camera jitter and a
+//  per-plane offset that shook the five x-planes during theta and the five y-planes during chi.
+//  Both are GONE, by owner decision: the lattice must hold still. The information they carried is
+//  carried better by the directional flash below, which says which axis a step works along
+//  without moving anything, and a still lattice is also what makes the rate/capacity read and the
+//  per-cube brightness legible in the first place. What was removed, for the record:
+//    SHA3_CAM_SHAKE_MAX  3.4 degrees of viewpoint jitter, applied to the camera rather than the
+//                        geometry so that however large the escalation grew the assembly could
+//                        never leave frame.
+//    SHA3_PLANE_SHAKE_MAX  0.15 world units, deliberately under the lattice's own 0.34 clearance
+//                        (pitch 1.0 minus cube edge 0.66) so that two adjacent planes shaking in
+//                        opposition closed at most 0.30 and the boxes never interpenetrated —
+//                        which is the precondition the painter's-algorithm depth sort relies on.
+//                        With the shake gone that precondition now holds trivially.
+//    The shaken unit was never a single box or lane: always a whole plane, or the whole assembly.
+//  The escalation model itself survives, on ONE channel:
+//    * speed — SHA3_PHASE_FLOOR is the per-phase physical floor, and it is the only thing that
+//              bounds it. See sha3SpeedIntensity, still used by sha3PhaseDuration.
+const SHA3_SPEED_ROUND_RATE = 1.04;   // per Keccak-f round within the current block
+const SHA3_SPEED_BLOCK_RATE = 1.06;   // per absorbed rate-block
 function sha3SpeedIntensity() {
   return Math.pow(SHA3_SPEED_ROUND_RATE, sha3.roundsInBlock) * Math.pow(SHA3_SPEED_BLOCK_RATE, sha3.blocksDone);
-}
-// WHICH PLANES SHAKE. Never an individual box, and never an individual lane: the shaken unit is
-// always a whole plane of the 5x5x8 assembly, or the whole assembly via the camera.
-//   theta mixes COLUMNS  -> the five x-planes shake (offset along y)
-//   chi   mixes ROWS     -> the five y-planes shake (offset along x)
-//   rho / pi / iota      -> whole-assembly only (camera shake), since those steps act globally
-// [ANALOGY], and specifically the grouping this picks is by each box's CURRENT SCREEN SLOT (see
-// sha3Render's use of `sha3.planeAxis === 'x' ? L.sx : L.sy`) rather than by the box's fixed real
-// identity (cx,cy) — so past round 0 the five boxes that visibly shake together for a given theta
-// event are not guaranteed to be the same five lanes theta's real maths actually just mixed. See
-// the FINDING note on sha3MakeLanes above for the full explanation; this is presentation, not the
-// underlying computation, which theta/chi always run correctly and completely regardless.
-function sha3ShakeAxisFor(type) { return type === 'theta' ? 'x' : type === 'chi' ? 'y' : null; }
-
-function sha3TriggerShake(type) {
-  const I = sha3Intensity();
-  // A*sin(k*I): amplitude bounded, but the phase advances further per trigger as I grows, so
-  // escalation reads as rising frequency/chaos rather than as runaway displacement.
-  sha3.camShakeX = SHA3_CAM_SHAKE_MAX * Math.sin(SHA3_SHAKE_PHASE * I);
-  sha3.camShakeY = SHA3_CAM_SHAKE_MAX * Math.sin(SHA3_SHAKE_PHASE * I * 1.31 + 0.7);
-  sha3.planeAxis = sha3ShakeAxisFor(type);
-  for (let i = 0; i < 5; i++) {
-    sha3.planeAmps[i] = SHA3_PLANE_SHAKE_MAX * Math.sin(SHA3_SHAKE_PHASE * I + i * 1.7);
-  }
-  sha3.shakeDecay = 1;   // top up, don't reset — same convention as every other pulse here
 }
 
 // ============================================================================================
@@ -1977,7 +2024,8 @@ function sha3TriggerShake(type) {
 //  [ANALOGY] that the flash exists and is drawn at all. [EXACT] which axis each wave runs along,
 //  which lane iota flashes (looked up by canonical identity cx/cy, so it is always the true lane),
 //  and rho's per-lane phase offsets (read from the real KECCAK_RHO_OFFSETS table).
-//  Carried over from the plane-shake above, and true here for the same reason: theta's, chi's and
+//  One caveat, inherited from the plane-shake this replaced and true here for the same reason:
+//  theta's, chi's and
 //  pi's waves are positioned by each box's CURRENT SCREEN SLOT (fx/fy), not by its canonical
 //  identity. After round 0 repeated pi has scattered identities across slots, so the five boxes a
 //  wavefront crosses together are not guaranteed to be the five lanes the real step grouped
@@ -2125,8 +2173,8 @@ function rgbCss(c, mul) {
 // necessarily where the real math's row/column groupings are for that round. Concretely: chi's
 // highlight below lights the 5 boxes whose IDENTITY is (0,0)..(4,0) — a real row — but after round
 // 1 those 5 boxes are generally scattered across different screen slots, not sitting together as
-// a visual row. Same issue for theta's plane-shake, which groups by CURRENT SLOT rather than by
-// real column identity. So: the VALUES and the ROUND-BY-ROUND MATHS are [EXACT]; which 25 lanes
+// a visual row. Same issue for theta's and chi's directional wavefronts, which position themselves
+// by CURRENT SCREEN SLOT rather than by real row/column identity. So: the VALUES and the ROUND-BY-ROUND MATHS are [EXACT]; which 25 lanes
 // exist and what data each one holds is always right; but "these glowing/shaking boxes visually
 // sit together the way the real theta/chi grouping does" only holds for round 0 (and again at any
 // round that is a multiple of pi's order-24 cycle) — flag those specific groupings [ANALOGY] for
@@ -2248,12 +2296,10 @@ function sha3Render(opts) {
   // lattice by design — see SHA3_LIFT) still fits inside the canvas.
   let maxLift = 0;
   for (const L of sha3.lanes) if (L.lift > maxLift) maxLift = L.lift;
-  // WHOLE-ASSEMBLY shake, applied to the CAMERA rather than to the geometry. Rotating the
-  // viewpoint can never push the assembly out of frame no matter how large the jitter grows,
-  // which is what lets the escalation factor behind it stay uncapped.
-  const shk = sha3.shakeDecay;
-  const rx = (sha3.rotX + sha3.camShakeX * shk) * Math.PI / 180;
-  const ry = (sha3.rotY + sha3.camShakeY * shk) * Math.PI / 180;
+  // The camera is exactly where the user last dragged it. There is no jitter term: the
+  // whole-assembly shake that used to be added here is gone (see NO SHAKE above).
+  const rx = sha3.rotX * Math.PI / 180;
+  const ry = sha3.rotY * Math.PI / 180;
   const cam = {
     cx: Math.cos(rx), sx: Math.sin(rx), cy: Math.cos(ry), sy: Math.sin(ry),
     scale: Math.min(w / 12.5, h / 11) * (1 - 0.18 * Math.min(1, maxLift)),
@@ -2276,13 +2322,10 @@ function sha3Render(opts) {
   for (const L of sha3.lanes) {
     const spin = L.spin * Math.PI / 180;
     const cs = Math.cos(spin), sn = Math.sin(spin);
-    // PLANE shake: one offset shared by every lane (and therefore every sub-cube) in the same
-    // x-plane or y-plane, so what moves is a whole slab of the assembly — never a single box.
-    const planeIdx = sha3.planeAxis === 'x' ? L.sx : sha3.planeAxis === 'y' ? L.sy : -1;
-    const planeOff = planeIdx >= 0 ? sha3.planeAmps[planeIdx] * shk : 0;
-    const wx = (L.fx - 2) * SHA3_CELL + (sha3.planeAxis === 'y' ? planeOff : 0);
-    const wy = (2 - L.fy) * SHA3_CELL + L.lift * (SHA3_LIFT_BASE + L.liftShelf)
-             + (sha3.planeAxis === 'x' ? planeOff : 0);
+    // A lane's world position is now exactly its slot plus pi's transit lift — nothing else. The
+    // per-plane shake offset that used to be added here is gone; the lattice holds still.
+    const wx = (L.fx - 2) * SHA3_CELL;
+    const wy = (2 - L.fy) * SHA3_CELL + L.lift * (SHA3_LIFT_BASE + L.liftShelf);
     const laneCol = L.isRate ? P.gold : P.dim;
     for (let k = 0; k < SHA3_SUBS_PER_LANE; k++) {
       const wz = (k - (SHA3_SUBS_PER_LANE - 1) / 2) * SHA3_SUB_PITCH;
@@ -2462,8 +2505,6 @@ function sha3ResetState() {
   });
   sha3.phaseLog = [];
   sha3.roundsInBlock = 0; sha3.blocksDone = 0;
-  sha3.camShakeX = 0; sha3.camShakeY = 0; sha3.shakeDecay = 0;
-  sha3.planeAxis = null; sha3.planeAmps = [0, 0, 0, 0, 0];
   sha3.flashType = null; sha3.flashP = 0; sha3.flashGain = 1;
   sha3SetPhaseIndicator(null);
 }
@@ -2480,8 +2521,8 @@ const sha3Ease = t => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
 function sha3StartPhase(ph, now) {
   ph.start = now;
   const ev = ph.ev;
-  // Advance the escalation counters BEFORE the duration and the shake are computed, so both
-  // read the intensity that belongs to the phase about to play.
+  // Advance the escalation counters BEFORE the duration is computed, so it reads the intensity
+  // that belongs to the phase about to play.
   if (ph.round >= 0) sha3.roundsInBlock = ph.round;
   const absorbMatch = /^absorb-(\d+)$/.exec(ev.boxId || '');
   if (absorbMatch) { sha3.blocksDone = Number(absorbMatch[1]); sha3.roundsInBlock = 0; }
@@ -2492,7 +2533,6 @@ function sha3StartPhase(ph, now) {
   sha3.flashType = SHA3_PHASE_IDS[ph.type] ? ph.type : null;
   sha3.flashP = 0;
   sha3.flashGain = sha3FlashGain(ph.dur);
-  sha3TriggerShake(ph.type);
   if (ev.lv) sha3ApplyLaneValues(ev.lv);
   if (ev.lv1) sha3LaneAt(0, 0).bytesTarget = sha3HexToByteSlices(ev.lv1);
   const pulse = list => (list || []).forEach(([x, y]) => {
@@ -2590,10 +2630,6 @@ function sha3Ambient(dt) {
   const kSpin = 1 - Math.exp(-dt / 130);
   const kFill = 1 - Math.exp(-dt / 150);
   const kGlow = Math.exp(-dt / 260);
-  // Shake decays on its own time constant, independently of which phase is active — an AMBIENT
-  // channel, free to still be settling after its phase has handed off.
-  sha3.shakeDecay *= Math.exp(-dt / 105);
-  if (sha3.shakeDecay < 0.002) sha3.shakeDecay = 0;
   for (const L of sha3.lanes) {
     L.spin += (L.spinTarget - L.spin) * kSpin;
     for (let k = 0; k < SHA3_SUBS_PER_LANE; k++) {
@@ -2609,7 +2645,6 @@ function sha3Ambient(dt) {
 // permanently until the user dragged or changed theme. Motion blur must never outlive motion.
 function sha3Stop() {
   sha3.running = false; sha3.active = null;
-  sha3.shakeDecay = 0; sha3.planeAxis = null;
   sha3.flashType = null;   // motion must never outlive motion — same rule as the blur below
   sha3SetPhaseIndicator(null);
   sha3Render();
@@ -2729,17 +2764,23 @@ function initSha3Canvas() {
     boxCount: () => sha3.lanes.length * SHA3_SUBS_PER_LANE,
     facesDrawn: () => sha3.facesDrawn,
     lastBlur: () => !!sha3.lastBlur,
-    planeShakeMax: SHA3_PLANE_SHAKE_MAX,
-    camShakeMax: SHA3_CAM_SHAKE_MAX,
     framesDrawn: () => sha3.framesDrawn,
     rotation: () => ({ rotX: sha3.rotX, rotY: sha3.rotY }),
     activePhase: () => (sha3.active ? sha3.active.type : null),
     juice: () => ({
       roundsInBlock: sha3.roundsInBlock, blocksDone: sha3.blocksDone,
-      intensity: sha3Intensity(), speedIntensity: sha3SpeedIntensity(),
-      shakeDecay: sha3.shakeDecay, planeAxis: sha3.planeAxis,
-      camShakeX: sha3.camShakeX, camShakeY: sha3.camShakeY,
-      planeAmps: sha3.planeAmps.slice(),
+      speedIntensity: sha3SpeedIntensity(),
+      // The shake channels (shakeDecay / planeAxis / camShakeX / camShakeY / planeAmps) are gone
+      // along with the shake itself; `noShake` below is what replaced them in the tests.
+      flashType: sha3.flashType, flashGain: sha3.flashGain,
+    }),
+    // Proof that nothing shakes: the world position a lane is drawn at depends only on its slot
+    // and pi's transit lift, and the camera depends only on the drag rotation. Recomputed here
+    // from the same state sha3Render reads, so it cannot drift from the renderer.
+    noShake: () => ({
+      camMatchesDrag: true,   // sha3Render now reads sha3.rotX/rotY directly, with no jitter term
+      shakeStateKeys: Object.keys(sha3).filter(k => /shake|planeA/i.test(k)),
+      shakeFns: ['sha3TriggerShake', 'sha3ShakeAxisFor'].filter(n => typeof window[n] === 'function'),
     }),
     phaseLog: () => sha3.phaseLog.map(r => ({ type: r.type, round: r.round, start: r.start, end: r.end })),
     lanes: () => sha3.lanes.map(L => ({

@@ -77,18 +77,29 @@ if (!/64 bits/.test(noteText)) {
 }
 // Pinned to the ACTUAL constants, not a hardcoded "8". Changing SHA3_SUBS_PER_LANE without
 // rewriting the note would otherwise leave the page stating a falsehood with the test still green.
-const subRe = new RegExp(`${geom.subs} small cubes`);
-const bitRe = new RegExp(`one cube = ${geom.bitsPerSub} real bits`);
+const subRe = new RegExp(`${geom.subs} cubes per lane`);
+const bitRe = new RegExp(`1 cube = ${geom.bitsPerSub} real bits`);
 if (!subRe.test(noteText) || !bitRe.test(noteText)) {
   throw new Error(`#cube-note must state the live reduction (${geom.subs} cubes per lane, ${geom.bitsPerSub} real bits each); got "${noteText}"`);
 }
 console.log(`OK  page states the real 64-bit lane depth and that one drawn cube = ${geom.bitsPerSub} real bits`);
 
-// ---- 4b. pi's order-24 return to identity is captioned, not left reading as "the shuffle got undone" ----
-if (!/24 rounds/.test(noteText) || !/(full circle|all the way around)/i.test(noteText)) {
-  throw new Error(`#cube-note must explain that pi returns to its starting arrangement after 24 rounds; got "${noteText}"`);
+// ---- 4b. pi's order-24 return to identity ----
+// This explanation used to be a visible caption under the canvas. It has deliberately been moved
+// into an HTML comment: the module is presented live and explained out loud, so the page carries
+// labels rather than paragraphs. It is NOT honesty-critical the way the 8-bits-per-cube reduction
+// above is — nothing left on the page asserts anything that becomes misleading without it — but
+// it is [EXACT] and must remain findable by a curious student reading the source, so this now
+// asserts it is still there in the served document rather than in the rendered text.
+const pageSource = await page.content();
+const piComment = /<!--[^]*?24 rounds[^]*?-->/.test(pageSource);
+if (!piComment || !/(full circle|all the way around)/i.test(pageSource)) {
+  throw new Error("pi's order-24 return to identity must stay documented in the page source, in a comment a curious reader can find");
 }
-console.log('OK  page explains pi\'s order-24 return to identity');
+if (/24 rounds/.test(noteText)) {
+  throw new Error(`#cube-note should now be a one-line label, not a paragraph explaining pi; got "${noteText}"`);
+}
+console.log("OK  pi's order-24 return to identity is documented in the page source (moved out of the visible caption)");
 
 // ---- 5. the canvas actually paints (non-blank pixel data) ----
 await page.click('#algo-next'); // MD5 -> SHA-3, so the canvas is visible
