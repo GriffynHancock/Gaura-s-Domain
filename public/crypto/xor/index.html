@@ -681,7 +681,7 @@ addCard({
       list.innerHTML='';
       decoded.forEach((txt,k)=>{
         const r=document.createElement('button'); r.className='brow-key hot';
-        r.style.animationDelay=(k*5)+'ms';
+        r.style.animationDelay=(k*10)+'ms';
         r.innerHTML='<span class="k">0x'+k.toString(16).padStart(2,'0')+'</span> '+printable(txt).replace(/</g,'&lt;');
         r.onclick=()=>pick(k);
         list.appendChild(r); });
