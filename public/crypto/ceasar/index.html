@@ -305,7 +305,12 @@
   .nl-verdict:focus-visible{outline:2px solid var(--read-on);outline-offset:2px}
   .nl-verdict.nl-collide{border-color:var(--nl-bad);color:var(--nl-bad)}
   .nl-verdict.nl-off{border-color:var(--read-dim);color:var(--read-dim)}
-  .nl-svg{display:block;width:100%;height:auto}
+  /* the expandable window. Same idiom as the encoding module's .blob/.preview: a native
+     `resize:vertical` grabber, no added chrome. Height is re-applied in px by JS from Hu (the
+     viewBox height in user units) so the picture scales uniformly with page width. */
+  .nl-view{display:block;overflow:hidden;resize:vertical}
+  /* --nl-sw scales stroke weights with the y-axis squeeze (see relayout()) */
+  .nl-svg{display:block;width:100%;height:auto;--nl-sw:1}
   .nl-axis{stroke:var(--read-dim);stroke-width:1}
   /* the output line is drawn as a dashed silhouette so unfilled sockets read as HOLES */
   .nl-axis.nl-result{stroke:var(--read-dim);stroke-dasharray:2.5 2.5;opacity:.9}
@@ -321,20 +326,22 @@
   .nl-fly{fill:var(--read-on)}                                 /* stretched / folded laps */
   .nl-fly.nl-dim{fill:var(--read-dim)}
   /* empty sockets on the output line */
-  .nl-shadow{fill:none;stroke:var(--read-dim);stroke-width:.7;opacity:.75}
+  .nl-shadow{fill:none;stroke:var(--read-dim);stroke-width:calc(.7px * var(--nl-sw,1));opacity:.75}
   /* stacked alpha (NOT a blend mode): the ground is dark in both themes, so two threads landing
      on one output visibly build up. multiply would have made them vanish here. */
-  .nl-thread{stroke:var(--nl-in);stroke-width:.8;fill:none;opacity:.45}
-  .nl-thread2{stroke:var(--read-on);stroke-width:.8;fill:none;opacity:.45}
+  .nl-thread{stroke:var(--nl-in);stroke-width:calc(.8px * var(--nl-sw,1));fill:none;opacity:.45}
+  .nl-thread2{stroke:var(--read-on);stroke-width:calc(.8px * var(--nl-sw,1));fill:none;opacity:.45}
   .nl-thread.nl-dim,.nl-thread2.nl-dim{stroke:var(--read-dim);opacity:.22}
   .nl-mk-in{fill:var(--nl-in)}
   .nl-mk-lap{fill:var(--read-on)}
   .nl-mk-dim{fill:var(--read-dim)}
   .nl-rdot{fill:var(--nl-ok)}
   .nl-rdot.nl-clash{fill:var(--nl-bad)}
-  .nl-stack{fill:none;stroke:var(--nl-bad);stroke-width:1.3}
+  .nl-stack{fill:none;stroke:var(--nl-bad);stroke-width:calc(1.3px * var(--nl-sw,1))}
   .nl-rlabel{font-family:var(--mono);font-size:6px;text-anchor:middle;fill:var(--nl-bad);font-weight:700}
-  .nl-foot{display:flex;justify-content:flex-end;margin-top:8px}
+  .nl-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}
+  /* the y-scale pill: same pill as the verdict, dim. Touch path for the resize handle. */
+  .nl-yscale{text-transform:none;letter-spacing:.06em;font-size:.6rem}
   .nl-explainer{font-family:var(--mono);font-size:.7rem;line-height:1.6;color:var(--read-fg);
     border-top:1px solid var(--edge);margin-top:9px;padding-top:10px}
   .nl-explainer[hidden]{display:none}
@@ -670,8 +677,45 @@ function buildNumberLine(container, opts){
   // 5.5px ≈ 17 user units, which is exactly what used to get clipped off the left edge.
   const W=260, GUTTER=24, PADR=10, DOTR=2.3, SPAN=W-GUTTER-PADR, U=SPAN/25;
   const X=i => GUTTER + i*U;
-  const Y_ORIG=14, LAP_TOP=34, LAP_H=11, LAP_MAX=6;
-  const Y_RESULT=LAP_TOP+LAP_H*LAP_MAX+20, H=Y_RESULT+31;
+
+  // ---- VERTICAL LAYOUT IS DERIVED. `Hu` (the viewBox height, in user units) is the single piece
+  // of state that both the resize grabber and the y-scale pill write to. The viewBox width stays
+  // 260 with width:100%/height:auto, so user-unit→pixel scale depends on container WIDTH alone —
+  // changing Hu adds or removes vertical room at a constant scale, it does not rescale the art.
+  // Everything below (row pitch, dot radius, stroke weight) falls out of Hu + the lap count.
+  //
+  // There is NO cap on how many laps are drawn any more. Every lap the current `a` actually
+  // produces is rendered; a big `a` just packs them tighter. (The old LAP_MAX=6 collapse relabelled
+  // the last row "…+650" and drew a picture with six rows in it — a lie at exactly the moment the
+  // stretch is most dramatic.)
+  const Y_ORIG=14, LAP_TOP=34, LAP_GAP=20, BOTTOM=26;   // BOTTOM = ticks + labels + row caption
+  const LAP_H_MAX=11, LAP_H_MIN=2.2;
+  // lap zone = Hu - (LAP_TOP + LAP_GAP + BOTTOM) = Hu - 80, so these steps are exactly 1× / 2× / 4×.
+  const HU_BASE=80, HU_STEPS=[160,240,400], HU_MIN=140, HU_MAX=420;
+  let Hu=HU_STEPS[0];
+  let LY=null;                                          // computed layout, see relayout()
+
+  // Derived layout for `lapCount` rows inside the current window.
+  function relayout(lapCount){
+    const yRes = Hu - BOTTOM;
+    const zone = yRes - LAP_GAP - LAP_TOP;
+    const lapH = Math.max(LAP_H_MIN, Math.min(LAP_H_MAX, zone/Math.max(1,lapCount)));
+    // vs = "vertical squeeze": 1 when rows are at full pitch, ≈0.21 when 26 laps are packed into
+    // the compact window. The brief's specific instruction is that as the y-axis compresses the
+    // DOTS shrink FASTER than the arrows/threads, so the structure (the fan, the collisions) stays
+    // readable while the dots stop dominating. That is two different exponents on the same squeeze
+    // factor — deliberately non-linear, not one uniform scale:
+    //     dots    r ∝ vs^0.75   (loses a lot of size)
+    //     strokes w ∝ vs^0.30   (loses a little)
+    // 0.75 > 0.30 ⇒ at vs=0.25 a dot keeps 35% of its radius while a thread keeps 66% of its width.
+    const vs   = lapH/LAP_H_MAX;
+    const dotR = Math.max(0.85, DOTR*Math.pow(vs,0.75));   // floor: never sub-pixel on a phone
+    const sw   = Math.pow(vs,0.30);
+    LY = {yRes, zone, lapH, vs, dotR, sw, lapCount};
+    return LY;
+  }
+  // worst case is x=25, so the true lap count is a closed form — no loop needed
+  const lapCountFor=(a,b)=>Math.floor((a*25+b)/26)+1;
 
   // ---- guardrail state: OFF for a fresh visitor, but remembered once they switch it on.
   // Own key; deliberately NOT part of ctf-solved:v2:caesar or caesar-unlocks.
@@ -694,11 +738,19 @@ function buildNumberLine(container, opts){
   right.appendChild(verdict);
   cap.appendChild(formula); cap.appendChild(right); root.appendChild(cap);
 
-  const svg=el("svg",{class:"nl-svg",viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:"xMidYMid meet"});
-  root.appendChild(svg);
+  // the SVG lives in an expandable window (native resize grabber — no extra chrome)
+  const view=document.createElement("div"); view.className="nl-view";
+  const svg=el("svg",{class:"nl-svg",viewBox:`0 0 ${W} ${Hu}`,preserveAspectRatio:"xMidYMid meet"});
+  view.appendChild(svg); root.appendChild(view);
 
   // ---- explainer (hidden by default; state is not persisted, by design) ----
   const foot=document.createElement("div"); foot.className="nl-foot";
+  // y-scale pill: one-tap presets for the same Hu the grabber drags. It exists because a CSS
+  // resize corner is close to unusable on a phone, and this room is phone-native.
+  const yBtn=document.createElement("button"); yBtn.type="button";
+  yBtn.className="nl-verdict nl-off nl-yscale";
+  yBtn.setAttribute("aria-label","vertical scale of the number-line window");
+  foot.appendChild(yBtn);
   const expLbl=document.createElement("label"); expLbl.className="nl-guard";
   const expCb=document.createElement("input"); expCb.type="checkbox";
   expLbl.appendChild(expCb); expLbl.appendChild(document.createTextNode("explainer"));
@@ -729,35 +781,56 @@ function buildNumberLine(container, opts){
   // dynamic <g>s every frame, so these live directly on the <svg>, never inside a group.
   // SVG markers don't inherit the referencing line's stroke, so there is one marker per colour.
   const defs=el("defs",{});
+  const markers=[];
   [["nlArrIn","nl-mk-in"],["nlArrLap","nl-mk-lap"],["nlArrDim","nl-mk-dim"]].forEach(([id,cls])=>{
     const mk=el("marker",{id:id,markerUnits:"userSpaceOnUse",markerWidth:3.4,markerHeight:3.4,
       refX:3.2,refY:1.7,orient:"auto"});
-    mk.appendChild(el("path",{class:cls,d:"M0,0 L3.2,1.7 L0,3.4 Z"}));
-    defs.appendChild(mk);
+    const pa=el("path",{class:cls,d:"M0,0 L3.2,1.7 L0,3.4 Z"});
+    mk.appendChild(pa); defs.appendChild(mk); markers.push([mk,pa]);
   });
   svg.appendChild(defs);
 
-  // ---- static scaffold ----
-  svg.appendChild(el("line",{class:"nl-axis",x1:GUTTER,y1:Y_ORIG,x2:W-PADR,y2:Y_ORIG}));
-  for(let i=0;i<26;i++) svg.appendChild(el("circle",{class:"nl-dot",cx:X(i),cy:Y_ORIG,r:DOTR}));
-  svg.appendChild(el("rect",{class:"nl-band",x:GUTTER-2,y:Y_RESULT-6,width:SPAN+4,height:12,rx:2}));
-  // dashed silhouette + 26 empty sockets: when the map isn't injective the HOLES are the lesson
-  svg.appendChild(el("line",{class:"nl-axis nl-result",x1:GUTTER,y1:Y_RESULT,x2:W-PADR,y2:Y_RESULT}));
-  for(let i=0;i<26;i++) svg.appendChild(el("circle",{class:"nl-shadow",cx:X(i),cy:Y_RESULT,r:DOTR+0.5}));
-  // every integer 0–25 is labelled; staggered onto two rows so 26 labels fit at 360px wide
-  for(let i=0;i<26;i++){
-    const odd=i%2===1;
-    svg.appendChild(el("line",{class:"nl-tick",x1:X(i),y1:Y_RESULT+3,x2:X(i),y2:Y_RESULT+(odd?9.5:5)}));
-    svg.appendChild(el("text",{class:"nl-tlabel",x:X(i),y:Y_RESULT+(odd?17.5:13)})).textContent=i;
-  }
-  svg.appendChild(el("text",{class:"nl-rowlbl",x:GUTTER,y:Y_RESULT+27})).textContent="output (a·x+b) mod 26";
-
+  // ---- scaffold: static for a given (Hu, lapH) but NOT for the life of the page, since both the
+  // window height and the row pitch move. Rebuilt only when that signature changes — never per
+  // frame. Lives in its own <g> so paint()'s per-frame wipes can't touch it.
+  const gStatic=el("g",{}); svg.appendChild(gStatic);
   const gLapBands=el("g",{}); svg.appendChild(gLapBands);
   const gThreads=el("g",{}); svg.appendChild(gThreads);
   const gFly=el("g",{}); svg.appendChild(gFly);
   const gResult=el("g",{}); svg.appendChild(gResult);
 
-  const lapY=lap => LAP_TOP + Math.min(lap,LAP_MAX-1)*LAP_H + LAP_H/2;
+  let staticKey="";
+  function drawStatic(){
+    const key=Hu.toFixed(2)+"|"+LY.lapH.toFixed(3);
+    if(key===staticKey) return; staticKey=key;
+    const yR=LY.yRes, r=LY.dotR;
+    svg.setAttribute("viewBox",`0 0 ${W} ${Hu}`);
+    svg.style.setProperty("--nl-sw", LY.sw.toFixed(3));
+    // arrowheads are userSpaceOnUse, so they take the same stroke-scale as the threads they cap
+    const k=LY.sw;
+    markers.forEach(([mk,pa])=>{
+      mk.setAttribute("markerWidth",(3.4*k).toFixed(3)); mk.setAttribute("markerHeight",(3.4*k).toFixed(3));
+      mk.setAttribute("refX",(3.2*k).toFixed(3)); mk.setAttribute("refY",(1.7*k).toFixed(3));
+      pa.setAttribute("d",`M0,0 L${(3.2*k).toFixed(3)},${(1.7*k).toFixed(3)} L0,${(3.4*k).toFixed(3)} Z`);
+    });
+    gStatic.textContent="";
+    gStatic.appendChild(el("line",{class:"nl-axis",x1:GUTTER,y1:Y_ORIG,x2:W-PADR,y2:Y_ORIG}));
+    for(let i=0;i<26;i++) gStatic.appendChild(el("circle",{class:"nl-dot",cx:X(i),cy:Y_ORIG,r:r}));
+    gStatic.appendChild(el("rect",{class:"nl-band",x:GUTTER-2,y:yR-6,width:SPAN+4,height:12,rx:2}));
+    // dashed silhouette + 26 empty sockets: when the map isn't injective the HOLES are the lesson
+    gStatic.appendChild(el("line",{class:"nl-axis nl-result",x1:GUTTER,y1:yR,x2:W-PADR,y2:yR}));
+    for(let i=0;i<26;i++) gStatic.appendChild(el("circle",{class:"nl-shadow",cx:X(i),cy:yR,r:r+0.5}));
+    // Every integer 0–25 is labelled on ONE row. The pitch is SPAN/25 = 9.04 user units and a
+    // two-digit label at 6px mono is ~7.2 wide, so a single row fits with clearance to spare —
+    // the old two-row stagger was solving a problem that wasn't there.
+    for(let i=0;i<26;i++){
+      gStatic.appendChild(el("line",{class:"nl-tick",x1:X(i),y1:yR+3,x2:X(i),y2:yR+6}));
+      gStatic.appendChild(el("text",{class:"nl-tlabel",x:X(i),y:yR+13})).textContent=i;
+    }
+    gStatic.appendChild(el("text",{class:"nl-rowlbl",x:GUTTER,y:yR+22})).textContent="output (a·x+b) mod 26";
+  }
+
+  const lapY=lap => LAP_TOP + lap*LY.lapH + LY.lapH/2;
   // pull the arrow tip back along the segment by `by` user units (0 = tip lands ON the dot)
   function shorten(x1,y1,x2,y2,by){
     const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy);
@@ -774,7 +847,30 @@ function buildNumberLine(container, opts){
       if(lap>trueMax) trueMax=lap;
       rows.push({ i, lap, lapX:X(out), lapY:lapY(lap), outX:X(out), out, clash:counts[out]>1 });
     }
-    return { a, b, rows, counts, maxLap:Math.min(LAP_MAX-1,trueMax), trueMax, invertible:gcd(a,26)===1 };
+    return { a, b, rows, counts, maxLap:trueMax, trueMax, invertible:gcd(a,26)===1 };
+  }
+
+  // Lap bands + "+26 / +52 / …" labels. Static for a given (a, layout) — hoisted OUT of paint()
+  // so a knob drag isn't creating 52 extra nodes 60×/sec at a=25.
+  function drawLaps(){
+    gLapBands.textContent="";
+    const h=LY.lapH, n=cur.maxLap;
+    // At a dense pitch the dashed row rects and every-row labels turn to mush. Thinning the
+    // LABELS (always first and last) declutters without lying — every row is still drawn, and the
+    // count is still readable off the last label. Rects are dropped below 5u for the same reason.
+    const showBands=h>=5, every=h>=7?1:Math.ceil(7/h);
+    // The LAST row is always labelled — "+650" is how you read the true lap count straight off the
+    // picture — so if the thinning grid lands within 2 rows of it, the grid label yields, not the last.
+    const shown=new Set(); for(let L=0;L<=n;L+=every) shown.add(L);
+    shown.forEach(L=>{ if(L!==n && n-L<2) shown.delete(L); }); shown.add(n);
+    for(let L=0;L<=n;L++){
+      const y=lapY(L);
+      if(showBands) gLapBands.appendChild(el("rect",{class:"nl-lapband",x:GUTTER-2,y:y-h/2+1,width:SPAN+4,height:Math.max(1,h-2),rx:2}));
+      if(shown.has(L)){
+        const ll=el("text",{class:"nl-laplbl",x:GUTTER-4,y:y+h*0.19,style:"font-size:"+Math.min(5.5,Math.max(3.2,h*0.62)).toFixed(2)+"px"});
+        ll.textContent="+"+(L*26); gLapBands.appendChild(ll);
+      }
+    }
   }
 
   let disp=[], cur=null, raf=0;
@@ -791,36 +887,30 @@ function buildNumberLine(container, opts){
   }
 
   function paint(){
-    const m=cur, rows=m.rows;
-    gLapBands.textContent=""; gThreads.textContent=""; gFly.textContent=""; gResult.textContent="";
-    for(let L=0;L<=m.maxLap;L++){
-      const y=lapY(L);
-      gLapBands.appendChild(el("rect",{class:"nl-lapband",x:GUTTER-2,y:y-LAP_H/2+1,width:SPAN+4,height:LAP_H-2,rx:2}));
-      const last=(L===LAP_MAX-1 && m.trueMax>LAP_MAX-1);
-      const ll=el("text",{class:"nl-laplbl",x:GUTTER-4,y:y+2}); ll.textContent=last?("…+"+(m.trueMax*26)):("+"+(L*26));
-      gLapBands.appendChild(ll);
-    }
+    const m=cur, rows=m.rows, R=LY.dotR, yR=LY.yRes, k=LY.sw;
+    gThreads.textContent=""; gFly.textContent=""; gResult.textContent="";
     const byOut={}; rows.forEach(r=>{(byOut[r.out]=byOut[r.out]||[]).push(r);});
     rows.forEach((r,i)=>{
       const d=disp[i]||{lx:r.lapX,ly:r.lapY,ox:r.outX}, dim=guardOn && r.clash;
       // segment 1 (blue): input → lap dot. Tip stops at the lap dot's edge.
-      const a1=shorten(X(r.i),Y_ORIG,d.lx,d.ly,DOTR+0.8);
+      const a1=shorten(X(r.i),Y_ORIG,d.lx,d.ly,R+0.8*k);
       gThreads.appendChild(el("line",{class:"nl-thread"+(dim?" nl-dim":""),x1:X(r.i),y1:Y_ORIG,x2:a1[0],y2:a1[1],
         "marker-end":"url(#"+(dim?"nlArrDim":"nlArrIn")+")"}));
       // segment 2 (amber): lap dot → output. On a COLLISION the tip lands ON the output dot so the
       // pile-up is visible without the guardrail having to say so; otherwise it stops just short.
-      const a2=shorten(d.lx,d.ly,d.ox,Y_RESULT, r.clash?0:(DOTR+2.2));
+      const a2=shorten(d.lx,d.ly,d.ox,yR, r.clash?0:(R+2.2*k));
       gThreads.appendChild(el("line",{class:"nl-thread2"+(dim?" nl-dim":""),x1:d.lx,y1:d.ly,x2:a2[0],y2:a2[1],
         "marker-end":"url(#"+(dim?"nlArrDim":"nlArrLap")+")"}));
-      gFly.appendChild(el("circle",{class:"nl-fly"+(dim?" nl-dim":""),cx:d.lx,cy:d.ly,r:DOTR}));
+      gFly.appendChild(el("circle",{class:"nl-fly"+(dim?" nl-dim":""),cx:d.lx,cy:d.ly,r:R}));
     });
-    Object.keys(byOut).forEach(k=>{
-      const out=+k, grp=byOut[k], clash=grp.length>1, rx=X(out);
+    Object.keys(byOut).forEach(key=>{
+      const out=+key, grp=byOut[key], clash=grp.length>1, rx=X(out);
       // green/red are independent of the guardrail — the guardrail only adds the ×N rings + dimming
-      gResult.appendChild(el("circle",{class:"nl-rdot"+(clash?" nl-clash":""),cx:rx,cy:Y_RESULT,r:DOTR+0.5}));
+      gResult.appendChild(el("circle",{class:"nl-rdot"+(clash?" nl-clash":""),cx:rx,cy:yR,r:R+0.5}));
       if(guardOn && clash){
-        gResult.appendChild(el("circle",{class:"nl-stack",cx:rx,cy:Y_RESULT,r:DOTR+2.6}));
-        const c=el("text",{class:"nl-rlabel",x:rx,y:Y_RESULT-5}); c.textContent="×"+grp.length; gResult.appendChild(c);
+        gResult.appendChild(el("circle",{class:"nl-stack",cx:rx,cy:yR,r:R+2.6*k}));
+        // the ×N caption keeps its own size: it is the guardrail's whole message, not decoration
+        const c=el("text",{class:"nl-rlabel",x:rx,y:yR-(R+3.4)}); c.textContent="×"+grp.length; gResult.appendChild(c);
       }
     });
   }
@@ -842,7 +932,10 @@ function buildNumberLine(container, opts){
 
   function update(a,b){
     a=((Math.round(a)%26)+26)%26; b=((Math.round(b)%26)+26)%26;
-    cur=targets(a,b); setCaption();
+    // layout FIRST: targets() reads lapY(), which reads LY.lapH
+    relayout(lapCountFor(a,b));
+    drawStatic();
+    cur=targets(a,b); setCaption(); drawLaps();
     if(disp.length!==26) disp=cur.rows.map(r=>({lx:X(r.i),ly:Y_ORIG,ox:X(r.i)}));   // first mount: spread in from the input row
     if(!raf) raf=requestAnimationFrame(loop);
   }
@@ -853,6 +946,39 @@ function buildNumberLine(container, opts){
     if(cur){ setCaption(); paint(); }
     if(opts.onGuard) opts.onGuard(guardOn);
   });
+
+  // ---- the expandable window: Hu ⇄ the wrapper's pixel height ----------------------------
+  // Hu is authoritative. Width changes re-derive the px height from Hu (so the drawing scales
+  // uniformly); a drag of the native grabber is the only thing that writes Hu back.
+  const fmtStep=v => (Math.round(v*10)/10).toString();
+  function setYLabel(){ yBtn.textContent="y "+fmtStep((Hu-HU_BASE)/HU_BASE)+"×"; }
+  function applyHeight(){
+    const w=view.clientWidth||1;
+    view.style.minHeight=Math.round(HU_MIN*w/W)+"px";
+    view.style.maxHeight=Math.round(HU_MAX*w/W)+"px";
+    view.style.height   =Math.round(Hu   *w/W)+"px";
+  }
+  function setHu(v){
+    v=Math.max(HU_MIN,Math.min(HU_MAX,v));
+    if(Math.abs(v-Hu)<0.5) return;
+    Hu=v; setYLabel();
+    if(cur) update(cur.a,cur.b);          // re-runs relayout/drawStatic and eases to the new geometry
+  }
+  yBtn.addEventListener('click', ()=>{
+    const next=HU_STEPS.find(s=>s>Hu+1) || HU_STEPS[0];
+    setHu(next); applyHeight();
+  });
+  let lastW=0, lastH=0;
+  if(typeof ResizeObserver!=="undefined"){
+    new ResizeObserver(()=>{
+      const w=view.clientWidth, h=view.clientHeight;
+      if(!w) return;
+      if(Math.abs(w-lastW)>0.5){ lastW=w; applyHeight(); lastH=view.clientHeight; return; }
+      if(Math.abs(h-lastH)>1){ lastH=h; setHu(h*W/w); }        // user dragged the grabber
+    }).observe(view);
+  }
+  setYLabel(); applyHeight();
+
   return { update, getGuard: ()=>guardOn };
 }
 
@@ -958,7 +1084,7 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
   let numline = null;
   if(type==='affine' && numlineEl){
     const riddleHTML = 'The <b>stretch (×)</b> hides in a riddle — it is <b>'
-      + (A_CLUES[keys[0]] || ('the number '+keys[0])) + '</b>. Land that, then nudge the <b>slide (+)</b> until the static reads a flag.';
+      + (A_CLUES[keys[0]] || ('the number '+keys[0])) + '</b>.';
     numline = buildNumberLine(numlineEl, { riddle: riddleHTML, guard: false, onGuard: ()=>render(false) });
   }
 
