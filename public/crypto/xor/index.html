@@ -218,12 +218,15 @@
   .dc.hit{color:#bfe9cd; background:#3f7d5233}
   .posr{width:100%; margin:10px 0 4px; accent-color:var(--accent)}
 
-  .submit{display:flex; gap:9px; margin-top:18px; flex-wrap:wrap; align-items:center}
+  /* No `align-items` here on purpose: the default `stretch` is what makes the button exactly as
+     tall as the field beside it. `align-items:center` used to sit here, and because the button
+     carries no vertical padding it collapsed to its line-height (18px) next to a 45px input. */
+  .submit{display:flex; gap:9px; margin-top:18px; flex-wrap:wrap}
   .submit input{flex:1; min-width:150px; font-family:var(--mono); font-size:1rem; color:var(--read-on);
     background:var(--read-bg); border:1px solid #000; border-radius:6px; padding:11px 13px; box-shadow:0 0 0 1px var(--edge)}
   .submit input:focus{outline:none; box-shadow:0 0 0 1px var(--accent)}
   .submit .check{font-family:var(--mono); font-weight:700; font-size:.86rem; cursor:pointer; color:#fff;
-    background:var(--accent); border:none; border-radius:6px; padding:0 18px}
+    background:var(--accent); border:none; border-radius:6px; padding:0 18px; min-height:44px}
   .verdict{font-family:var(--mono); font-size:.76rem; margin-top:9px; min-height:1.1em; color:var(--dim)}
   .verdict.ok{color:var(--ok)} .verdict.no{color:var(--accent)}
 

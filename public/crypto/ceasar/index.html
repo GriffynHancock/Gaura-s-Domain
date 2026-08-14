@@ -317,6 +317,10 @@
   .nl-tick{stroke:var(--read-dim);stroke-width:.7}
   /* the 26 output labels ARE the lesson (which sockets are empty) — never --read-dim here */
   .nl-tlabel{fill:var(--read-tick);font-family:var(--mono);font-size:6px;text-anchor:middle}
+  /* the input row's own number line: same axis/ticks/labels as the output row, recoloured to the
+     input blue. No shadow-socket rule — the input row never draws them (see drawStatic). */
+  .nl-axis.nl-inrow,.nl-tick.nl-inrow{stroke:var(--nl-in)}
+  .nl-tlabel.nl-inrow{fill:var(--nl-in)}
   .nl-band{fill:#f0bb4d0e;stroke:#f0bb4d26;stroke-width:1}
   .nl-lapband{fill:none;stroke:var(--read-dim);stroke-width:.6;stroke-dasharray:2 2;opacity:.55}
   .nl-rowlbl{fill:var(--read-dim);font-family:var(--mono);font-size:6px;letter-spacing:.1em;text-transform:uppercase}
@@ -359,7 +363,7 @@
     background:#000; border:1px solid var(--edge); border-radius:6px; padding:11px 13px}
   .ubar input:focus{outline:none; box-shadow:0 0 0 1px var(--signal)}
   .ubar button{font-family:var(--mono); font-weight:700; cursor:pointer; color:#fff; background:var(--accent,#b23a26);
-    border:none; border-radius:6px; padding:0 18px}
+    border:none; border-radius:6px; padding:0 18px; min-height:44px}
   .uverdict{font-family:var(--mono); font-size:.72rem; margin-top:9px; min-height:1em; color:var(--dim)}
   .uverdict.ok{color:var(--lamp)} .uverdict.no{color:var(--accent,#b23a26)}
   .uwall{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px}
@@ -688,15 +692,33 @@ function buildNumberLine(container, opts){
   // produces is rendered; a big `a` just packs them tighter. (The old LAP_MAX=6 collapse relabelled
   // the last row "…+650" and drew a picture with six rows in it — a lie at exactly the moment the
   // stretch is most dramatic.)
-  const Y_ORIG=14, LAP_TOP=34, LAP_GAP=20, BOTTOM=26;   // BOTTOM = ticks + labels + row caption
+  // Y_ORIG leaves room ABOVE the input row for its own ticks + labels (see drawStatic) — the
+  // input line is a full number line too, just drawn upwards so nothing collides with the
+  // threads that drop out of it.
+  const Y_ORIG=17, LAP_TOP=34, LAP_GAP=20, BOTTOM=26;   // BOTTOM = ticks + labels + row caption
   const LAP_H_MAX=11, LAP_H_MIN=2.2;
-  // lap zone = Hu - (LAP_TOP + LAP_GAP + BOTTOM) = Hu - 80, so these steps are exactly 1× / 2× / 4×.
-  const HU_BASE=80, HU_STEPS=[160,240,400], HU_MIN=140, HU_MAX=420;
-  let Hu=HU_STEPS[0];
+  // lap zone = Hu - (LAP_TOP + LAP_GAP + BOTTOM) = Hu - HU_BASE, which is what the pill's "×"
+  // readout reports: HU_FIXED (160) is exactly 1× that zone. (The old 160/240/400 preset cycle is
+  // gone — auto mode gives the right height for free, so the presets had nothing left to buy.)
+  const HU_BASE=80, HU_FIXED=160, HU_MIN=140, HU_MAX=420;
+
+  // ---- two window modes. DEFAULT (yScale=false) is "bottomed out": the frame hugs the picture,
+  // every lap keeps full pitch, and the output line sits directly under the last lap — no void
+  // between them, which is how this read before the fixed window was introduced. Turning the pill
+  // on switches to a FIXED window, where however many laps there are get squeezed to fit it: that
+  // is the "whole graph compressed" view, and it is opt-in because at small `a` it is mostly empty.
+  // The height for n laps at full pitch is exact — lap zone = Hu - 80 (see above).
+  const HU_FIT = n => LAP_TOP + n*LAP_H_MAX + LAP_GAP + BOTTOM;   // n=1 → 91, n=26 → 366, both < HU_MAX
+  let yScale=false;                                     // NOT persisted, deliberately (cf. the explainer)
+  let huManual=HU_FIXED;                                // the fixed window's height; the grabber writes it
+  let Hu=HU_FIT(1);
   let LY=null;                                          // computed layout, see relayout()
 
   // Derived layout for `lapCount` rows inside the current window.
   function relayout(lapCount){
+    // In auto mode Hu is an OUTPUT of the lap count, not state. applyHeight() must follow any call
+    // that moves it, or the viewBox grows inside a stale pixel box and the void comes back.
+    if(!yScale) Hu = Math.min(HU_MAX, HU_FIT(lapCount));
     const yRes = Hu - BOTTOM;
     const zone = yRes - LAP_GAP - LAP_TOP;
     const lapH = Math.max(LAP_H_MIN, Math.min(LAP_H_MAX, zone/Math.max(1,lapCount)));
@@ -745,10 +767,12 @@ function buildNumberLine(container, opts){
 
   // ---- explainer (hidden by default; state is not persisted, by design) ----
   const foot=document.createElement("div"); foot.className="nl-foot";
-  // y-scale pill: one-tap presets for the same Hu the grabber drags. It exists because a CSS
-  // resize corner is close to unusable on a phone, and this room is phone-native.
+  // y-scale pill: a switch between the bottomed-out default and the fixed (compressed) window.
+  // It is a one-tap control because a CSS resize corner is close to unusable on a phone, and this
+  // room is phone-native — the grabber is the same setting, dragged.
   const yBtn=document.createElement("button"); yBtn.type="button";
   yBtn.className="nl-verdict nl-off nl-yscale";
+  yBtn.setAttribute("role","switch");
   yBtn.setAttribute("aria-label","vertical scale of the number-line window");
   foot.appendChild(yBtn);
   const expLbl=document.createElement("label"); expLbl.className="nl-guard";
@@ -814,7 +838,16 @@ function buildNumberLine(container, opts){
       pa.setAttribute("d",`M0,0 L${(3.2*k).toFixed(3)},${(1.7*k).toFixed(3)} L0,${(3.4*k).toFixed(3)} Z`);
     });
     gStatic.textContent="";
-    gStatic.appendChild(el("line",{class:"nl-axis",x1:GUTTER,y1:Y_ORIG,x2:W-PADR,y2:Y_ORIG}));
+    // ---- input row: the SAME number line as the output row, recoloured to the input blue and
+    // drawn UPWARDS (ticks and labels above the dots) so it never collides with the threads
+    // dropping out of them. That sameness is the lesson: the identical 26 slots go in as come out,
+    // and the map either fills them all or doesn't. Deliberately NO shadow sockets here — every
+    // input is always present, so an empty socket on this row would teach something false.
+    gStatic.appendChild(el("line",{class:"nl-axis nl-inrow",x1:GUTTER,y1:Y_ORIG,x2:W-PADR,y2:Y_ORIG}));
+    for(let i=0;i<26;i++){
+      gStatic.appendChild(el("line",{class:"nl-tick nl-inrow",x1:X(i),y1:Y_ORIG-3,x2:X(i),y2:Y_ORIG-6}));
+      gStatic.appendChild(el("text",{class:"nl-tlabel nl-inrow",x:X(i),y:Y_ORIG-8})).textContent=i;
+    }
     for(let i=0;i<26;i++) gStatic.appendChild(el("circle",{class:"nl-dot",cx:X(i),cy:Y_ORIG,r:r}));
     gStatic.appendChild(el("rect",{class:"nl-band",x:GUTTER-2,y:yR-6,width:SPAN+4,height:12,rx:2}));
     // dashed silhouette + 26 empty sockets: when the map isn't injective the HOLES are the lesson
@@ -935,6 +968,8 @@ function buildNumberLine(container, opts){
     // layout FIRST: targets() reads lapY(), which reads LY.lapH
     relayout(lapCountFor(a,b));
     drawStatic();
+    // in auto mode relayout() just moved Hu, so the pixel box has to follow the viewBox
+    if(!yScale) syncHeight();
     cur=targets(a,b); setCaption(); drawLaps();
     if(disp.length!==26) disp=cur.rows.map(r=>({lx:X(r.i),ly:Y_ORIG,ox:X(r.i)}));   // first mount: spread in from the input row
     if(!raf) raf=requestAnimationFrame(loop);
@@ -949,31 +984,46 @@ function buildNumberLine(container, opts){
 
   // ---- the expandable window: Hu ⇄ the wrapper's pixel height ----------------------------
   // Hu is authoritative. Width changes re-derive the px height from Hu (so the drawing scales
-  // uniformly); a drag of the native grabber is the only thing that writes Hu back.
+  // uniformly). In FIXED mode a drag of the native grabber is the only thing that writes Hu back;
+  // in AUTO mode relayout() owns Hu, and a drag is taken as "I want the fixed window" — the pill
+  // and the grabber are the same setting, so the drag flips the pill rather than being overwritten.
   const fmtStep=v => (Math.round(v*10)/10).toString();
-  function setYLabel(){ yBtn.textContent="y "+fmtStep((Hu-HU_BASE)/HU_BASE)+"×"; }
+  function setYLabel(){
+    yBtn.setAttribute("aria-checked", yScale?"true":"false");
+    yBtn.classList.toggle("nl-off", !yScale);
+    yBtn.textContent = yScale ? "y "+fmtStep((Hu-HU_BASE)/HU_BASE)+"×" : "y auto";
+  }
   function applyHeight(){
     const w=view.clientWidth||1;
-    view.style.minHeight=Math.round(HU_MIN*w/W)+"px";
+    // In auto mode the floor IS the fitted height: HU_MIN would letterbox a short picture and put
+    // back exactly the void this mode exists to remove.
+    view.style.minHeight=Math.round((yScale?HU_MIN:Hu)*w/W)+"px";
     view.style.maxHeight=Math.round(HU_MAX*w/W)+"px";
     view.style.height   =Math.round(Hu   *w/W)+"px";
   }
+  // applyHeight() changes clientHeight, which the ResizeObserver would otherwise read back as a
+  // grabber drag. Every programmatic height write goes through here so that echo can't fire.
+  function syncHeight(){ applyHeight(); lastH=view.clientHeight; }
   function setHu(v){
     v=Math.max(HU_MIN,Math.min(HU_MAX,v));
-    if(Math.abs(v-Hu)<0.5) return;
-    Hu=v; setYLabel();
+    huManual=v;
+    if(yScale && Math.abs(v-Hu)<0.5) return;
+    yScale=true; Hu=v; setYLabel();
     if(cur) update(cur.a,cur.b);          // re-runs relayout/drawStatic and eases to the new geometry
   }
   yBtn.addEventListener('click', ()=>{
-    const next=HU_STEPS.find(s=>s>Hu+1) || HU_STEPS[0];
-    setHu(next); applyHeight();
+    yScale=!yScale;
+    if(yScale) Hu=huManual;
+    setYLabel();
+    if(cur) update(cur.a,cur.b);      // re-fits Hu (auto) or adopts huManual (fixed)
+    syncHeight();                     // …and the pixel box follows it in BOTH directions
   });
   let lastW=0, lastH=0;
   if(typeof ResizeObserver!=="undefined"){
     new ResizeObserver(()=>{
       const w=view.clientWidth, h=view.clientHeight;
       if(!w) return;
-      if(Math.abs(w-lastW)>0.5){ lastW=w; applyHeight(); lastH=view.clientHeight; return; }
+      if(Math.abs(w-lastW)>0.5){ lastW=w; syncHeight(); return; }
       if(Math.abs(h-lastH)>1){ lastH=h; setHu(h*W/w); }        // user dragged the grabber
     }).observe(view);
   }
