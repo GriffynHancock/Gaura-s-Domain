@@ -35,6 +35,25 @@ output-only phenomenon and drawing empty sockets up there would imply otherwise.
 
 Do this in the same pass as item 0 (both are `buildNumberLine()` layout work).
 
+### 0c. Submit buttons are systematically too short — diagnosed, one-pass fix
+> "submit buttons are systematically too short btw"
+
+**Cause found: every submit button has `padding: 0 18px` — zero vertical padding.** Their height
+comes only from line-height, while the input sitting beside them has real vertical padding
+(`11px 13px` and similar), so the button is visibly shorter than its own field on every page.
+
+Same defect, four places:
+- `public/crypto/encoding/index.html:139` — `.submit .check{… padding:0 18px}`
+- `public/crypto/xor/index.html:225` — `.submit .check{… padding:0 18px}`
+- `public/crypto/ceasar/index.html:361` — `.ubar button{… padding:0 18px}`
+- `public/crypto/fnac/index.html` — `.flag-check`, inline `padding:0 16px`
+
+Fix in one pass so they stay consistent: give real vertical padding (or `align-self:stretch` /
+`min-height` matched to the adjacent input) so each button is exactly as tall as the field it sits
+next to. Also take them to a **≥44px** touch target while you are there — the copy buttons on the
+encoding page were bumped to 44×44 earlier for the same reason, so match that. Both themes, and
+check at 360px that nothing wraps.
+
 ---
 
 ## 1. Rainbow-table challenge set for the hashing module
