@@ -57,7 +57,13 @@ await page.locator('#lane-canvas').scrollIntoViewIfNeeded();
 // ============================================================================================
 //  PASS 1 — slow speed, sampling live state: capacity fill, pi persistence, phase indicators
 // ============================================================================================
-await page.locator('#speed-slider').evaluate(el => { el.value = '18'; el.dispatchEvent(new Event('input')); });
+// Slider 25, not 18. This pass needs a run slow enough that the 25ms sampler below catches the
+// short-lived states it asserts on — the post-absorb window (rate loaded, capacity still zero) and
+// a >=400ms non-pi gap proving the pi rearrangement persists. At slider 25 a rate-block takes ~41s
+// over 24 rounds: ~1.7s per round, ~340ms per phase, still 13 samples per phase and ~1.3s of
+// contiguous non-pi after every pi. Slider 18 (~2.7s per round) bought more margin than either
+// assertion can use and cost ~3s of waiting to reach round 3.
+await page.locator('#speed-slider').evaluate(el => { el.value = '25'; el.dispatchEvent(new Event('input')); });
 
 // Install an in-page sampler BEFORE clicking Hash. It records committed state on the page's own
 // clock rather than us polling an animating value from outside.

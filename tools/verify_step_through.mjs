@@ -56,10 +56,20 @@ const st = () => page.evaluate(() => __stepDebug.state());
 // own state rather than on a timeout is what makes this safe in a BACKGROUNDED automation tab,
 // where rAF is throttled (see CLAUDE.md's animation-verification trap) — the assertions read
 // recorded history, never an in-flight sample.
-async function drive(kind, settleMs = 260) {
+//
+// The settle after consumption is a CONDITION, not a sleep: the stepped phase is finished exactly
+// when the controller has no active phase left (`sha3Active === null`), which is the same thing
+// the old fixed 260ms was waiting out — except it returns the moment it is true instead of always
+// paying the worst case, and it cannot silently under-wait if a phase floor is ever raised. On
+// MD5 there is no SHA-3 phase in flight, so the condition reduces to "the request was consumed",
+// which is already the point at which the register write has landed.
+async function drive(kind, settleMs = 0) {
   await page.evaluate(k => (k === 'next' ? __stepDebug.step() : __stepDebug.redo()), kind);
-  await page.waitForFunction(() => __stepDebug.state().req === null, { timeout: 5000 });
-  await page.waitForTimeout(settleMs);   // let the (short, floored) phase finish before the next
+  await page.waitForFunction(() => {
+    const s = __stepDebug.state();
+    return s.req === null && s.sha3Active === null;
+  }, { timeout: 5000 });
+  if (settleMs) await page.waitForTimeout(settleMs);
 }
 
 // ============================================================================================
@@ -188,7 +198,7 @@ await page.waitForFunction(() => __stepDebug.state().live, { timeout: 8000 });
 await page.waitForTimeout(200);
 // Walk to the first main-loop event, then step through register updates one at a time.
 let guard = 0;
-while (guard++ < 40 && !/step \d+\/64/.test((await st()).readout)) await drive('next', 60);
+while (guard++ < 40 && !/step \d+\/64/.test((await st()).readout)) await drive('next');
 const md5Steps = [];
 for (let i = 0; i < 6; i++) {
   const s = await st();
@@ -196,7 +206,7 @@ for (let i = 0; i < 6; i++) {
     .map(l => document.querySelector('#reg-0-' + l + ' .reg-val').textContent).join(' '));
   const counter = await page.evaluate(() => document.getElementById('step-counter-0').textContent);
   md5Steps.push({ index: s.index, readout: s.readout, regs, counter });
-  await drive('next', 60);
+  await drive('next');
 }
 const nums = md5Steps.map(s => Number(/step (\d+)\/64/.exec(s.readout)[1]));
 check('every MD5 STEP advances exactly one of the 64 per-block steps',
@@ -249,7 +259,7 @@ console.log('\n-- MD5: redo replays without advancing');
 const md5Before = await st();
 const regsBefore = await page.evaluate(() => ['A', 'B', 'C', 'D']
   .map(l => document.querySelector('#reg-0-' + l + ' .reg-val').textContent).join(' '));
-for (let i = 0; i < 3; i++) await drive('redo', 60);
+for (let i = 0; i < 3; i++) await drive('redo');
 const md5After = await st();
 const regsAfter = await page.evaluate(() => ['A', 'B', 'C', 'D']
   .map(l => document.querySelector('#reg-0-' + l + ' .reg-val').textContent).join(' '));
@@ -299,7 +309,7 @@ await page.click('#step-next');
 await page.waitForFunction(() => __stepDebug.state().live && __stepDebug.state().index >= 1, { timeout: 10000 });
 let end = await st();
 let steps = 0;
-while (end.live && steps++ < 300) { await drive('next', 15); end = await st(); }
+while (end.live && steps++ < 300) { await drive('next'); end = await st(); }
 const finished = await page.evaluate(() => ({
   digest: document.getElementById('output-digest').textContent,
   hist: historyLog.length,
@@ -323,7 +333,7 @@ const midB = await st();
 check('ticking the box MID-RUN holds the run in place rather than cancelling it',
       midA.live && midB.live && midA.index === midB.index && midA.index > 0,
       `held at index ${midA.index} for ~900ms, still live`);
-await drive('next', 120);
+await drive('next');
 const midC = await st();
 check('...and a STEP from that hold advances exactly one',
       midC.index === midA.index + 1, `${midA.index} -> ${midC.index}`);

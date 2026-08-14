@@ -16,7 +16,8 @@
     --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
   }
   *{box-sizing:border-box}
-  body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg); min-height:100vh; padding:40px 18px 90px}
+  body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg); min-height:100vh; padding:40px 18px 90px;
+    overflow-x:hidden}
   .wrap{max-width:780px; margin:0 auto}
   header{border-bottom:2px solid var(--edge); padding-bottom:18px; margin-bottom:26px}
   h1{font-family:var(--disp); font-weight:900; font-size:clamp(2.1rem,6.5vw,3.3rem); line-height:.96; margin:0; color:var(--ink)}
@@ -28,7 +29,7 @@
   /* --- header button row: reset · confetti. Icon-only, >=40px touch targets.
      NO theme button here: this module is a deliberately single-palette black skin — it has no
      [data-theme] rules at all, so a toggle would be an inert control that lies about what it
-     does. See the task report; giving FNAC a light palette is a design task, not chrome. --- */
+     does. FNAC stays black-only: the dark is the point, and the intro creep assumes it. --- */
   .kicker{font-family:var(--mono); font-size:.7rem; letter-spacing:.28em; text-transform:uppercase;
     color:var(--accent); display:flex; justify-content:space-between; align-items:center; margin-bottom:10px}
   .hdr-btns{display:flex; gap:8px; align-items:center; flex:0 0 auto}
@@ -45,22 +46,60 @@
   @media(max-width:430px){ .kicker{gap:10px} .kicker>span{font-size:.58rem; letter-spacing:.12em; min-width:0} }
 
   .grid{display:grid; gap:18px}
-  .stage{background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:20px 22px}
+  .stage{background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:20px 22px; min-width:0}
   .stage.placeholder{opacity:.45}
   .stage .lab{font-family:var(--mono); font-size:.66rem; letter-spacing:.2em; text-transform:uppercase; color:var(--gold)}
   .stage h2{font-family:var(--disp); font-size:1.4rem; margin:6px 0 10px}
-  .raw-html{font-family:serif; color:#000; background:#fff; padding:16px; border:none}
 
-  .dropzone{font-family:var(--mono); font-size:.78rem; color:var(--dim); border:1px dashed var(--edge);
-    border-radius:6px; padding:20px; text-align:center; cursor:pointer}
-  .dropzone.over{border-color:var(--gold); color:var(--gold)}
-  .hexdump{font-family:var(--mono); font-size:.72rem; line-height:1.5; color:var(--ink); background:#000;
-    border:1px solid var(--edge); border-radius:5px; padding:12px; white-space:pre; overflow:auto; max-height:280px}
-  .meta-table{font-family:var(--mono); font-size:.76rem; color:var(--ink); background:#000;
-    border:1px solid var(--edge); border-radius:5px; width:100%; border-collapse:collapse}
-  .meta-table td{padding:6px 10px; border-bottom:1px solid var(--edge)}
-  .meta-table td:first-child{color:var(--gold)}
-  .bp-canvas{image-rendering:pixelated; max-width:100%; border:1px solid var(--edge); border-radius:4px}
+  /* --- night bodies. No helper widgets live here any more: FNAC assumes you bring your own
+     tools (xxd, CyberChef, python), so a night is prose + files + a flag box. --- */
+  .brief{font-family:var(--mono); font-size:.82rem; line-height:1.6; color:var(--dim); margin:0 0 12px}
+  .files{display:flex; gap:14px; flex-wrap:wrap; margin:12px 0}
+  .dl{color:var(--gold); font-family:var(--mono); font-size:.78rem; border:1px solid var(--edge);
+    border-radius:6px; padding:10px 14px; text-decoration:none; display:inline-block}
+  .dl:hover{border-color:var(--gold)}
+  .thumb{width:96px; height:96px; image-rendering:pixelated; border:1px solid var(--edge);
+    border-radius:4px; display:block; margin-bottom:6px}
+  .hintimg{max-width:220px; width:100%; border:1px solid var(--edge); border-radius:6px; display:block; margin:12px 0}
+  /* the Night 3 ciphertext, printed as-is. Wraps hard: it is 7-bit garbage with no spaces you
+     can rely on, and a phone must never scroll sideways because of it. */
+  .cipher{font-family:var(--mono); font-size:.72rem; line-height:1.55; color:var(--ink); background:#000;
+    border:1px solid var(--edge); border-radius:5px; padding:12px; margin-top:8px;
+    white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; max-height:220px; overflow-y:auto}
+  .submit{display:flex; gap:9px; margin-top:16px; flex-wrap:wrap}
+  .flag-input{flex:1 1 180px; min-width:0; font-family:var(--mono); background:#000; color:var(--gold);
+    border:1px solid var(--edge); border-radius:6px; padding:10px}
+  .flag-check{font-family:var(--mono); font-weight:700; background:var(--accent); color:#fff;
+    border:none; border-radius:6px; padding:10px 16px; cursor:pointer}
+  .verdict{font-family:var(--mono); font-size:.76rem; margin-top:8px}
+
+  /* --- intro creep overlay ---
+     Every flicker step is set from JS as an inline style; nothing here animates the flicker,
+     because CSS transitions are paused in a backgrounded automation tab and the measured
+     flicker must be the one a student actually sees. The only CSS animation is the slow
+     eye-glow pulse (~0.36Hz), which is nowhere near flash-relevant. */
+  #creep{position:fixed; inset:0; z-index:9999; background:#000; opacity:0; display:none;
+    align-items:center; justify-content:center; overflow:hidden}
+  #creep.on{display:flex}
+  #creep-eyes{position:relative; opacity:0; max-width:min(92vw,660px); max-height:82vh; line-height:0}
+  #creep-eyes img{display:block; width:100%; height:auto; mix-blend-mode:screen}
+  /* the pulse: a bloom sitting ON the two bright eyes, in screen blend. Not a brightness or
+     opacity ramp of the whole picture — the dark 95% of the frame never moves. */
+  #creep-glow{position:absolute; inset:0; mix-blend-mode:screen; pointer-events:none; opacity:.45;
+    background:
+      radial-gradient(circle at 34.5% 31%, rgba(255,236,205,.42) 0%, rgba(255,190,110,.16) 34%, rgba(0,0,0,0) 62%),
+      radial-gradient(circle at 64.5% 31%, rgba(255,236,205,.42) 0%, rgba(255,190,110,.16) 34%, rgba(0,0,0,0) 62%)}
+  #creep-eyes.breathe #creep-glow{animation:creep-breathe 2.8s ease-in-out infinite}
+  @keyframes creep-breathe{ 0%,100%{opacity:.30; transform:scale(1)} 50%{opacity:.95; transform:scale(1.12)} }
+  @media(prefers-reduced-motion:reduce){ #creep-eyes.breathe #creep-glow{animation:none; opacity:.62} }
+
+  /* deliberately near-invisible: it is a way back in for whoever wants one, not a feature. */
+  /* in the page flow, not fixed: it belongs at the very bottom of the document, past everything,
+     and a fixed button would sit on top of Night 1's SUBMIT on a phone. */
+  #spook{display:block; width:max-content; margin:70px 0 0 auto; background:#080807; color:#151310;
+    border:1px solid #121110; border-radius:5px; font-family:var(--mono); font-size:.6rem;
+    padding:6px 8px; cursor:pointer}
+  #spook:hover{color:#2a2620}
 </style>
 </head>
 <body>
@@ -98,19 +137,18 @@ function renderModule(){
         <button id="fx-btn" class="hdr-btn" type="button" aria-disabled="true" aria-label="Confetti locked" title="Confetti locked">${ICON_SVG('lock')}</button>
       </div></div>
       <h1>Five Nights at <em>Crypto's</em></h1>
-      <p>You made it through. This part isn't graded like the rest — it's what's left running after
-         hours. Same tools, worse lighting.</p>
+      <p>these challenges will hurt your brain more than the bite of 87</p>
     </header>
-    <div class="raw-html"><p>visitor log — do not remove<br>everything past this point is off the books.</p></div>
     <div class="grid" id="stages"></div>
   `;
   renderStages();
   wireHeaderButtons();
+  installCreep();
 }
 
 // ---- header button row: reset · confetti ----
 // Two buttons, not three: this module is a single-palette black skin with no [data-theme] rules,
-// so there is no light mode for a theme button to switch to (see the task report).
+// so there is no light mode for a theme button to switch to.
 // renderModule() can run TWICE (gate render, then the konami unlock), so the buttons are re-wired
 // per render, while the engine's 'fx:state' listener is registered ONCE at top level below and
 // simply no-ops when the header isn't on the page (locked state renders no header at all).
@@ -146,13 +184,18 @@ function syncFxButton(){
 // registered before engine.js (the last script on the page), so the engine's init dispatch lands
 document.addEventListener('fx:state', syncFxButton);
 
-// small deterministic rotation per stage id, stable across reloads — "slightly off," not jittery
-function seededRotation(id){ return (fnv('rot:'+id) % 500) / 100 - 2.5; } // -2.5deg .. +2.5deg
+// small deterministic rotation per stage id, stable across reloads — "slightly off," not jittery.
+// Suppressed on narrow screens: the rotation widens each card's bounding box by
+// height * sin(angle), which on a 360px phone is enough to push the document past the viewport.
+function seededRotation(id){
+  if(window.matchMedia && window.matchMedia('(max-width:520px)').matches) return 0;
+  return (fnv('rot:'+id) % 500) / 100 - 2.5; // -2.5deg .. +2.5deg
+}
 
 const STAGES = [
-  {id:'night1', title:'Night 1 · Static', ready:true},
-  {id:'night2', title:'Night 2 · Raw Bit Weaving', ready:true},
-  {id:'night3', title:'Night 3 · Tung Tung Tung Sahur', ready:true},
+  {id:'night1', title:'Night 1 · Meta Parts', ready:true},
+  {id:'night2', title:'Night 2 · Bit Weaving', ready:true},
+  {id:'night3', title:'Night 3 · Triple T', ready:true},
   {id:'night4', title:'Night 4', ready:false},
   {id:'night5', title:'Night 5', ready:false},
   {id:'nightmare', title:'Nightmare', ready:false},
@@ -164,7 +207,8 @@ function renderStages(){
   STAGES.forEach(s=>{
     const el = document.createElement('div');
     el.className = 'stage' + (s.ready ? '' : ' placeholder');
-    el.style.transform = `rotate(${seededRotation(s.id)}deg)`;
+    const rot = seededRotation(s.id);
+    if(rot) el.style.transform = `rotate(${rot}deg)`;
     el.id = 'stage-' + s.id;
     if(s.ready){
       el.innerHTML = `<div class="lab">${s.id}</div><h2>${s.title}</h2><div class="body"></div>`;
@@ -181,331 +225,16 @@ function renderStages(){
   });
 }
 
-// ---- shared decode helpers (Task 6) ----
-const toBytes = s => { const u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i)&255; return u; };
-const toStr = b => { let s=''; for(let i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return s; };
-const printable = s => s.replace(/[^\x20-\x7E\n]/g,'·');
-
-function readFileAsBytes(file){
-  return new Promise((resolve,reject)=>{
-    const r = new FileReader();
-    r.onload = ()=>resolve(new Uint8Array(r.result));
-    r.onerror = ()=>reject(r.error);
-    r.readAsArrayBuffer(file);
-  });
-}
-
-// strictAscii also dots out CR/LF so rows stay aligned when the data is binary.
-// Night 1's viewers keep the original (newline-passing) behaviour untouched.
-function bytesToHexDump(bytes, bytesPerRow=16, strictAscii=false){
-  let out = '';
-  for(let row=0; row*bytesPerRow < bytes.length; row++){
-    const start = row*bytesPerRow;
-    const chunk = bytes.slice(start, start+bytesPerRow);
-    const hex = Array.from(chunk).map(b=>b.toString(16).padStart(2,'0')).join(' ').padEnd(bytesPerRow*3-1,' ');
-    const raw = toStr(chunk);
-    const ascii = strictAscii ? raw.replace(/[^\x20-\x7E]/g,'·') : printable(raw);
-    out += start.toString(16).padStart(6,'0') + '  ' + hex + '  ' + ascii + '\n';
-  }
-  return out;
-}
-
-// strictAscii is opt-in per call site: Night 2's halves are binary and contain 0x0a bytes that
-// would otherwise emit real newlines and shatter the dump's row alignment. Night 1 keeps the
-// original rendering (its call sites pass nothing).
-function mountRawBytesViewer(container, onBytes, strictAscii){
-  container.innerHTML = `<div class="dropzone">drop a file here (stands in for <b>xxd</b>) — or click to choose</div><div class="hexdump" style="display:none"></div>`;
-  const zone = container.querySelector('.dropzone');
-  const dump = container.querySelector('.hexdump');
-  const input = document.createElement('input'); input.type='file'; input.style.display='none';
-  container.appendChild(input);
-
-  async function handle(file){
-    if(!file) return;
-    try{
-      const bytes = await readFileAsBytes(file);
-      dump.style.display = 'block';
-      dump.textContent = bytesToHexDump(bytes, 16, !!strictAscii);
-      if(onBytes) onBytes(bytes);
-    }catch(e){
-      dump.style.display = 'block';
-      dump.textContent = "couldn't read that file.";
-    }
-  }
-  zone.addEventListener('click', ()=>input.click());
-  input.addEventListener('change', ()=>handle(input.files[0]));
-  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
-  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
-  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); handle(e.dataTransfer.files[0]); });
-}
-
-// ---- Metadata Viewer widget (Task 7) ----
-// RESERVED: not mounted by any current night. Kept deliberately — the design spec
-// (docs/superpowers/specs/2026-08-11-five-nights-at-cryptos-design.md) lists the exiftool
-// stand-in as shared tooling for the unbuilt Nights 4+, alongside the bit-plane viewer below.
-function parsePngTextChunks(bytes){
-  const out = {};
-  const sig = [0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A];
-  for(let i=0;i<8;i++) if(bytes[i]!==sig[i]) return out; // not a PNG — return empty, never throw
-  let pos = 8;
-  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  while(pos + 8 <= bytes.length){
-    const length = dv.getUint32(pos);
-    const type = toStr(bytes.slice(pos+4,pos+8));
-    const data = bytes.slice(pos+8, pos+8+length);
-    if(type === 'tEXt'){
-      const nul = data.indexOf(0);
-      if(nul >= 0) out[toStr(data.slice(0,nul))] = toStr(data.slice(nul+1));
-    }
-    pos += 12 + length;
-    if(type === 'IEND') break;
-  }
-  return out;
-}
-
-function mountMetadataViewer(container){
-  container.innerHTML = `<div class="dropzone">drop a file here (stands in for <b>exiftool</b>) — or click to choose</div><div></div>`;
-  const zone = container.querySelector('.dropzone');
-  const resultBox = container.querySelector('div:last-child');
-  const input = document.createElement('input'); input.type='file'; input.style.display='none';
-  container.appendChild(input);
-
-  async function handle(file){
-    if(!file) return;
-    try{
-      const bytes = await readFileAsBytes(file);
-      const fields = parsePngTextChunks(bytes);
-      const keys = Object.keys(fields);
-      if(!keys.length){ resultBox.textContent = 'no text metadata found.'; return; }
-      const table = document.createElement('table'); table.className='meta-table';
-      keys.forEach(k=>{ const tr=document.createElement('tr');
-        tr.innerHTML = `<td>${k}</td><td>${fields[k]}</td>`; table.appendChild(tr); });
-      resultBox.innerHTML = ''; resultBox.appendChild(table);
-    }catch(e){
-      resultBox.textContent = "couldn't read that file.";
-    }
-  }
-  zone.addEventListener('click', ()=>input.click());
-  input.addEventListener('change', ()=>handle(input.files[0]));
-  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
-  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
-  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); handle(e.dataTransfer.files[0]); });
-}
-
-// ---- Bit-Plane / LSB Viewer widget (Task 8) ----
-// RESERVED: not mounted by any current night (see the note on the metadata viewer above) —
-// the zsteg stand-in is spec'd shared tooling held for the unbuilt Nights 4+.
-function extractLsbMessage(imageData, maxLen=4096){
-  const d = imageData.data; // RGBA, one pixel = 4 bytes, R channel is index 0 of each pixel
-  const bit = i => d[i*4] & 1;
-  let lengthBits = '';
-  for(let i=0;i<32;i++) lengthBits += bit(i);
-  const length = Math.min(parseInt(lengthBits,2) || 0, maxLen);
-  const bytes = new Uint8Array(length);
-  for(let by=0; by<length; by++){
-    let byteBits = '';
-    for(let bi=0; bi<8; bi++) byteBits += bit(32 + by*8 + bi);
-    bytes[by] = parseInt(byteBits,2);
-  }
-  return bytes;
-}
-
-function mountBitPlaneViewer(container){
-  container.innerHTML = `<div class="dropzone">drop an image here (stands in for <b>zsteg</b>) — or click to choose</div>
-    <canvas class="bp-canvas" style="display:none"></canvas><div class="hexdump" style="display:none"></div>`;
-  const zone = container.querySelector('.dropzone');
-  const canvas = container.querySelector('canvas');
-  const dump = container.querySelector('.hexdump');
-  const input = document.createElement('input'); input.type='file'; input.style.display='none';
-  container.appendChild(input);
-
-  function handle(file){
-    if(!file) return;
-    const img = new Image();
-    img.onload = ()=>{
-      canvas.width = img.width; canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img,0,0);
-      canvas.style.display = 'block';
-      try{
-        const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
-        const bytes = extractLsbMessage(imageData);
-        dump.style.display = 'block';
-        dump.textContent = 'R-channel LSB, first bits: ' + printable(toStr(bytes));
-      }catch(e){
-        dump.style.display = 'block';
-        dump.textContent = "couldn't read that image.";
-      }
-    };
-    img.onerror = ()=>{ dump.style.display='block'; dump.textContent = "couldn't read that as an image."; };
-    img.src = URL.createObjectURL(file);
-  }
-  zone.addEventListener('click', ()=>input.click());
-  input.addEventListener('change', ()=>handle(input.files[0]));
-  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
-  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
-  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); handle(e.dataTransfer.files[0]); });
-}
-
-// ---- shared drop-target wiring: click-to-choose + drag-and-drop, one hidden input each ----
-function wireDropTarget(zone, onFile){
-  const input = document.createElement('input');
-  input.type = 'file'; input.style.display = 'none';
-  input.className = zone.dataset.inputClass || '';
-  zone.parentNode.insertBefore(input, zone.nextSibling);
-  zone.addEventListener('click', ()=>input.click());
-  input.addEventListener('change', ()=>{ if(input.files[0]) onFile(input.files[0]); });
-  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
-  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
-  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over');
-    if(e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]); });
-  return input;
-}
-
-// ---- Night 2: bit-weave tool ----
-// Inverse of tools/fnac_png.py bit_split(). Bits in a source byte are numbered 7 (MSB)..0 (LSB).
-// Half A holds the even-indexed bits in the order 6,4,2,0; half B the odd-indexed bits 7,5,3,1.
-// One source byte = one nibble in each half; source byte 0 is the HIGH nibble of output byte 0,
-// source byte 1 the LOW nibble of output byte 0, and so on.
-function weaveHalves(a, b){
-  if(a.length !== b.length) throw new Error('length mismatch');
-  const out = new Uint8Array(a.length * 2);
-  for(let i=0;i<out.length;i++){
-    const idx = i >> 1;
-    const nibA = (i % 2 === 0) ? (a[idx] >> 4) & 15 : a[idx] & 15;
-    const nibB = (i % 2 === 0) ? (b[idx] >> 4) & 15 : b[idx] & 15;
-    let byte = 0;
-    [6,4,2,0].forEach((bit,pos)=>{ byte |= ((nibA >> (3-pos)) & 1) << bit; });
-    [7,5,3,1].forEach((bit,pos)=>{ byte |= ((nibB >> (3-pos)) & 1) << bit; });
-    out[i] = byte;
-  }
-  return out;
-}
-
-const PNG_SIG_JS = [0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A];
-const looksLikePng = b => b.length > 8 && PNG_SIG_JS.every((v,i)=>b[i]===v);
-
-function mountWeaveTool(container){
-  container.innerHTML = `
-    <div style="display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
-      <div><div class="dropzone zone-a">drop <b>file-a.bin</b> here — or click</div></div>
-      <div><div class="dropzone zone-b">drop <b>file-b.bin</b> here — or click</div></div>
-    </div>
-    <div class="weave-msg" style="font-family:var(--mono);font-size:.74rem;color:var(--dim);margin-top:8px"></div>
-    <img class="weave-img" alt="" style="display:none;max-width:240px;width:100%;margin-top:10px;border:1px solid var(--edge);border-radius:6px;background:#fff">
-    <div class="hexdump weave-dump" style="display:none;margin-top:8px"></div>`;
-  const msg = container.querySelector('.weave-msg');
-  const img = container.querySelector('.weave-img');
-  const dump = container.querySelector('.weave-dump');
-  const zoneA = container.querySelector('.zone-a');
-  const zoneB = container.querySelector('.zone-b');
-  zoneA.dataset.inputClass = 'weave-in-a';
-  zoneB.dataset.inputClass = 'weave-in-b';
-  let bytesA = null, bytesB = null, url = null;
-
-  function say(text, warn){
-    msg.textContent = text;
-    msg.style.color = warn ? 'var(--accent)' : 'var(--dim)';
-  }
-
-  function attempt(){
-    if(!bytesA || !bytesB){ say('waiting for both halves.'); return; }
-    let woven;
-    try{ woven = weaveHalves(bytesA, bytesB); }
-    catch(e){
-      say(`those two files aren't the same size (${bytesA.length} vs ${bytesB.length}) — the halves should match.`, true);
-      img.style.display='none'; dump.style.display='none';
-      return;
-    }
-    dump.style.display = 'block';
-    dump.textContent = bytesToHexDump(woven, 16, true);
-    if(url){ URL.revokeObjectURL(url); url = null; }
-    if(!looksLikePng(woven)){
-      img.style.display = 'none';
-      let swapped = false;
-      try{ swapped = looksLikePng(weaveHalves(bytesB, bytesA)); }catch(e){}
-      say(swapped ? "that came out without a PNG header — but it does if you swap A and B. Try the other way round."
-                  : "that came out without a PNG header, so it isn't an image yet. Check you dropped the right two files.", true);
-      return;
-    }
-    url = URL.createObjectURL(new Blob([woven], {type:'image/png'}));
-    img.onerror = ()=>{ img.style.display='none'; say("the bytes weave together, but nothing will render them.", true); };
-    img.onload = ()=>{ img.style.display='block'; };
-    img.src = url;
-    say(`${woven.length} bytes woven back together. Read the dump to the end.`);
-  }
-
-  async function take(which, file){
-    try{
-      const bytes = await readFileAsBytes(file);
-      if(which === 'a') bytesA = bytes; else bytesB = bytes;
-      (which === 'a' ? zoneA : zoneB).textContent = `${file.name} — ${bytes.length} bytes`;
-      attempt();
-    }catch(e){ say("couldn't read that file.", true); }
-  }
-  wireDropTarget(zoneA, f=>take('a', f));
-  wireDropTarget(zoneB, f=>take('b', f));
-}
-
-// ---- Night 3: repeating-key XOR / crib tool ----
-function xorRepeating(bytes, key){
-  const out = new Uint8Array(bytes.length);
-  for(let i=0;i<bytes.length;i++) out[i] = bytes[i] ^ key[i % key.length];
-  return out;
-}
-const hexOf = b => Array.from(b).map(v=>v.toString(16).padStart(2,'0')).join(' ');
-// derived key bytes are student-controlled — a crib byte can XOR to '<' and eat the rest of the line
-const escHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-function mountXorTool(container, cipherUrl){
-  container.innerHTML = `
-    <div class="hexdump xor-cipher" style="max-height:150px">loading the message…</div>
-    <label style="display:block;font-family:var(--mono);font-size:.7rem;color:var(--dim);margin-top:12px">CRIB — text you think the message starts with</label>
-    <input class="xor-crib" placeholder="flag{" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false" style="width:100%;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:9px;margin-top:5px">
-    <div class="xor-crib-out" style="font-family:var(--mono);font-size:.76rem;color:var(--ink);margin-top:6px"></div>
-    <label style="display:block;font-family:var(--mono);font-size:.7rem;color:var(--dim);margin-top:12px">KEY — repeated over the whole message</label>
-    <input class="xor-key" placeholder="type a key…" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false" style="width:100%;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:9px;margin-top:5px">
-    <div class="hexdump xor-plain" style="white-space:pre-wrap;margin-top:6px;max-height:200px">—</div>`;
-  const cipherBox = container.querySelector('.xor-cipher');
-  const cribIn = container.querySelector('.xor-crib');
-  const cribOut = container.querySelector('.xor-crib-out');
-  const keyIn = container.querySelector('.xor-key');
-  const plainBox = container.querySelector('.xor-plain');
-  let cipher = null;
-
-  function renderCrib(){
-    const crib = toBytes(cribIn.value);
-    if(!cipher || !crib.length){ cribOut.textContent = ''; return; }
-    if(crib.length > cipher.length){ cribOut.textContent = "that crib is longer than the message."; return; }
-    const keyBytes = xorRepeating(crib, cipher.slice(0, crib.length));
-    cribOut.innerHTML = `key bytes implied at offset 0: <b style="color:var(--gold)">[${escHtml(printable(toStr(keyBytes)))}]</b>` +
-      `<span style="color:var(--dim)"> &nbsp;hex ${hexOf(keyBytes)} &nbsp;(${keyBytes.length} bytes — mind the spaces)</span>`;
-  }
-  function renderPlain(){
-    const key = toBytes(keyIn.value);
-    if(!cipher){ plainBox.textContent = 'no message loaded.'; return; }
-    if(!key.length){ plainBox.textContent = '—'; return; }
-    plainBox.textContent = printable(toStr(xorRepeating(cipher, key)));
-  }
-  function setCipher(bytes){
-    cipher = bytes;
-    cipherBox.textContent = bytesToHexDump(cipher, 16, true);
-    renderCrib(); renderPlain();
-  }
-
-  cribIn.addEventListener('input', renderCrib);
-  keyIn.addEventListener('input', renderPlain);
-  // arrayBuffer, never .text() — the ciphertext contains NULs and other non-UTF-8 bytes
-  fetch(cipherUrl).then(r=>{
-    if(!r.ok) throw new Error(r.status);
-    return r.arrayBuffer();
-  }).then(buf=>setCipher(new Uint8Array(buf)))
-    .catch(()=>{ cipherBox.textContent = "couldn't load the message — download it and read it yourself."; });
-}
-
-// ---- shared flag-check helper (Task 9), used by every night ----
+// ---- shared flag-check helper, used by every night ----
 let storedFnacSolved = new Set();
 try{ storedFnacSolved = new Set(JSON.parse(localStorage.getItem('ctf-solved:v2:fnac') || '[]')); }catch(e){}
+
+const SUBMIT_HTML = `
+    <div class="submit">
+      <input class="flag-input" placeholder="Put flag here" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false">
+      <button class="flag-check" type="button">SUBMIT</button>
+    </div>
+    <div class="verdict"></div>`;
 
 function wireFlagCheck(bodyEl, stageId, answer){
   const input = bodyEl.querySelector('.flag-input');
@@ -529,78 +258,267 @@ function wireFlagCheck(bodyEl, stageId, answer){
   if(storedFnacSolved.has(stageId)) capture();
 }
 
-// ---- Night 1 wiring (Task 9) ----
+// ---- Night 1 · Meta Parts ----
 function buildNight1(bodyEl){
   bodyEl.innerHTML = `
-    <p style="font-family:var(--mono);font-size:.82rem;color:var(--dim)">
-      Two files came off the same feed. Both look like dead air. Neither one is, quite.
-    </p>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;margin:10px 0">
-      <div><img src="assets/night1/file-a.png" style="width:96px;height:96px;image-rendering:pixelated;border:1px solid var(--edge);border-radius:4px;display:block"><a href="assets/night1/file-a.png" download style="color:var(--gold);font-family:var(--mono);font-size:.7rem">↓ file-a.png</a></div>
-      <div><img src="assets/night1/file-b.png" style="width:96px;height:96px;image-rendering:pixelated;border:1px solid var(--edge);border-radius:4px;display:block"><a href="assets/night1/file-b.png" download style="color:var(--gold);font-family:var(--mono);font-size:.7rem">↓ file-b.png</a></div>
-    </div>
-    <div class="tool-a" style="margin-top:10px"></div>
-    <div class="tool-b" style="margin-top:10px"></div>
-    <div class="submit" style="display:flex;gap:9px;margin-top:16px">
-      <input class="flag-input" placeholder="assemble the two halves — flag{...}" style="flex:1;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:10px">
-      <button class="flag-check" style="font-family:var(--mono);font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:0 16px">SUBMIT</button>
-    </div>
-    <div class="verdict" style="font-family:var(--mono);font-size:.76rem;margin-top:8px"></div>
-  `;
-  mountRawBytesViewer(bodyEl.querySelector('.tool-a'));
-  mountRawBytesViewer(bodyEl.querySelector('.tool-b'));
+    <p class="brief">sometimes you need to concatenate evidence.</p>
+    <div class="files">
+      <div><img src="assets/night1/night1-a.png" alt="" class="thumb"><a href="assets/night1/night1-a.png" download class="dl">↓ night1-a.png</a></div>
+      <div><img src="assets/night1/night1-b.png" alt="" class="thumb"><a href="assets/night1/night1-b.png" download class="dl">↓ night1-b.png</a></div>
+    </div>` + SUBMIT_HTML;
   wireFlagCheck(bodyEl, 'night1', 'flag{tune_into_the_static}');
 }
 
-// ---- Night 2 wiring (Task 10) ----
+// ---- Night 2 · Bit Weaving ----
 function buildNight2(bodyEl){
   bodyEl.innerHTML = `
-    <p style="font-family:var(--mono);font-size:.82rem;color:var(--dim)">
-      Something got taken apart in here. Not cut in half — taken apart smaller than that.
-      Two files came out. Neither one opens, neither one is anything. Put it back together.
-    </p>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;margin:12px 0">
-      <a href="assets/night2/file-a.bin" download style="color:var(--gold);font-family:var(--mono);font-size:.78rem;border:1px solid var(--edge);border-radius:6px;padding:10px 14px;text-decoration:none">↓ file-a.bin</a>
-      <a href="assets/night2/file-b.bin" download style="color:var(--gold);font-family:var(--mono);font-size:.78rem;border:1px solid var(--edge);border-radius:6px;padding:10px 14px;text-decoration:none">↓ file-b.bin</a>
-    </div>
-    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">RAW BYTES (stands in for xxd — look at what you were given)</div>
-    <div class="tool-raw"></div>
-    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">WEAVE — drop both halves in</div>
-    <div class="tool-weave"></div>
-    <div class="submit" style="display:flex;gap:9px;margin-top:16px">
-      <input class="flag-input" placeholder="flag{...}" style="flex:1;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:10px">
-      <button class="flag-check" style="font-family:var(--mono);font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:0 16px">SUBMIT</button>
-    </div>
-    <div class="verdict" style="font-family:var(--mono);font-size:.76rem;margin-top:8px"></div>
-  `;
-  mountRawBytesViewer(bodyEl.querySelector('.tool-raw'), null, true);
-  mountWeaveTool(bodyEl.querySelector('.tool-weave'));
-  wireFlagCheck(bodyEl, 'night2', 'flag{raw_bit_weaving}');
+    <p class="brief">Whoops i undid it like a zipper at the atomic level...</p>
+    <div class="files">
+      <a href="assets/night2/night2-a.bin" download class="dl">↓ night2-a.bin</a>
+      <a href="assets/night2/night2-b.bin" download class="dl">↓ night2-b.bin</a>
+    </div>` + SUBMIT_HTML;
+  wireFlagCheck(bodyEl, 'night2', 'flag{data_bender}');
 }
 
-// ---- Night 3 wiring (Task 11) ----
+// ---- Night 3 · Triple T ----
+// The ciphertext is fetched rather than inlined so the block on the page and the downloadable
+// file are the same bytes by construction. arrayBuffer, never .text(): the message contains NULs
+// and other bytes that are not valid UTF-8, and it is rendered by a latin-1 decode so what you
+// read here is byte-for-byte what you downloaded.
+const latin1 = b => { let s=''; for(let i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return s; };
+
 function buildNight3(bodyEl){
   bodyEl.innerHTML = `
-    <p style="font-family:var(--mono);font-size:.82rem;color:var(--dim)">
-      It came down the hall at 3am, three knocks at a time, and left this behind.
-      Every byte of it has been walked over by the same short secret, again and again.
-      Whatever's out there doesn't hide its name. It shouts it.
-    </p>
-    <div style="margin:12px 0"><img src="assets/night3/hint-sahur.webp" alt="" style="max-width:220px;width:100%;border:1px solid var(--edge);border-radius:6px;display:block"></div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;margin:12px 0">
-      <a href="assets/night3/message.txt" download style="color:var(--gold);font-family:var(--mono);font-size:.78rem;border:1px solid var(--edge);border-radius:6px;padding:10px 14px;text-decoration:none">↓ message.txt</a>
+    <p class="brief">Tung Tung is love. Tung Tung is life. But I have to ask myself, am I Exclusive
+      to Tung Tung? OR, do I have space in my heart for other brainrot?</p>
+    <img src="assets/night3/hint-sahur.webp" alt="" class="hintimg">
+    <div class="files">
+      <a href="assets/night3/night3-a.txt" download class="dl">↓ night3-a.txt</a>
     </div>
-    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">XOR BENCH (stands in for xortool / CyberChef)</div>
-    <div class="tool-xor" style="margin-top:8px"></div>
-    <div class="submit" style="display:flex;gap:9px;margin-top:16px">
-      <input class="flag-input" placeholder="flag{...}" style="flex:1;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:10px">
-      <button class="flag-check" style="font-family:var(--mono);font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:0 16px">SUBMIT</button>
-    </div>
-    <div class="verdict" style="font-family:var(--mono);font-size:.76rem;margin-top:8px"></div>
-  `;
-  mountXorTool(bodyEl.querySelector('.tool-xor'), 'assets/night3/message.txt');
-  wireFlagCheck(bodyEl, 'night3', 'flag{tung_tung_tung_sahur}');
+    <div class="cipher" id="night3-cipher">loading the message…</div>` + SUBMIT_HTML;
+  const box = bodyEl.querySelector('#night3-cipher');
+  fetch('assets/night3/night3-a.txt').then(r=>{
+    if(!r.ok) throw new Error(r.status);
+    return r.arrayBuffer();
+  }).then(buf=>{ box.textContent = latin1(new Uint8Array(buf)); })
+    .catch(()=>{ box.textContent = "couldn't load the message — download the file and read it yourself."; });
+  wireFlagCheck(bodyEl, 'night3', 'flag{stop_scrolling}');
 }
+
+/* =========================================================================================
+   INTRO CREEP SEQUENCE
+   -----------------------------------------------------------------------------------------
+   Fires once per person, at most, on a 1-in-5 roll per visit, the first time they scroll.
+
+   PHOTOSENSITIVITY. This page's background is already #000000, so the "flicker" is a
+   near-black page going fully black and a mostly-black picture fading in on top of black —
+   the large-area luminance excursion WCAG 2.3.1 bounds is inherently tiny here. It is
+   measured anyway by tools/verify_fnac_flash_safety.mjs, which drives this exact code and
+   scores real screenshots. Two rules are baked in regardless of what the measurement says:
+     * every flicker cycle is 750ms. That is deliberately slower than "three cycles a
+       second": flash_analysis.mjs (shared with the hash module) counts EVERY opposing
+       luminance transition as a flash, so a square wave at f Hz scores 2f — the conservative
+       reading of WCAG 2.3.1, and the one this repo already holds itself to. 750ms scores
+       2.67/sec under that convention. The first cut of this sequence used a 400ms cycle and
+       MEASURED 6/sec; the measurement set this number, not the other way round. Every held
+       state is >= 330ms, so a ~30Hz sampler cannot miss an extreme;
+     * the only bright thing on screen is the eyes, and the pulse is a bloom ON them, not a
+       brightness ramp of the frame.
+   prefers-reduced-motion: reduce skips the flicker entirely (fade → hold → static eyes).
+   ========================================================================================= */
+const CREEP = {
+  FLICKER_ON:330,   // page visible (overlay transparent)
+  FLICKER_OFF:420,  // page dark (overlay opaque) — 750ms cycle, 2.67 transitions/sec
+  FLICKER_CYCLES:3, // 3*420 + 2*330 = 1920ms of flicker
+  HOLD:2000,        // dark and silent
+  EYES:7800,        // eyes on screen; scare.mp3 is hard-cut at exactly this point
+  RESTORE:600,      // lights-on fade back
+  FADE:600          // reduced-motion fade instead of the flicker
+};
+const CREEP_COOKIE='ctf-fnac-creep';
+const creepFired = () => /(?:^|; )ctf-fnac-creep=1(?:;|$)/.test(document.cookie);
+const setCreepFired = v => { document.cookie = CREEP_COOKIE+'='+(v?'1':'0')+';path=/;max-age=31536000;samesite=lax'; };
+// overridable purely so the test can prove the wiring reads the roll, both ways
+const creepRandom = () => (window.__creepRandom || Math.random)();
+const shouldFire = () => !creepFired() && creepRandom() < 0.2;
+
+let creepState = { phase:'idle', timers:[], log:[], clicks:0, el:null, audio:{} };
+
+function creepLog(phase){
+  creepState.phase = phase;
+  creepState.log.push({phase, t: Math.round(performance.now())});
+}
+function creepAt(ms, fn){ creepState.timers.push(setTimeout(fn, ms)); }
+function creepClearTimers(){ creepState.timers.forEach(clearTimeout); creepState.timers = []; }
+
+// audio is best-effort in every direction: a scroll is not a user activation gesture in Chrome,
+// so play() can reject. The visual must run regardless and must never wait on a sound.
+function creepPlay(name, src){
+  try{
+    const a = creepState.audio[name] || (creepState.audio[name] = new Audio(src));
+    a.currentTime = 0;
+    const p = a.play();
+    if(p && p.catch) p.catch(()=>{});
+    return a;
+  }catch(e){ return null; }
+}
+function creepStopAudio(){
+  Object.values(creepState.audio).forEach(a=>{ try{ a.pause(); }catch(e){} });
+}
+
+function creepBuild(){
+  let el = document.getElementById('creep');
+  if(el) return el;
+  el = document.createElement('div');
+  el.id = 'creep';
+  el.setAttribute('aria-hidden','true');
+  el.innerHTML = `<div id="creep-eyes"><img src="assets/creep/eyes.png" alt=""><div id="creep-glow"></div></div>`;
+  document.body.appendChild(el);
+  return el;
+}
+
+function creepStart(){
+  if(creepState.phase !== 'idle') return;
+  setCreepFired(true);              // set up front: a mid-sequence skip still counts as fired
+  creepState.clicks = 0;
+  creepState.log = [];
+  const el = creepBuild();
+  creepState.el = el;
+  const eyes = el.querySelector('#creep-eyes');
+  eyes.classList.remove('breathe');
+  eyes.style.opacity = '0';
+  el.classList.add('on');
+  el.style.transition = 'none';
+  el.style.opacity = '0';
+  document.addEventListener('keydown', creepKey, true);
+  document.addEventListener('pointerdown', creepClick, true);
+
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  creepLog('flicker');
+  creepPlay('flicker','assets/creep/flicker.mp3');
+
+  // one timeline, computed up front, so every phase boundary is a known instant the test can
+  // assert against instead of an accumulated side effect.
+  const flickerLen = reduced ? CREEP.FADE
+    : CREEP.FLICKER_CYCLES*CREEP.FLICKER_OFF + (CREEP.FLICKER_CYCLES-1)*CREEP.FLICKER_ON;
+  const darkAt = flickerLen;
+  const eyesAt = darkAt + CREEP.HOLD;
+  const restoreAt = eyesAt + CREEP.EYES;
+
+  if(reduced){
+    // no flicker at all: one smooth fade to black, same total time to the dark hold
+    el.style.transition = `opacity ${CREEP.FADE}ms linear`;
+    el.style.opacity = '1';
+  } else {
+    // every step is an inline style set from a timer — no CSS transition, no rAF
+    let t = 0;
+    for(let i=0;i<CREEP.FLICKER_CYCLES;i++){
+      creepAt(t, ()=>{ el.style.opacity = '1'; });
+      t += CREEP.FLICKER_OFF;
+      if(i < CREEP.FLICKER_CYCLES-1){
+        creepAt(t, ()=>{ el.style.opacity = '0'; });
+        t += CREEP.FLICKER_ON;
+      }
+    }
+  }
+  creepAt(darkAt, ()=>{ el.style.transition='none'; el.style.opacity='1'; creepStopAudio(); creepLog('dark'); });
+
+  creepAt(eyesAt, ()=>{
+    creepLog('eyes');
+    creepPlay('scare','assets/creep/scare.mp3');
+    if(reduced){
+      eyes.style.transition = `opacity ${CREEP.FADE}ms linear`;
+      eyes.style.opacity = '.92';
+      eyes.classList.add('breathe');
+    }
+  });
+  if(!reduced){
+    // eyes flicker in on the same 750ms cycle, then stay and breathe
+    let t = eyesAt;
+    for(let i=0;i<3;i++){
+      creepAt(t, ()=>{ eyes.style.opacity = '.92'; });
+      t += CREEP.FLICKER_OFF;
+      creepAt(t, ()=>{ eyes.style.opacity = '0'; });
+      t += CREEP.FLICKER_ON;
+    }
+    creepAt(t, ()=>{ eyes.style.opacity = '.92'; eyes.classList.add('breathe'); });
+  }
+  // hard cut: scare.mp3 is 62s long and we take the first 7.8s of it, no fade
+  creepAt(restoreAt, ()=>{
+    creepStopAudio();
+    creepLog('restore');
+    creepPlay('lights','assets/creep/lights-on.mp3');
+    eyes.classList.remove('breathe');
+    eyes.style.transition = `opacity ${CREEP.RESTORE}ms linear`;
+    eyes.style.opacity = '0';
+    el.style.transition = `opacity ${CREEP.RESTORE}ms linear`;
+    el.style.opacity = '0';
+  });
+  creepAt(restoreAt + CREEP.RESTORE, ()=>{ creepFinish('done'); });
+}
+
+function creepFinish(how){
+  creepClearTimers();
+  creepStopAudio();
+  const el = creepState.el;
+  if(el){
+    const eyes = el.querySelector('#creep-eyes');
+    if(eyes){ eyes.classList.remove('breathe'); eyes.style.transition='none'; eyes.style.opacity='0'; }
+    el.classList.remove('on');
+    el.style.transition = 'none';
+    el.style.opacity = '0';
+  }
+  document.removeEventListener('keydown', creepKey, true);
+  document.removeEventListener('pointerdown', creepClick, true);
+  creepLog(how);
+  creepState.phase = 'idle';
+}
+
+// skip: spacebar, or three clicks anywhere. Both work the instant the page darkens, including
+// mid-flicker — creepFinish clears every pending timer, so nothing fires after it.
+function creepKey(e){
+  if(e.code === 'Space' || e.key === ' '){ e.preventDefault(); creepFinish('skipped'); }
+}
+function creepClick(){
+  creepState.clicks++;
+  if(creepState.clicks >= 3) creepFinish('skipped');
+}
+
+function installCreep(){
+  if(document.getElementById('spook')) return; // renderModule can run twice (konami unlock)
+  const btn = document.createElement('button');
+  btn.id = 'spook'; btn.type = 'button'; btn.textContent = 'spook me again';
+  btn.addEventListener('click', ()=>{
+    setCreepFired(false);
+    creepState.clicks = 0;
+    creepStart();   // a click IS a user gesture, so this path also gets the audio
+  });
+  document.body.appendChild(btn);
+
+  let armed = true;
+  function onScroll(){
+    if(!armed) return;
+    const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    if(window.scrollY / max < 0.03) return;
+    armed = false;
+    window.removeEventListener('scroll', onScroll);
+    if(shouldFire()) creepStart();
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+}
+
+// test hooks — the sequence is driven and measured through these, never through fake events
+window.__creep = {
+  CREEP,
+  shouldFire,
+  fired: creepFired,
+  setFired: setCreepFired,
+  start: creepStart,
+  abort: creepFinish,
+  state: creepState,
+  log: () => creepState.log,
+  audio: () => creepState.audio
+};
 
 // ---- gate check (runs last, once everything above is defined) ----
 if(!unlocked()){

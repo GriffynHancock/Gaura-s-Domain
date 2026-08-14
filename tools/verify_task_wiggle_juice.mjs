@@ -699,7 +699,15 @@ await page.waitForTimeout(200);
 if (await page.evaluate(() => __sha3Debug.lastBlur())) throw new Error('drag-rotation must render crisply, not blurred');
 // aborting mid-run must also leave a crisp frame (the smear-on-abort case)
 const abortBlur = await page.evaluate(async () => {
-  document.getElementById('speed-slider').value = '1';   // slow, so we can sit inside pi for a while
+  // Slow enough to sit inside pi for a comfortable while, without paying the whole slow end to get
+  // there: at slider 25 a rate-block takes ~41s across 24 rounds, so pi alone lasts a few hundred
+  // ms — thousands of times longer than the microseconds between "activePhase() === 'pi'" below
+  // and the abort click two lines later, which both run inside this one page.evaluate. Slider 1
+  // (the old value) took ~10s just to reach the first pi and bought no extra margin: the abort is
+  // fired the instant pi is detected, never after a fixed delay. The blur is present during pi at
+  // EVERY slider setting (sha3BlurAlpha returns a non-zero alpha across its whole range, and
+  // lastBlur is truthy for any non-zero alpha), so the smear case is still genuinely exercised.
+  document.getElementById('speed-slider').value = '25';
   document.getElementById('hash-btn').click();
   // Wait for the controller to actually BE in pi rather than guessing with a fixed delay. A fixed
   // 900ms landed in rho or theta often enough that this assertion survived deleting the very fix
@@ -802,6 +810,14 @@ console.log(`OK  REAL TIME collapses a 5-block MD5 from ${rtRun.normalMs.toFixed
 // floors make a multi-rate-block run take minutes at ANY slider setting.
 const rtSha3 = await page.evaluate(async () => {
   document.getElementById('algo-next').click();          // -> SHA-3
+  // ONE rate block, not the 3-block 'x'.repeat(300) left over from the MD5 arm above. The claim
+  // here is a RATIO (real-time must land under a fifth of normal playback) plus the integer-slot
+  // commit through the zero-duration path; neither depends on how many blocks the normal run
+  // chews through, and a 1-block normal run at slider 100 is ~1.8s against ~8.4s for 3 blocks.
+  // Multi-rate-block absorption is covered where it is actually the subject (verify_task4,
+  // verify_flash_safety's 8-block cases).
+  document.getElementById('input-custom').value = 'crypto-101';
+  document.getElementById('input-custom').dispatchEvent(new Event('input', { bubbles: true }));
   document.getElementById('speed-slider').value = '100';
   const time = async () => {
     document.getElementById('output-digest').textContent = '—';

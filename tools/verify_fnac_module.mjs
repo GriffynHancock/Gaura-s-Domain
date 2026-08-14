@@ -1,0 +1,232 @@
+// End-to-end checks for the Five Nights at Crypto's module.
+// Run: FNAC_MODULE_URL="http://localhost:8815/public/crypto/fnac/" node tools/verify_fnac_module.mjs
+//
+// Everything here is driven with real pointer input and real keystrokes — no synthetic events,
+// no calling the page's own handlers to "prove" a click works. The flash/photosensitivity
+// numbers live in the sibling script, tools/verify_fnac_flash_safety.mjs.
+import { chromium } from 'playwright';
+
+const BASE_URL = process.env.FNAC_MODULE_URL || 'http://localhost:8815/public/crypto/fnac/';
+const fails = [];
+const check = (label, ok, detail) => {
+  if (ok) console.log(`OK  ${label}${detail ? ' — ' + detail : ''}`);
+  else { console.log(`FAIL ${label}${detail ? ' — ' + detail : ''}`); fails.push(label); }
+};
+
+const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+
+async function open({ viewport = { width: 1100, height: 950 }, unlocked = true, creepFired = true } = {}) {
+  const ctx = await browser.newContext({ viewport });
+  const cookies = [];
+  if (unlocked) cookies.push({ name: 'ctf-fnac-unlocked', value: '1', url: BASE_URL });
+  cookies.push({ name: 'ctf-fnac-creep', value: creepFired ? '1' : '0', url: BASE_URL });
+  if (cookies.length) await ctx.addCookies(cookies);
+  const page = await ctx.newPage();
+  const errs = [];
+  // only errors from OUR origin count: the page links Google Fonts, and a flaky external
+  // request is a network fact, not a defect in this module.
+  const origin = new URL(BASE_URL).origin;
+  page.on('console', m => { if (m.type() === 'error' && (m.location().url || origin).startsWith(origin)) errs.push(m.text() + ' @' + (m.location().url || '')); });
+  page.on('pageerror', e => errs.push(String(e)));
+  await page.goto(BASE_URL + '?v=' + Date.now());
+  return { page, ctx, errs };
+}
+
+// ---------------------------------------------------------------- 1. page shape / no helpers
+{
+  const { page, ctx, errs } = await open();
+  await page.waitForSelector('#stage-night3 .flag-input');
+  check('subtitle is the new one',
+    (await page.textContent('header p')).trim() === 'these challenges will hurt your brain more than the bite of 87');
+  check('visitor-log box is gone', await page.locator('.raw-html').count() === 0);
+  const placeholders = await page.locator('.flag-input').evaluateAll(els => els.map(e => e.placeholder));
+  check('every flag input says "Put flag here"',
+    placeholders.length === 3 && placeholders.every(p => p === 'Put flag here'), placeholders.join(' | '));
+  // (the confetti engine owns a <canvas>; that is not a helper widget, so it is not counted here)
+  check('no file inputs / dropzones / hexdumps anywhere',
+    await page.locator('input[type=file], .dropzone, .hexdump, .meta-table, .bp-canvas').count() === 0);
+  check('the only inputs on the page are the three flag boxes',
+    await page.locator('input, textarea').count() === 3);
+  const src = await (await fetch(BASE_URL + 'index.html')).text();
+  const deadNames = ['mountRawBytesViewer', 'mountMetadataViewer', 'mountBitPlaneViewer', 'mountWeaveTool',
+    'mountXorTool', 'bytesToHexDump', 'readFileAsBytes', 'parsePngTextChunks', 'extractLsbMessage',
+    'wireDropTarget', 'weaveHalves', 'xorRepeating', 'dropzone', 'hexdump'];
+  const present = deadNames.filter(n => src.includes(n));
+  check('no dead helper code or CSS left in the file', present.length === 0, present.join(', '));
+  const titles = await page.locator('.stage h2').evaluateAll(e => e.map(x => x.textContent.trim()));
+  check('night titles', titles[0] === 'Night 1 · Meta Parts' && titles[1] === 'Night 2 · Bit Weaving'
+    && titles[2] === 'Night 3 · Triple T', titles.slice(0, 3).join(' / '));
+  check('stage count is still 7 (FX_TOTAL)', await page.locator('.stage').count() === 7
+    && await page.evaluate(() => window.FX_TOTAL) === 7);
+  check('confetti button is present and locked',
+    await page.locator('#fx-btn').getAttribute('aria-disabled') === 'true'
+    && await page.locator('#reset-mod').count() === 1);
+  check('no theme button', await page.locator('.hdr-btn').count() === 2);
+  check('no console errors on load', errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- 2. the three nights solve
+{
+  const { page, ctx, errs } = await open();
+  await page.waitForSelector('#stage-night3 .flag-input');
+  const answers = { night1: 'flag{tune_into_the_static}', night2: 'flag{data_bender}', night3: 'flag{stop_scrolling}' };
+  // a wrong answer must be rejected first, so "correct" is not just "any input turns green"
+  await page.click('#stage-night1 .flag-input');
+  await page.keyboard.type('flag{nope}');
+  await page.click('#stage-night1 .flag-check');
+  check('wrong flag is rejected', (await page.textContent('#stage-night1 .verdict')).includes('not it'));
+  for (const [id, ans] of Object.entries(answers)) {
+    await page.fill(`#stage-${id} .flag-input`, ans);
+    await page.click(`#stage-${id} .flag-check`);   // real pointer click
+    const v = (await page.textContent(`#stage-${id} .verdict`)).trim();
+    check(`${id} accepts ${ans}`, v.startsWith('correct'), v);
+  }
+  check('solved state persisted', (await page.evaluate(() => localStorage.getItem('ctf-solved:v2:fnac'))).includes('night3'));
+  check('no console errors while solving', errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- 3. assets + night 3 identity
+{
+  const { page, ctx } = await open();
+  await page.waitForSelector('#night3-cipher');
+  await page.waitForFunction(() => !document.getElementById('night3-cipher').textContent.startsWith('loading'));
+  const onPage = await page.textContent('#night3-cipher');
+  const fileBytes = new Uint8Array(await (await fetch(BASE_URL + 'assets/night3/night3-a.txt')).arrayBuffer());
+  let latin = ''; fileBytes.forEach(b => latin += String.fromCharCode(b));
+  check('on-page ciphertext is byte-identical to night3-a.txt', onPage === latin,
+    `${onPage.length} chars vs ${fileBytes.length} bytes`);
+  const key = 'tung tung tung sahur';
+  let plain = '';
+  fileBytes.forEach((b, i) => plain += String.fromCharCode(b ^ key.charCodeAt(i % key.length)));
+  check('decoding with the key yields the flag at offset 0', plain.startsWith('flag{stop_scrolling}'), plain.slice(0, 60));
+  const links = await page.locator('.dl').evaluateAll(a => a.map(x => x.getAttribute('href')));
+  const want = ['assets/night1/night1-a.png', 'assets/night1/night1-b.png', 'assets/night2/night2-a.bin',
+    'assets/night2/night2-b.bin', 'assets/night3/night3-a.txt'];
+  check('download links use the night<N>-<letter> names', want.every(w => links.includes(w)), links.join(' '));
+  for (const href of [...want, 'assets/night3/hint-sahur.webp', 'assets/creep/eyes.png',
+    'assets/creep/scare.mp3', 'assets/creep/flicker.mp3', 'assets/creep/lights-on.mp3']) {
+    const r = await fetch(BASE_URL + href);
+    check(`${href} serves 200`, r.status === 200, String(r.status));
+  }
+  check('Sahur hint image is still on the stage', await page.locator('#stage-night3 .hintimg').count() === 1);
+  // Night 1's halves still carry their fragments in the trailing bytes
+  for (const [href, frag] of [['assets/night1/night1-a.png', 'flag{tune_into_'], ['assets/night1/night1-b.png', 'the_static}']]) {
+    const b = new Uint8Array(await (await fetch(BASE_URL + href)).arrayBuffer());
+    let s = ''; b.forEach(v => s += String.fromCharCode(v));
+    check(`${href} still carries "${frag}"`, s.includes(frag));
+  }
+  for (const href of ['assets/night2/night2-a.bin', 'assets/night2/night2-b.bin']) {
+    const b = new Uint8Array(await (await fetch(BASE_URL + href)).arrayBuffer());
+    let s = ''; b.forEach(v => s += String.fromCharCode(v));
+    check(`${href} contains no "flag" byte string`, !s.includes('flag'));
+  }
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- 4. 360px must not scroll sideways
+{
+  const { page, ctx } = await open({ viewport: { width: 360, height: 740 } });
+  await page.waitForSelector('#stage-night3 .flag-input');
+  await page.waitForFunction(() => !document.getElementById('night3-cipher').textContent.startsWith('loading'));
+  const m = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+  check('no horizontal overflow at 360px', m.sw <= m.cw, `scrollWidth ${m.sw} vs clientWidth ${m.cw}`);
+  check('cards are unrotated on a phone', await page.evaluate(() => !document.getElementById('stage-night1').style.transform));
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- 5. the 1-in-5 gate
+{
+  const { page, ctx } = await open({ creepFired: false });
+  await page.waitForSelector('#spook');
+  const hits = await page.evaluate(() => {
+    let n = 0; for (let i = 0; i < 20000; i++) if (window.__creep.shouldFire()) n++;
+    return n;
+  });
+  check('shouldFire() fires about a fifth of the time', Math.abs(hits / 20000 - 0.2) < 0.02, `${(hits / 200).toFixed(1)}% of 20000 rolls`);
+  await page.evaluate(() => { window.__creep.setFired(true); });
+  const afterFlag = await page.evaluate(() => { let n = 0; for (let i = 0; i < 2000; i++) if (window.__creep.shouldFire()) n++; return n; });
+  check('never fires once the cookie flag is set', afterFlag === 0, `${afterFlag} of 2000`);
+  await ctx.close();
+}
+
+// the WIRING: a real scroll, with the roll forced each way
+for (const [roll, expect] of [[0.05, true], [0.9, false]]) {
+  const { page, ctx } = await open({ creepFired: false });
+  await page.waitForSelector('#spook');
+  await page.evaluate(r => { window.__creepRandom = () => r; }, roll);
+  await page.mouse.move(500, 400);
+  await page.mouse.wheel(0, 600);          // a real wheel scroll, not scrollTo()
+  await page.waitForTimeout(500);
+  const running = await page.evaluate(() => window.__creep.state.phase !== 'idle');
+  check(`scroll with roll ${roll} ${expect ? 'starts' : 'does not start'} the sequence`, running === expect);
+  if (running) await page.evaluate(() => window.__creep.abort('test'));
+  check(`roll ${roll}: cookie flag ${expect ? 'set' : 'untouched'}`,
+    await page.evaluate(() => window.__creep.fired()) === expect);
+  await ctx.close();
+}
+
+// "spook me again" clears the flag and runs it, from a real click
+{
+  const { page, ctx, errs } = await open({ creepFired: true });
+  await page.waitForSelector('#spook');
+  await page.evaluate(() => { window.__creepRandom = () => 0.9; }); // prove the button ignores the roll
+  await page.click('#spook');
+  await page.waitForTimeout(300);
+  check('"spook me again" starts the sequence from a real click',
+    await page.evaluate(() => window.__creep.state.phase !== 'idle'));
+  await page.evaluate(() => window.__creep.abort('test'));
+  check('no console errors around the spook button', errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- 6. skipping
+async function skipRun(how, waitMs) {
+  const { page, ctx, errs } = await open({ creepFired: false });
+  await page.waitForSelector('#spook');
+  await page.evaluate(() => window.__creep.start());
+  await page.waitForTimeout(waitMs);
+  const phaseBefore = await page.evaluate(() => window.__creep.state.phase);
+  const t0 = Date.now();
+  if (how === 'space') await page.keyboard.press('Space');
+  else for (let i = 0; i < 3; i++) await page.mouse.click(550, 500);
+  const stopped = await page.evaluate(() => window.__creep.state.phase === 'idle');
+  const dt = Date.now() - t0;
+  const overlay = await page.evaluate(() => {
+    const el = document.getElementById('creep');
+    return { on: el.classList.contains('on'), opacity: el.style.opacity };
+  });
+  const audioLive = await page.evaluate(() => Object.values(window.__creep.audio()).some(a => !a.paused));
+  check(`skip by ${how} during "${phaseBefore}" aborts immediately`, stopped && dt < 900, `${dt}ms`);
+  check(`skip by ${how}: overlay cleared`, !overlay.on && overlay.opacity === '0', JSON.stringify(overlay));
+  check(`skip by ${how}: audio stopped`, !audioLive);
+  check(`skip by ${how}: cookie flag still set`, await page.evaluate(() => window.__creep.fired()));
+  // and nothing queued fires afterwards
+  await page.waitForTimeout(1500);
+  check(`skip by ${how}: nothing restarts afterwards`, await page.evaluate(() => window.__creep.state.phase === 'idle'));
+  check(`skip by ${how}: no console errors`, errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+await skipRun('space', 700);    // mid-flicker
+await skipRun('clicks', 700);   // mid-flicker
+await skipRun('space', 4600);   // during the eyes
+await skipRun('clicks', 4600);
+
+// ---------------------------------------------------------------- 7. gate + konami
+{
+  const { page, ctx, errs } = await open({ unlocked: false });
+  await page.waitForSelector('.locked');
+  check('cookie gate still hides the module', await page.locator('.stage').count() === 0);
+  for (const k of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'])
+    await page.keyboard.press(k);
+  await page.waitForSelector('#stage-night1', { timeout: 3000 });
+  check('konami code unlocks the module', await page.locator('.stage').count() === 7);
+  check('konami render leaves exactly one spook button', await page.locator('#spook').count() === 1);
+  check('no console errors through the konami path', errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+
+await browser.close();
+console.log(fails.length ? `\n${fails.length} FAILURES:\n - ` + fails.join('\n - ') : '\nall module checks passed');
+process.exit(fails.length ? 1 : 0);

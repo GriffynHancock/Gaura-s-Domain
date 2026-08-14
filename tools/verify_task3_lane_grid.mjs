@@ -251,6 +251,17 @@ const hintPage = async (label, fn) => {
   return out;
 };
 const toBottom = p => p.evaluate(() => document.getElementById('realtime-note').scrollIntoView({ block: 'center' }));
+// The page says when the ease is over — `hint().animating` is the renderer's own flag — so waiting
+// for the END of the nudge is a condition, not a guessed 1600ms. The two NEGATIVE cases (it must
+// NOT fire) cannot be condition-waited by construction, but they do not need a whole ease either:
+// a re-fire sets `animating` on the very next frame and takes SHA3_HINT_MS (~1100ms) to land, so
+// a few hundred ms is enough to catch one starting — and `animating` is asserted alongside the
+// unchanged rotation so a nudge that had merely begun is still caught.
+const hintSettled = p => p.waitForFunction(() => {
+  const h = __sha3Debug.hint();
+  return h.fired && !h.animating;
+}, { timeout: 5000 });
+const NEGATIVE_WINDOW_MS = 400;   // >> one frame; any hint that was going to fire has started
 
 const hintA = await hintPage('hintA', async p => {
   await p.click('#algo-next');                     // MD5 -> SHA-3
@@ -259,13 +270,13 @@ const hintA = await hintPage('hintA', async p => {
   await toBottom(p);
   await p.waitForTimeout(130);
   const mid = await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint() }));
-  await p.waitForTimeout(1600);
+  await hintSettled(p);
   const after = await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint(), faces: __sha3Debug.facesDrawn() }));
   await p.evaluate(() => window.scrollTo(0, 0));
   await p.waitForTimeout(250);
   await toBottom(p);
-  await p.waitForTimeout(1600);
-  const again = await p.evaluate(() => __sha3Debug.rotation());
+  await p.waitForTimeout(NEGATIVE_WINDOW_MS);
+  const again = await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint() }));
   return { before, mid, after, again };
 });
 if (hintA.before.rotX !== 0 || hintA.before.rotY !== 0) throw new Error('hint test did not start face-on');
@@ -283,7 +294,7 @@ if (!(midFrac > 0 && midFrac < 0.5)) {
   throw new Error(`the hint must ease in gently — 130ms into it the rotation was ${(midFrac * 100).toFixed(0)}% of the way there (${JSON.stringify(hintA.mid.r)})`);
 }
 // ONCE. Scrolling back up and down again must not nudge it a second time.
-if (hintA.again.rotX !== hintA.after.r.rotX || hintA.again.rotY !== hintA.after.r.rotY) {
+if (hintA.again.r.rotX !== hintA.after.r.rotX || hintA.again.r.rotY !== hintA.after.r.rotY || hintA.again.h.animating) {
   throw new Error(`the hint fired more than once: ${JSON.stringify(hintA.after.r)} -> ${JSON.stringify(hintA.again)} on a second scroll`);
 }
 // ...and it must genuinely have revealed depth, not just changed a number.
@@ -301,7 +312,7 @@ const hintB = await hintPage('hintB', async p => {
   await p.waitForTimeout(200);
   const manual = await p.evaluate(() => __sha3Debug.rotation());
   await toBottom(p);
-  await p.waitForTimeout(1800);
+  await p.waitForTimeout(NEGATIVE_WINDOW_MS);
   return { manual, post: await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint() })) };
 });
 if (hintB.post.r.rotX !== hintB.manual.rotX || hintB.post.r.rotY !== hintB.manual.rotY) {
@@ -311,10 +322,10 @@ if (hintB.post.h.fired) throw new Error('the hint fired even though the user had
 
 const hintC = await hintPage('hintC', async p => {
   await toBottom(p);                                // bottom reached while MD5 is showing
-  await p.waitForTimeout(700);
+  await p.waitForTimeout(NEGATIVE_WINDOW_MS);
   const whileMd5 = await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint() }));
   await p.click('#algo-next');                      // now switch to SHA-3
-  await p.waitForTimeout(1800);
+  await hintSettled(p);
   return { whileMd5, after: await p.evaluate(() => ({ r: __sha3Debug.rotation(), h: __sha3Debug.hint() })) };
 });
 if (hintC.whileMd5.h.fired) throw new Error('the hint fired while the SHA-3 canvas was hidden — the one shot was wasted where nobody could see it');

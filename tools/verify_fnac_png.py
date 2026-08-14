@@ -1,5 +1,6 @@
 """Manual smoke test for fnac_png.py + the shipped FNAC assets.
 Run: .venv/bin/python tools/verify_fnac_png.py"""
+import io
 import pathlib
 import random
 from PIL import Image
@@ -45,26 +46,63 @@ ka_a, ka_b = bit_split(bytes([0b10110010]))
 assert ka_a == bytes([0b0100_0000]) and ka_b == bytes([0b1101_0000]), (ka_a, ka_b)
 print('bit split known-answer vector OK')
 
-half_a = (ASSETS / 'night2' / 'file-a.bin').read_bytes()
-half_b = (ASSETS / 'night2' / 'file-b.bin').read_bytes()
-source = append_trailing_bytes(B.NIGHT2_SOURCE.read_bytes(), B.NIGHT2_FLAG,
-                               pad_before=24, pad_after=25, seed=205)
-assert bit_weave(half_a, half_b) == source, 'shipped halves do not weave back to the source'
-assert source.startswith(PNG_SIG) and B.NIGHT2_FLAG in source
+half_a = (ASSETS / 'night2' / 'night2-a.bin').read_bytes()
+half_b = (ASSETS / 'night2' / 'night2-b.bin').read_bytes()
+png = B.night2_source_png()
+source = B.night2_source_bytes()
+woven = bit_weave(half_a, half_b)
+assert woven == source, 'shipped halves do not weave back to the source'
+assert source.startswith(PNG_SIG)
 assert not half_a.startswith(PNG_SIG) and not half_b.startswith(PNG_SIG), 'a half looks like a PNG'
-assert b'flag{' not in half_a, "'flag{' visible in half A"
-assert b'flag{' not in half_b, "'flag{' visible in half B"
-assert b'flag' not in half_a and b'flag' not in half_b
+for name, blob in (('source', source), ('half A', half_a), ('half B', half_b)):
+    assert B.NIGHT2_FLAG not in blob, f'{name} carries the flag as a byte string'
+    assert b'flag{' not in blob, f"'flag{{' visible in {name}"
+    assert b'flag' not in blob, f"'flag' visible in {name}"
+
+# the easter egg: what `strings` on the woven file actually gets you. Read back out of the
+# WOVEN bytes (not the builder's variable) and decoded as UTF-8, so the Greek is proven to
+# survive the split/weave round trip rather than assumed to.
+tail = woven[woven.index(B.NIGHT2_EASTER):]
+text = tail.decode('utf-8')
+assert text.startswith('The word hexadecimal is first recorded in 1952.')
+assert 'Greek ἕξ (hex) "six"' in text, text[:120]
+assert 'en.wikipedia.org/wiki/Hexadecimal' in text
+assert b'flag' not in tail
+print(f'night2 easter egg OK — {len(B.NIGHT2_EASTER)} UTF-8 bytes after IEND survive the weave, '
+      f'Greek intact: {text[text.index("Greek"):text.index("Greek")+18]}')
+
+# the flag must be PIXELS: prove it survives a decode/re-encode of the woven image, which no
+# byte-string search can tell you. Compared against a freshly drawn reference render.
+woven_img = Image.open(io.BytesIO(woven)).convert('RGBA')
+ref_img = Image.open(io.BytesIO(png)).convert('RGBA')
+assert woven_img.size == ref_img.size
+assert woven_img.tobytes() == ref_img.tobytes(), 'woven image pixels differ from the source render'
+plain_img = Image.open(B.NIGHT2_SOURCE).convert('RGBA')
+diff = [i for i, (p, q) in enumerate(zip(plain_img.tobytes(), ref_img.tobytes())) if p != q]
+assert diff, 'nothing was painted onto the trollface — the flag is not in the pixels'
 print(f'night2 shipped assets OK — weave is byte-identical to the {len(source)}-byte source, '
-      f"no 'flag{{' in either half, neither half has a PNG signature")
+      f"no 'flag' bytes anywhere, {len(diff)} pixel-channel differences vs the unpainted "
+      f'trollface (the flag is drawn into the image)')
 
 # ---- Night 3: repeating-key XOR ----
-cipher = (ASSETS / 'night3' / 'message.txt').read_bytes()
+cipher = (ASSETS / 'night3' / 'night3-a.txt').read_bytes()
 plain = xor_repeating(cipher, B.NIGHT3_KEY)
 assert plain == B.NIGHT3_PLAINTEXT, plain
-assert b'flag{tung_tung_tung_sahur}' in plain
+assert plain.startswith(b'flag{stop_scrolling}'), 'flag is not at offset 0'
 assert xor_repeating(B.NIGHT3_PLAINTEXT[:5], cipher[:5]) == b'tung ', 'crib does not yield "tung "'
 assert max(cipher) < 0x80 and 0x0a not in cipher and 0x0d not in cipher
 assert (ASSETS / 'night3' / 'hint-sahur.webp').stat().st_size < 200_000
+partial = xor_repeating(cipher, b'tung ')
+assert partial.startswith(b'flag{stop_scrol'), partial
 print(f'night3 shipped assets OK — {len(cipher)} ciphertext bytes decode to the plaintext, '
       f"crib 'flag{{' -> 'tung ', {cipher.count(0)} NUL bytes (all where plaintext == key)")
+print('night3 partial decode with the 5-byte crib key "tung " (what the student sees first):')
+print('  ' + repr(partial))
+
+# ---- intro creep media ----
+creep = ASSETS / 'creep'
+for name in ('eyes.png', 'scare.mp3', 'flicker.mp3', 'lights-on.mp3'):
+    assert (creep / name).stat().st_size > 0, f'missing creep asset {name}'
+eyes = Image.open(creep / 'eyes.png')
+assert eyes.size == (652, 650), eyes.size
+print(f'creep assets OK — eyes.png {eyes.size[0]}x{eyes.size[1]} {eyes.mode}, 3 audio files present')
