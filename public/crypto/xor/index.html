@@ -15,10 +15,15 @@
     --read-bg:#1a1812; --read-dim:#5e5a3a; --read-on:#f0bb4d;
     --disp:"Fraunces",Georgia,serif; --ui:"Hanken Grotesk",system-ui,sans-serif;
     --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+    /* C2 crib cells: key row reads red (like the demo's red key bits), message row light.
+       Tokenised so the dark theme can soften the light cell and flip the ink on the red. */
+    --cc-key-ink:#fff; --cc-msg-bg:#f7f2e4; --cc-msg-ink:#241f17;
   }
   html[data-theme="dark"]{
     --bg:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
     --ink:#ece3cd; --dim:#9a8f72; --accent:#e0593d; --gold:#c79338; --ok:#62ab77; --read-bg:#14120c;
+    /* dark --accent is lighter, so dark ink on it (not white) is what clears 4.5:1 */
+    --cc-key-ink:#15130d; --cc-msg-bg:#d8d0ba; --cc-msg-ink:#1a170f;
   }
   *{box-sizing:border-box}
   body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg);
@@ -82,6 +87,9 @@
     border:1px solid var(--edge); border-radius:5px; padding:12px 14px; word-break:break-all;
     min-height:46px; overflow:auto}
   [data-theme="dark"] .blob{color:#cdbf9f}
+  /* C2 only: the default --edge border on --panel2 over --panel is so low-contrast the blob reads
+     as a tint, not a box. --dim gives it a visible edge without inventing a new look. */
+  .blob.boxed{border-color:var(--dim)}
 
   /* --- bit gate (demo + expandable byte view) --- */
   .gate{margin:14px 0 6px}
@@ -193,15 +201,43 @@
     background:none; border:none; color:#8f9c95; padding:3px 5px; cursor:pointer; white-space:pre; border-radius:4px}
   .brutelist .brow-key:hover{background:#13202a; color:var(--read-on)}
   .brutelist .brow-key .k{color:var(--gold)}
+  /* Brute-force reveal: each row lands with a modest warmth that fades over ~.5s, staggered 5ms
+     apart so all 256 are in under 1.8s. Deliberately `backwards`, never `forwards` — a forwards
+     fill would keep overriding :hover after the run. Photosensitivity: one small fading lift per
+     row inside a 220px scroll window, no full-canvas flash, and nothing repeats. */
+  @keyframes browhot{
+    0%  {opacity:0; background:#1b2c37; color:#dce9e2}
+    8%  {opacity:1; background:#1b2c37; color:#dce9e2}
+    100%{opacity:1; background:transparent; color:#8f9c95}
+  }
+  .brutelist .brow-key.hot{animation:browhot .5s ease-out backwards}
+  @media(prefers-reduced-motion:reduce){ .brutelist .brow-key.hot{animation:none} }
+  .keyhex{font-family:var(--mono); font-weight:700; font-size:.92rem; color:var(--read-on);
+    background:var(--read-bg); border:1px solid #000; border-radius:6px; padding:10px 12px;
+    box-shadow:0 0 0 1px var(--edge); min-width:64px; text-align:center}
   .xanim{display:flex; gap:5px; flex-wrap:wrap; margin:8px 0 4px; min-height:34px}
   .xb{font-family:var(--mono); font-weight:700; font-size:.8rem; min-width:26px; text-align:center; padding:7px 4px;
     border-radius:5px; background:var(--panel2); border:1px solid var(--edge); color:var(--dim); transition:.12s}
   .xb.done{background:var(--read-bg); color:var(--read-on); border-color:#000}
   .cribcalc{display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 4px}
+  /* Stack order is KEY (top) → MESSAGE → HEX, matching renderCrib() and the legend beside the
+     crib box. Colours echo the demo's bit rows: key red, message light. */
   .cc{font-family:var(--mono); text-align:center; border:1px solid var(--edge); border-radius:6px; overflow:hidden; min-width:38px}
-  .cc .h{font-size:.64rem; color:var(--dim); background:var(--panel2); padding:3px 4px}
-  .cc .m{font-size:.74rem; color:var(--ink); padding:3px 4px; border-top:1px solid var(--edge)}
-  .cc .k{font-size:.92rem; font-weight:700; color:#3a2a00; background:var(--read-on); padding:4px}
+  .cc .k,.cclegend>.k{font-size:.92rem; font-weight:700; color:var(--cc-key-ink); background:var(--accent); padding:4px}
+  .cc .m,.cclegend>.m{font-size:.74rem; color:var(--cc-msg-ink); background:var(--cc-msg-bg); padding:3px 4px; border-top:1px solid var(--edge)}
+  .cc .h,.cclegend>.h{font-size:.64rem; color:var(--dim); background:var(--panel2); padding:3px 4px; border-top:1px solid var(--edge)}
+  /* Static legend for reading a .cc cell. Each cell-row is its own grid item so the annotation
+     beside it lands on the same grid row — the three rows have different font sizes/padding, so a
+     sibling label column would otherwise drift out of line. */
+  .cribrow{display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap}
+  .cribrow>.keyrow{flex:1 1 240px}
+  .cclegend{display:grid; grid-template-columns:auto 1fr; column-gap:10px; align-items:center;
+    margin-top:8px; flex:0 0 auto; max-width:100%}
+  .cclegend>.k,.cclegend>.m,.cclegend>.h{font-family:var(--mono); text-align:center; min-width:40px;
+    border-left:1px solid var(--edge); border-right:1px solid var(--edge)}
+  .cclegend>.k{border-top:1px solid var(--edge); border-radius:6px 6px 0 0}
+  .cclegend>.h{border-bottom:1px solid var(--edge); border-radius:0 0 6px 6px}
+  .cclegend>.lbl{font-family:var(--mono); font-size:.62rem; line-height:1.35; color:var(--dim)}
   .hexdump{display:flex; gap:4px; flex-wrap:wrap; background:var(--panel2); border:1px solid var(--edge);
     border-radius:6px; padding:10px 11px}
   .hx{text-align:center; font-family:var(--mono); min-width:20px}
@@ -612,47 +648,56 @@ function addCard({id,title,sub,intro,hint,build}){
 addCard({
   id:'c1', title:'Brute Force', sub:'',
   intro:"If the key is a single letter, its 8 bits give only <b>256 possibilities</b> — so try every one. We've already run all 256 keys against the scrambled message with XOR, the way you'd whip up in a quick script, and the output looks like this. Nobody hands you the answer; you spot it.",
-  hint:"Run all 256 and scroll — they're in key order (0x00→0xFF), nothing pre-marked. Stuck scrolling? Filter by a word you expect, like <code>flag</code>. You'll find <b>two</b> word-like rows: one <code>flag{…}</code> (lower-case) and a twin <code>FLAG[…]</code> (UPPER-case) — two keys <code>0x20</code> apart just flip letter <b>case</b>. A real flag is lower-case <code>flag{…}</code>; that's your key.",
   build(ctx){
     const plain='flag{brute_force_me}', key=0x37;
     const cipher = xorBytes(toBytes(plain), Uint8Array.of(key));
+    // Reading order matters: the hex dump, then the try-one-yourself box, THEN the brute button —
+    // the lab copy says "try a few keys yourself, then click the button below", so the manual box
+    // has to sit above the button it refers back to.
     ctx.work.innerHTML =
       '<div class="lab">The scrambled message — hex (top) and text (bottom)</div>'+
       '<div class="hexdump"></div>'+
-      '<div class="lab">Try every 1-byte key — scroll and spot the one that reads as English</div>'+
-      '<button class="mini runbrute">RUN ALL 256 KEYS ▸</button>'+
-      '<div class="brutewrap hide">'+
-        '<div class="keyrow"><input class="cribfilter" spellcheck="false" autocomplete="off" placeholder="filter: a word you expect, e.g. flag"><span class="keyhint">256 is a lot — narrow it with a crib (a word you bet is in there)</span></div>'+
-        '<div class="brutelist"></div></div>'+
-      '<div class="lab">Apply a key — type the byte (0x37) or its character</div>'+
-      '<div class="keyrow"><input class="keyin" spellcheck="false" autocomplete="off" placeholder="key, e.g. 0x37 or a character"><span class="keyhint">click a row above, or type a key</span></div>'+
-      '<div class="decout">(pick or type a key)</div>';
+      '<div class="lab">Apply a key — type a character to try</div>'+
+      '<div class="keyrow"><input class="keyin" maxlength="1" spellcheck="false" autocomplete="off" placeholder="one character" aria-label="key character">'+
+        '<span class="keyhex" aria-label="key in hex">0x··</span>'+
+        '<span class="keyhint">the hex code of that character</span></div>'+
+      '<div class="decout">(type a character to try)</div>'+
+      '<div class="lab">Try a few keys yourself, then when you get bored, click the button below to brute force it — trying every combination.</div>'+
+      '<button class="mini runbrute">BRUTE FORCE ▸</button>'+
+      '<div class="brutewrap hide"><div class="brutelist"></div></div>';
     const hd=ctx.work.querySelector('.hexdump');
     [...cipher].forEach(b=>{ const c=document.createElement('div'); c.className='hx';
       c.innerHTML='<div class="hxh">'+b.toString(16).padStart(2,'0')+'</div><div class="hxc">'+
         (b>=32&&b<=126?String.fromCharCode(b):'·')+'</div>'; hd.appendChild(c); });
     const wrap=ctx.work.querySelector('.brutewrap'), list=ctx.work.querySelector('.brutelist'),
-          filter=ctx.work.querySelector('.cribfilter'),
-          keyin=ctx.work.querySelector('.keyin'), decout=ctx.work.querySelector('.decout');
+          keyin=ctx.work.querySelector('.keyin'), keyhex=ctx.work.querySelector('.keyhex'),
+          decout=ctx.work.querySelector('.decout');
 
     // decode under every key, in KEY ORDER (not sorted — spotting the readable one is the skill)
     const decoded=[]; for(let k=0;k<256;k++) decoded.push(toStr(xorBytes(cipher,Uint8Array.of(k))));
+    // Unconditional: all 256 rows, always. The stagger is a CSS animation-delay per row, not 256
+    // timers — one style value each, cheap on a school VM or a phone.
     function renderList(){
-      const q=filter.value.toLowerCase(); list.innerHTML='';
-      decoded.forEach((txt,k)=>{ if(q && !txt.toLowerCase().includes(q)) return;
-        const r=document.createElement('button'); r.className='brow-key';
+      list.innerHTML='';
+      decoded.forEach((txt,k)=>{
+        const r=document.createElement('button'); r.className='brow-key hot';
+        r.style.animationDelay=(k*5)+'ms';
         r.innerHTML='<span class="k">0x'+k.toString(16).padStart(2,'0')+'</span> '+printable(txt).replace(/</g,'&lt;');
-        r.onclick=()=>{ keyin.value='0x'+k.toString(16).padStart(2,'0'); apply(k); };
+        r.onclick=()=>pick(k);
         list.appendChild(r); });
-      if(!list.children.length) list.innerHTML='<span class="keyhint">no key produces that text — try another guess</span>';
     }
     ctx.work.querySelector('.runbrute').onclick=()=>{ wrap.classList.toggle('hide');
       if(!wrap.classList.contains('hide') && !list.children.length) renderList(); };
-    filter.addEventListener('input',renderList);
-    function apply(k){ const dec=xorBytes(cipher,Uint8Array.of(k));
+    function apply(k){ keyhex.textContent='0x'+k.toString(16).padStart(2,'0');
+      const dec=xorBytes(cipher,Uint8Array.of(k));
       decout.innerHTML=''; decout.appendChild(flagMark(toStr(dec))); }
-    keyin.addEventListener('input',()=>{ const kb=parseKey(keyin.value); if(kb&&kb.length===1) apply(kb[0]);
-      else { decout.textContent='(type one byte: 0x37 or a single character)'; } });
+    // clicking a row puts that key's CHARACTER in the box; if the byte isn't typeable (control /
+    // high byte) the box is cleared and the hex readout carries the key on its own — still decodes.
+    function pick(k){ keyin.value=(k>=32&&k<=126)?String.fromCharCode(k):''; apply(k); }
+    keyin.addEventListener('input',()=>{
+      keyin.value=(keyin.value||'').slice(-1);            // paste of many chars keeps the last one
+      if(!keyin.value){ keyhex.textContent='0x··'; decout.textContent='(type a character to try)'; return; }
+      apply(keyin.value.charCodeAt(0)&255); });
     return plain;
   }
 });
@@ -660,22 +705,32 @@ addCard({
 /* ================= C2 · CRIB THE KEY (repeating, known plaintext) ================= */
 addCard({
   id:'c2', title:'Crib the Key', sub:'',
-  intro:"A longer key now — a whole word that <b>repeats</b>. No brute this time (256×256×… is too many). But you know a secret: every flag starts with <code>flag{</code>. And <b>scrambled ⊕ message = key</b>. So lay <code>flag{</code> over the start and the key falls out — watch it <i>repeat</i>.",
-  hint:"The recovered row reads <code>c a t c a</code> — that's the word <b>cat</b> starting again. Type <code>cat</code> as the key and the whole message unscrambles. A known scrap of plaintext (a “crib”) hands you the key.",
+  intro:"This key is a short word applied over and over across a longer string. Here we'll use a technique called <b>cribbing</b> — guessing what the secret message might contain, to help crack it. Below is the encrypted message, and a box to try cribbing in. Remember: if you know either the key or the original message, you can pull the XOR apart. What text do flags always have?",
   build(ctx){
     const plain='flag{repeating_xor_key}', key='cat';
     const cipher = xorBytes(toBytes(plain), toBytes(key));
+    // Static legend beside the crib box: one worked cell, 'a' as the message. 0x02 ⊕ 'a' = 'c',
+    // so the triple is real and consistent with the key ('cat'). Row order matches renderCrib().
+    const legend =
+      '<div class="cclegend" aria-hidden="true">'+
+        '<div class="k">c</div><div class="lbl">key applied on this byte</div>'+
+        '<div class="m">a</div><div class="lbl">message</div>'+
+        '<div class="h">02</div><div class="lbl">hex</div>'+
+      '</div>';
     ctx.work.innerHTML =
-      '<div class="lab">The scrambled message — hex bytes</div>'+
-      '<div class="blob">'+toHex(cipher)+'</div>'+
+      '<div class="lab">Encrypted message</div>'+
+      '<div class="blob boxed">'+toHex(cipher)+'</div>'+
       '<div class="lab">The crib — type the start you can guess every flag has</div>'+
-      '<div class="keyrow"><input class="cribin" spellcheck="false" autocomplete="off" placeholder="what do all flags start with?"><span class="keyhint">5 characters</span></div>'+
-      '<div class="lab">key = scrambled ⊕ crib  (read it across — does it repeat?)</div>'+
+      '<div class="cribrow">'+
+        '<div class="keyrow"><input class="cribin" spellcheck="false" autocomplete="off" placeholder="what do all flags start with?"></div>'+
+        legend+
+      '</div>'+
       '<div class="cribcalc"><span class="keyhint">↑ type a crib above to reveal the key bytes</span></div>'+
-      '<div class="lab">Type the repeating key you read off</div>'+
+      '<div class="lab">Type the key we find here</div>'+
       '<div class="keyrow"><input class="keyin" spellcheck="false" autocomplete="off" placeholder="the word that repeats"><span class="keyhint"></span></div>'+
       '<div class="decout">(enter the key)</div>'+
-      '<div class="cnote"><b>Why crib, not brute?</b> A 1-byte key has 256 options — tools like CyberChef spray all 256 in a blink. But this key is 3 bytes, and its “XOR Brute Force” won’t search keys longer than a byte or two. Multi-byte repeating keys dodge the brute — so you lean on a known scrap of plaintext instead.</div>';
+      '<div class="cnote"><b>Why crib, not brute?</b> A 1-byte key has 256 options — tools like CyberChef spray all 256 in a blink. But this key is 3 bytes, and its “XOR Brute Force” won’t search keys longer than a byte or two. Multi-byte repeating keys dodge the brute — so you lean on a scrap of the original message you already know instead.</div>';
+    ctx.node.querySelector('.flagin').placeholder='Paste the flag here';   // C2 only
     const cribin=ctx.work.querySelector('.cribin'), calc=ctx.work.querySelector('.cribcalc'),
           keyin=ctx.work.querySelector('.keyin'), decout=ctx.work.querySelector('.decout');
 
@@ -685,9 +740,10 @@ addCard({
       for(let i=0;i<crib.length && i<cipher.length;i++){
         const kb=cipher[i]^crib[i];
         const cell=document.createElement('div'); cell.className='cc';
-        cell.innerHTML='<div class="h">'+cipher[i].toString(16).padStart(2,'0')+'</div>'+
+        // key on top, then message, then hex — must stay in step with .cclegend above
+        cell.innerHTML='<div class="k">'+(kb>=32&&kb<=126?String.fromCharCode(kb):'·')+'</div>'+
           '<div class="m">'+(crib[i]>=32&&crib[i]<=126?String.fromCharCode(crib[i]):'·')+'</div>'+
-          '<div class="k">'+(kb>=32&&kb<=126?String.fromCharCode(kb):'·')+'</div>';
+          '<div class="h">'+cipher[i].toString(16).padStart(2,'0')+'</div>';
         calc.appendChild(cell);
       }
     }
