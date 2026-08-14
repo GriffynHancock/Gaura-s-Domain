@@ -18,12 +18,21 @@
     /* C2 crib cells: key row reads red (like the demo's red key bits), message row light.
        Tokenised so the dark theme can soften the light cell and flip the ink on the red. */
     --cc-key-ink:#fff; --cc-msg-bg:#f7f2e4; --cc-msg-ink:#241f17;
+    /* C4 knob colours — red / yellow / green, one per key byte. ONE definition, three consumers:
+       the slider that turns a byte (.knob.kN .krange), the characters that byte owns (.msg .kN),
+       and the legend swatch (.klegend i.kN). The knob→character mapping IS the lesson of the card,
+       so it must not be able to drift; that is why these are tokens and not repeated literals. */
+    --k0:#8d4a3a; --k1:#b58a3c; --k2:#3f7d52;
   }
   html[data-theme="dark"]{
     --bg:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
     --ink:#ece3cd; --dim:#9a8f72; --accent:#e0593d; --gold:#c79338; --ok:#62ab77; --read-bg:#14120c;
     /* dark --accent is lighter, so dark ink on it (not white) is what clears 4.5:1 */
     --cc-key-ink:#15130d; --cc-msg-bg:#d8d0ba; --cc-msg-ink:#1a170f;
+    /* same three hues, lifted for the dark panel: the light values are ~2.5:1 against --panel2,
+       under the 3:1 non-text bound, which would leave knob 1's slider nearly invisible. All three
+       consumers move together, so the knob→character mapping stays exact within a theme. */
+    --k0:#d4674c; --k1:#d8a94a; --k2:#62ab77;
   }
   *{box-sizing:border-box}
   body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg);
@@ -293,34 +302,48 @@
   .dc.hit{color:#bfe9cd; background:#3f7d5233}
   .posr{width:100%; margin:10px 0 4px; accent-color:var(--accent)}
 
-  /* C4 — three single-byte knobs, one per key position */
-  .knobs{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:8px}
-  @media(max-width:640px){ .knobs{grid-template-columns:1fr} }
-  .knob{background:var(--panel2); border:1px solid var(--edge); border-radius:9px; padding:12px 13px; text-align:center}
-  .knob .kpos{font-family:var(--mono); font-weight:700; font-size:.6rem; letter-spacing:.14em; text-transform:uppercase}
+  /* C4 — three single-byte knobs, one per key position, STACKED vertically.
+     The three per-knob readouts were merged into one .kprev window above the stack (with the
+     module's HEX|TEXT toggle), so a knob is now just its controls; the byte it holds is read
+     off the shared window, colour-matched. */
+  .knobs{display:grid; grid-template-columns:1fr; gap:10px; margin-top:8px}
+  .knob{background:var(--panel2); border:1px solid var(--edge); border-radius:9px; padding:11px 13px;
+    display:grid; grid-template-columns:minmax(140px,180px) 1fr; gap:6px 16px; align-items:center}
+  @media(max-width:560px){ .knob{grid-template-columns:1fr; gap:8px} }
+  /* the knob's own hue, restated on its left edge so the stack reads as three coloured lanes */
+  .knob{border-left:4px solid var(--kc)}
+  .knob.k0{--kc:var(--k0)} .knob.k1{--kc:var(--k1)} .knob.k2{--kc:var(--k2)}
+  .knob .kpos{font-family:var(--mono); font-weight:700; font-size:.62rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--kc)}
   .knob .kwho{font-family:var(--mono); font-size:.6rem; color:var(--dim); margin-top:3px; line-height:1.4}
-  .kread{background:var(--read-bg); border:1px solid #000; border-radius:7px; margin-top:10px; padding:8px 4px 6px;
-    box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset}
-  .kread .kchar{font-family:var(--mono); font-weight:700; font-size:1.5rem; line-height:1.1; color:var(--read-on)}
-  .kread .khex{font-family:var(--mono); font-size:.68rem; letter-spacing:.08em; color:var(--read-dim); margin-top:3px}
-  .ksteps{display:flex; gap:4px; justify-content:center; margin-top:9px; flex-wrap:wrap}
+  .kctl{display:flex; flex-direction:column; gap:7px}
+  .ksteps{display:flex; gap:5px; flex-wrap:wrap}
   .kstep{font-family:var(--mono); font-size:.62rem; cursor:pointer; color:var(--dim); background:none;
-    border:1px solid var(--edge); border-radius:5px; padding:5px 7px; min-width:32px}
+    border:1px solid var(--edge); border-radius:5px; padding:5px 7px; min-width:36px}
   .kstep:hover{color:var(--ink); border-color:var(--dim)}
-  .krange{width:100%; margin:10px 0 2px; accent-color:var(--accent)}
-  .ktype{font-family:var(--mono); font-size:.78rem; width:100%; text-align:center; color:var(--read-on);
-    background:var(--read-bg); border:1px solid #000; border-radius:6px; padding:6px 4px;
-    box-shadow:0 0 0 1px var(--edge); margin-top:6px}
+  /* the slider carries its knob's colour so it matches the characters it controls, below */
+  .krange{width:100%; margin:2px 0 0; accent-color:var(--kc)}
+  .krow{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .krow .ksteps{flex:0 0 auto}
+  .ktype{font-family:var(--mono); font-size:.78rem; flex:1 1 130px; min-width:110px; text-align:center;
+    color:var(--read-on); background:var(--read-bg); border:1px solid #000; border-radius:6px; padding:6px 8px;
+    box-shadow:0 0 0 1px var(--edge)}
   .ktype:focus{outline:none; box-shadow:0 0 0 1px var(--accent)}
+  /* the one shared key window above the stack — an amber readout, one coloured cell per key byte */
+  .kprev{display:flex; gap:10px; justify-content:center; background:var(--read-bg); border:1px solid #000;
+    border-radius:7px; padding:11px 12px; box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset}
+  .kprev b{font-family:var(--mono); font-weight:700; font-size:1.5rem; line-height:1.15; color:var(--read-on);
+    display:block; min-width:2.1ch; text-align:center; padding-bottom:3px; border-bottom:3px solid var(--kc)}
+  .kprev b.k0{--kc:var(--k0)} .kprev b.k1{--kc:var(--k1)} .kprev b.k2{--kc:var(--k2)}
   .msg{font-family:var(--mono); font-size:1rem; line-height:1.9; color:#9fb0a8; background:#070b10;
     border:1px solid #000; border-radius:7px; padding:14px; margin-top:10px; min-height:48px;
     word-break:break-all; box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset}
   .msg span{padding-bottom:2px; border-bottom:2px solid transparent; white-space:pre}
-  .msg .k0{border-bottom-color:#8d4a3a} .msg .k1{border-bottom-color:#b58a3c} .msg .k2{border-bottom-color:#3f7d52}
+  .msg .k0{border-bottom-color:var(--k0)} .msg .k1{border-bottom-color:var(--k1)} .msg .k2{border-bottom-color:var(--k2)}
   .msg .fl{color:var(--read-on); font-weight:700}
   .klegend{display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; font-family:var(--mono); font-size:.66rem; color:var(--dim)}
   .klegend i{font-style:normal; border-bottom:2px solid; padding-bottom:1px}
-  .klegend i.k0{border-color:#8d4a3a} .klegend i.k1{border-color:#b58a3c} .klegend i.k2{border-color:#3f7d52}
+  .klegend i.k0{border-color:var(--k0)} .klegend i.k1{border-color:var(--k1)} .klegend i.k2{border-color:var(--k2)}
 
   /* No `align-items` here on purpose: the default `stretch` is what makes the button exactly as
      tall as the field beside it. `align-items:center` used to sit here, and because the button
@@ -478,19 +501,25 @@ const toText = b => Array.from(b,x=>(x>=32&&x<=126)?String.fromCharCode(x):'·')
    count always equals the byte count.
 
    render(el,bytes,mode) is optional; C1's paired hex-over-text dump passes its own so it can keep
-   its per-byte cells instead of becoming one run-on string. */
+   its per-byte cells instead of becoming one run-on string.
+
+   modes is optional too: a subset/ordering of FMT_LABELS' keys. C4's key window asks for
+   ['hex','text'] because BINARY of three bytes is 24 digits of noise the card never uses. The
+   first entry is the one that starts selected — keyed off modes[0], not a hardcoded 'hex', so a
+   future two-mode display that should open on TEXT does not silently open on the wrong one. */
 const FMT_LABELS = {hex:'HEX', bin:'BINARY', text:'TEXT'};
-function fmtToggle(el, bytes, render){
+function fmtToggle(el, bytes, render, modes){
+  const keys = modes || Object.keys(FMT_LABELS);
   const draw = render || ((node,b,mode)=>{ node.textContent = mode==='hex'?toHex(b):mode==='bin'?toBin(b):toText(b); });
   const seg = document.createElement('span');
   seg.className = 'seg segfmt';
-  seg.innerHTML = Object.keys(FMT_LABELS).map(v=>
-    '<button type="button" data-v="'+v+'"'+(v==='hex'?' class="on"':'')+'>'+FMT_LABELS[v]+'</button>').join('');
+  seg.innerHTML = keys.map(v=>
+    '<button type="button" data-v="'+v+'"'+(v===keys[0]?' class="on"':'')+'>'+FMT_LABELS[v]+'</button>').join('');
   const lab = el.previousElementSibling;
   if(lab && lab.classList.contains('lab')){ lab.classList.add('labrow'); lab.appendChild(seg); }
   else { const row=document.createElement('div'); row.className='lab labrow'; row.appendChild(seg);
          el.parentNode.insertBefore(row, el); }
-  let mode='hex', cur=bytes||new Uint8Array(0);
+  let mode=keys[0], cur=bytes||new Uint8Array(0);
   const paint = ()=>{ el.classList.toggle('binv', mode==='bin'); draw(el,cur,mode); };
   seg.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
     seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
@@ -922,63 +951,80 @@ addCard({
   }
 });
 
-/* ================= C4 · LONG KEY, MANY KEYS (3-byte live tuner) ================= */
+/* ================= C4 · BRUTE FORCE 2 (3-byte live tuner) ================= */
 // Deliberately NOT per-column brute lists: one every-3rd-character column is not human-readable,
 // so "spot the readable row" is impossible by eye there — only a frequency scorer could pick it,
 // and auto-solving was removed from C1 on purpose. So the student turns three single-byte knobs and
-// judges the WHOLE assembled message, which is readable only at [s,u,n] (node-verified: 137700
-// 3-byte keys give an all-printable message, exactly ONE gives letters/space/{}_ only, and that one
-// is 'sun'). Partial knobs give partly-English text ("th· l·ng·ke· i· r·al·y…") — that is the
-// feedback that guides tuning, and it is the only feedback: no score() nudge here, per-knob or
-// otherwise, because a readability meter is just the auto-solver wearing three hats.
+// judges the WHOLE assembled message, which is readable only at [T,4,x] (node-verified for THIS
+// key: 137700 3-byte keys give an all-printable message, exactly ONE gives letters/space/{}_ only,
+// that one is 'T4x', and it also ranks #1 of those 137700 on an English-frequency score).
+// Partial knobs give partly-English text — [T,4,0] renders
+// "th· l·ngXke· i· r·al·y ·an· t·nyXke·s ·la·{s·ac·ed·" — and that is the feedback that guides
+// tuning. It is the ONLY feedback: no score() nudge here, per-knob or otherwise, because a
+// readability meter is just the auto-solver wearing three hats.
+// Note the key is BYTES, never "bits": the demo two cards up teaches that one character is 8 bits,
+// so "3-bit key" would contradict it and understate the space by six orders of magnitude.
+// Known near-miss (inherent to XOR, not new to this key): 0x20 flips letter case, so [t,4,x] reads
+// "The·loNg Key·is·reAllY…" — near-English but visibly mis-capitalised, and its flag comes out
+// "fLag[stAckEd}", which neither matches FLAG_RE nor submits. The student is corrected by the text.
 addCard({
-  id:'c4', title:'Long Key, Many Keys', sub:'',
-  intro:"Last one — and the punchline of the whole module. No crib this time, and no key. You get told just one thing: the key is <b>3 bytes</b> long and it <b>repeats</b>. That means every 1st, 4th, 7th… character was locked by the <i>same single byte</i>, and so were the 2nd/5th/8th, and the 3rd/6th/9th. Three separate one-byte locks. Turn the three knobs until the whole sentence reads as English.",
-  hint:"Work one knob at a time. Turn knob 1 until every third character becomes letters — <code>t·· ··n·</code> settles into <code>the</code> — then knob 2, then knob 3. The key is a real 3-letter word: <b>sun</b> (<code>0x73 0x75 0x6e</code>). And notice what you did: you never searched 16 million keys, you broke <b>three 256-option locks</b>, one at a time. The flag is in the sentence.",
+  id:'c4', title:'Brute Force 2', sub:'',
+  intro:"This is a brute force of a <b>3-byte key</b>. Yes, this is hard — you will need to derive the key from the hint, or you won't get it. The 1-byte key had <b>256</b> possibilities; a 3-byte key has <b>16,777,216</b>.",
+  hint:"Do one byte of the key at a time. The key is in L33tSp34k, and it is the singular form of the completion of this famous phrase — “In this world nothing can be said to be certain, except death and _____.”",
   build(ctx){
-    const plain='the long key is really many tiny keys flag{stacked}', key='sun', flag='flag{stacked}';
+    const plain='the long key is really many tiny keys flag{stacked}', key='T4x', flag='flag{stacked}';
     const cipher = xorBytes(toBytes(plain), toBytes(key));
     const L = key.length;                       // 3 — GIVEN to the student
     const knobs = [0,0,0];                      // start blank: nothing is pre-set to the answer
+    // A knob is now controls only. Its byte is read off the ONE shared .kprev window above the
+    // stack, where each cell wears the same colour as this knob's slider and as the characters
+    // that byte owns in the decrypted string below.
     const knobHtml = i =>
-      '<div class="knob" data-i="'+i+'">'+
-        '<div class="kpos">Knob '+(i+1)+'</div>'+
-        '<div class="kwho">locks every 3rd character,<br>starting at character '+(i+1)+'</div>'+
-        '<div class="kread"><div class="kchar">·</div><div class="khex">0x00</div></div>'+
-        '<div class="ksteps"><button class="kstep" data-d="-16">−16</button>'+
-          '<button class="kstep" data-d="-1">−1</button>'+
-          '<button class="kstep" data-d="1">+1</button>'+
-          '<button class="kstep" data-d="16">+16</button></div>'+
-        '<input class="krange" type="range" min="0" max="255" value="0" aria-label="key byte '+(i+1)+'">'+
-        '<input class="ktype" spellcheck="false" autocomplete="off" placeholder="or type: 0x41 / A">'+
+      '<div class="knob k'+i+'" data-i="'+i+'">'+
+        '<div>'+
+          '<div class="kpos">Knob '+(i+1)+'</div>'+
+          '<div class="kwho">locks every 3rd character, starting at character '+(i+1)+'</div>'+
+        '</div>'+
+        '<div class="kctl">'+
+          '<input class="krange" type="range" min="0" max="255" value="0" aria-label="key byte '+(i+1)+'">'+
+          '<div class="krow">'+
+            '<div class="ksteps"><button class="kstep" data-d="-16">−16</button>'+
+              '<button class="kstep" data-d="-1">−1</button>'+
+              '<button class="kstep" data-d="1">+1</button>'+
+              '<button class="kstep" data-d="16">+16</button></div>'+
+            '<input class="ktype" spellcheck="false" autocomplete="off" placeholder="or type: 0x41 / A">'+
+          '</div>'+
+        '</div>'+
       '</div>';
     ctx.work.innerHTML =
       '<div class="lab">The scrambled message</div>'+
       '<div class="blob"></div>'+
-      '<div class="cnote">You are given the <b>key length: 3</b>. Nothing else. A 3-byte key has 16,777,216 combinations — far too many to eyeball. But you do not have to take it as one lock: each knob below only touches its own third of the message, so you can judge it on its own.</div>'+
+      '<div class="lab">The key you are turning</div>'+
+      '<div class="kprev"></div>'+
       '<div class="lab">Three knobs — one byte each</div>'+
       '<div class="knobs">'+knobHtml(0)+knobHtml(1)+knobHtml(2)+'</div>'+
-      '<div class="lab">The key you have assembled</div>'+
-      '<div class="keyrow"><input class="keyshow" readonly aria-label="assembled key"><span class="keyhint">3 bytes, repeating across the whole message</span></div>'+
-      '<div class="lab">The message under that key — live</div>'+
+      '<div class="lab">Decrypted string</div>'+
       '<div class="msg"></div>'+
-      '<div class="klegend"><span><i class="k0">knob 1</i></span><span><i class="k1">knob 2</i></span><span><i class="k2">knob 3</i></span><span>· = not a readable character yet</span></div>'+
-      '<div class="cnote"><b>The punchline:</b> a “long” XOR key is not one big key. It is as many single-byte keys as it is bytes long — three, here — standing on each other’s shoulders in a trenchcoat, and each one falls to 256 tries. Length alone never made it strong. Real encryption does not repeat its key.</div>';
+      '<div class="klegend"><span>key parts —</span><span><i class="k0">byte 1</i></span><span><i class="k1">byte 2</i></span><span><i class="k2">byte 3</i></span></div>';
 
     fmtToggle(ctx.work.querySelector('.blob'), cipher);
+    // The one key window: HEX | TEXT only (BINARY of three bytes is 24 digits this card never uses),
+    // with a custom render so each byte keeps its knob colour instead of collapsing to one string.
+    const kprev = fmtToggle(ctx.work.querySelector('.kprev'), Uint8Array.from(knobs),
+      (node,b,mode)=>{ node.innerHTML=''; [...b].forEach((v,i)=>{ const c=document.createElement('b');
+        c.className='k'+i;
+        c.textContent = mode==='hex' ? v.toString(16).padStart(2,'0')
+                                     : ((v>=32&&v<=126)?String.fromCharCode(v):'·');
+        node.appendChild(c); }); },
+      ['hex','text']);
     const kEls   = [...ctx.work.querySelectorAll('.knob')],
-          keyshow= ctx.work.querySelector('.keyshow'),
           msg    = ctx.work.querySelector('.msg');
 
     function render(){
       kEls.forEach((el,i)=>{
-        const v=knobs[i];
-        el.querySelector('.kchar').textContent = (v>=32&&v<=126) ? String.fromCharCode(v) : '·';
-        el.querySelector('.khex').textContent  = '0x'+v.toString(16).padStart(2,'0');
-        const r=el.querySelector('.krange'); if(+r.value!==v) r.value=v;
+        const r=el.querySelector('.krange'); if(+r.value!==knobs[i]) r.value=knobs[i];
       });
-      keyshow.value = knobs.map(v=>'0x'+v.toString(16).padStart(2,'0')).join(' ')+
-        '   “'+knobs.map(v=>(v>=32&&v<=126)?String.fromCharCode(v):'·').join('')+'”';
+      kprev.set(Uint8Array.from(knobs));
       // per-character render: tinted by which knob owns it, flag text picked out once it appears
       const txt = printable(toStr(xorBytes(cipher, Uint8Array.from(knobs))));
       const inFlag = new Array(txt.length).fill(false);
