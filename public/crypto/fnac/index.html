@@ -333,7 +333,8 @@ const CREEP = {
   HOLD:2000,        // dark and silent
   EYES:7800,        // eyes on screen; scare.mp3 is hard-cut at exactly this point
   RESTORE:600,      // lights-on fade back
-  FADE:600          // reduced-motion fade instead of the flicker
+  FADE:600,         // reduced-motion fade instead of the flicker
+  SKIP_GRACE:500    // clicks in this window after the start do not count toward the 3-click skip
 };
 const CREEP_COOKIE='ctf-fnac-creep';
 const creepFired = () => /(?:^|; )ctf-fnac-creep=1(?:;|$)/.test(document.cookie);
@@ -342,7 +343,7 @@ const setCreepFired = v => { document.cookie = CREEP_COOKIE+'='+(v?'1':'0')+';pa
 const creepRandom = () => (window.__creepRandom || Math.random)();
 const shouldFire = () => !creepFired() && creepRandom() < 0.2;
 
-let creepState = { phase:'idle', timers:[], log:[], clicks:0, el:null, audio:{} };
+let creepState = { phase:'idle', timers:[], log:[], clicks:0, startedAt:0, el:null, audio:{} };
 
 function creepLog(phase){
   creepState.phase = phase;
@@ -380,7 +381,8 @@ function creepBuild(){
 function creepStart(){
   if(creepState.phase !== 'idle') return;
   setCreepFired(true);              // set up front: a mid-sequence skip still counts as fired
-  creepState.clicks = 0;
+  creepState.clicks = 0;      // the tap that started this must never count toward the skip
+  creepState.startedAt = performance.now();
   creepState.log = [];
   const el = creepBuild();
   creepState.el = el;
@@ -474,12 +476,19 @@ function creepFinish(how){
   creepState.phase = 'idle';
 }
 
-// skip: spacebar, or three clicks anywhere. Both work the instant the page darkens, including
-// mid-flicker — creepFinish clears every pending timer, so nothing fires after it.
+// skip: spacebar, or three clicks anywhere. Spacebar works the instant the page darkens,
+// including mid-flicker — creepFinish clears every pending timer, so nothing fires after it.
+//
+// Clicks have a SKIP_GRACE dead zone at the very start, because the sequence is now started BY a
+// tap. Listening on 'click' already spends the trigger gesture's own pointerdown, but a double-tap
+// or a fast triple-click sends two more within a few hundred ms, and a viewer who taps twice out
+// of habit must not kill the scare they just asked for. Half a second of dead zone costs nothing:
+// spacebar is unaffected, and a deliberate three-click skip lands well after it in a 12s sequence.
 function creepKey(e){
   if(e.code === 'Space' || e.key === ' '){ e.preventDefault(); creepFinish('skipped'); }
 }
 function creepClick(){
+  if(performance.now() - creepState.startedAt < CREEP.SKIP_GRACE) return;
   creepState.clicks++;
   if(creepState.clicks >= 3) creepFinish('skipped');
 }
@@ -495,16 +504,21 @@ function installCreep(){
   });
   document.body.appendChild(btn);
 
-  let armed = true;
-  function onScroll(){
-    if(!armed) return;
-    const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-    if(window.scrollY / max < 0.03) return;
-    armed = false;
-    window.removeEventListener('scroll', onScroll);
+  // TRIGGER: the first click or tap anywhere, one-shot, roll once.
+  //
+  // It used to be the first scroll, which is NOT a user-activation gesture in Chrome — play()
+  // was rejected and most first-timers would have got a silent scare out of three audio files.
+  // A click or tap IS activation, so the sound is allowed the first time it matters.
+  //
+  // 'click' (not 'pointerdown') on purpose: the skip listener counts pointerdown, and 'click'
+  // only fires after this gesture's pointerdown/pointerup are already spent, so the gesture that
+  // STARTS the sequence can never be one of the three that abort it. Capture phase, so a click
+  // on a button still counts as the tap that woke it up.
+  function onFirstTap(){
+    document.removeEventListener('click', onFirstTap, true);
     if(shouldFire()) creepStart();
   }
-  window.addEventListener('scroll', onScroll, {passive:true});
+  document.addEventListener('click', onFirstTap, true);
 }
 
 // test hooks — the sequence is driven and measured through these, never through fake events
