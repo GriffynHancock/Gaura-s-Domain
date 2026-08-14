@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Encoding is not Encryption — Crypto 101 · Encoding</title>
+<title>Encoding is not encryption — Crypto 101 · Encoding</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -36,7 +36,8 @@
     background:linear-gradient(#f4eedd,#ddd2b6); border:1px solid var(--edge); border-radius:4px; padding:5px 11px}
   [data-theme="dark"] .theme-btn{background:linear-gradient(#322d1d,#211e14)}
   h1{font-family:var(--disp); font-weight:900; font-size:clamp(2.1rem,6.5vw,3.3rem); line-height:.96; margin:0; letter-spacing:-.02em}
-  h1 em{font-style:italic; font-weight:400; color:var(--accent)}
+  /* (no `h1 em` rule: the h1 has no <em> any more. The subtitle's <em> lives in `header p`
+     and takes the browser's default italic — verified, it does not depend on a page rule.) */
   /* masthead signal word — colour only; must NOT inherit h1 em's 400 weight/italic */
   h1 .hl{color:var(--accent)}
   h1 s{text-decoration:line-through; text-decoration-thickness:.055em}
@@ -97,8 +98,11 @@
   .blob-head .icon-btn{margin-left:auto}
   /* both copy buttons share one class -> identical hit-size; stroke is currentColor so
      the glyph follows the theme's ink in light AND dark */
-  .icon-btn{display:inline-flex; align-items:center; justify-content:center; padding:5px 8px; color:var(--dim)}
+  /* 44x44 minimum touch target — this audience is phone-native */
+  .icon-btn{display:inline-flex; align-items:center; justify-content:center; padding:0;
+    min-width:44px; min-height:44px; color:var(--dim)}
   .icon-btn:hover{color:var(--ink)}
+  .icon-btn.dead{color:var(--accent); cursor:not-allowed}
   .icon-btn svg{display:block}
   .pv-tools{margin-left:auto; display:flex; gap:8px; align-items:center}
   .seg{display:inline-flex; border:1px solid var(--edge); border-radius:7px; overflow:hidden}
@@ -211,9 +215,15 @@ const toBytes = s => { const u=new Uint8Array(s.length); for(let i=0;i<s.length;
 const toStr   = b => { let s=''; for(let i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return s; };
 const rot13   = s => s.replace(/[a-z]/gi,c=>{const o=c<='Z'?65:97; return String.fromCharCode((c.charCodeAt(0)-o+13)%26+o);});
 
-// best-effort decoders: NEVER throw. Wrong input just yields nonsense bytes.
+// best-effort decoders: NEVER throw, and DEGRADE — a wrong pipeline must yield visible
+// nonsense, never a blank preview. Blank reads as "the page is broken"; garbage reads as
+// "wrong method, try another" — which is the whole lesson.
+// base64: a residue of 1 mod 4 carries no whole byte and cannot be padded (three '=' makes
+// atob throw, which used to blank the preview). Drop that orphan char, exactly like hex
+// drops an odd trailing nibble, and decode the rest.
 const METHODS = {
-  base64(b){ let t=toStr(b).replace(/[^A-Za-z0-9+/]/g,''); while(t.length%4) t+='='; try{ return toBytes(atob(t)); }catch(e){ return new Uint8Array(0); } },
+  base64(b){ let t=toStr(b).replace(/[^A-Za-z0-9+/]/g,''); if(t.length%4===1) t=t.slice(0,-1);
+    while(t.length%4) t+='='; try{ return toBytes(atob(t)); }catch(e){ return new Uint8Array(0); } },
   hex(b){ let t=toStr(b).replace(/[^0-9a-fA-F]/g,''); if(t.length%2) t=t.slice(0,-1); const u=new Uint8Array(t.length/2); for(let i=0;i<u.length;i++) u[i]=parseInt(t.substr(i*2,2),16); return u; },
   rot13(b){ return toBytes(rot13(toStr(b))); },
   rot47(b){ const o=new Uint8Array(b.length); for(let i=0;i<b.length;i++){ const c=b[i]; o[i]=(c>=33&&c<=126)?((c-33+47)%94)+33:c; } return o; },
@@ -263,15 +273,44 @@ const SVG_OPEN='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stro
 const ICON_CLIPBOARD=SVG_OPEN+'<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>'
   +'<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>';
 const ICON_CHECK=SVG_OPEN+'<path d="M20 6 9 17l-5-5"/></svg>';
+const ICON_X=SVG_OPEN+'<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+
+// navigator.clipboard only exists on a SECURE origin. A teacher serving this over plain http
+// on a school LAN has no async clipboard at all — so feature-detect, fall back to the legacy
+// execCommand path, and if BOTH are unavailable say so. Never show a success tick for a copy
+// that did not happen. Returns a boolean or a Promise<boolean>.
+function legacyCopy(s){
+  try{
+    const ta=document.createElement('textarea'); ta.value=s; ta.setAttribute('readonly','');
+    ta.style.cssText='position:fixed;top:0;left:-9999px;opacity:0';
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, s.length);
+    const done = document.execCommand && document.execCommand('copy');
+    document.body.removeChild(ta); return !!done;
+  }catch(e){ return false; }
+}
+function copyText(s){
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      const pr=navigator.clipboard.writeText(s);
+      if(pr && pr.then) return pr.then(()=>true, ()=>legacyCopy(s));
+      return true;
+    }
+  }catch(e){}
+  return legacyCopy(s);
+}
 // icon-only button: the accessible name lives in aria-label/title, and flips with the icon
 function wireCopy(btn, label, getText){
   let t=null;
-  const rest=()=>{ btn.innerHTML=ICON_CLIPBOARD; btn.setAttribute('aria-label',label); btn.title=label; };
+  const set=(html,name,dead)=>{ btn.innerHTML=html; btn.setAttribute('aria-label',name); btn.title=name;
+    btn.classList.toggle('dead', !!dead); };
+  const rest=()=>set(ICON_CLIPBOARD,label,false);
   rest();
   btn.onclick=()=>{
-    try{ const pr=navigator.clipboard&&navigator.clipboard.writeText(getText()); if(pr&&pr.catch) pr.catch(()=>{}); }catch(e){}
-    btn.innerHTML=ICON_CHECK; btn.setAttribute('aria-label','copied'); btn.title='copied';
-    clearTimeout(t); t=setTimeout(rest,900);
+    Promise.resolve(copyText(getText())).then(done=>{
+      if(done) set(ICON_CHECK,'copied',false);
+      else     set(ICON_X,'copy unavailable — select the text and copy it by hand',true);
+      clearTimeout(t); t=setTimeout(rest,900);
+    });
   };
 }
 

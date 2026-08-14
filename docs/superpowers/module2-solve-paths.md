@@ -9,6 +9,12 @@ salt a string, edit that script and re-run it (`.venv/bin/python tools/build_bas
 The builder asserts every correct pipeline still reproduces its flag before writing
 `assets.js`, so a broken red herring fails the build instead of shipping.
 
+**The decode filters in the builder mirror `METHODS` in `index.html` byte-for-byte — change one,
+change the other.** In particular `base64` drops a trailing orphan character when the surviving
+alphabet length is `1 mod 4`, rather than padding with three `=` (which makes `atob` throw and
+returns *nothing*). A wrong pipeline must always degrade to visible garbage: a blank preview
+reads as "the page is broken" instead of "wrong method, try another", which is the lesson.
+
 ## Method palette
 
 Tiles (order shuffled per card, per page load): `base64 · hex · url · rot13 · rot47 · atbash`.
@@ -20,7 +26,7 @@ Tiles (order shuffled per card, per page load): `base64 · hex · url · rot13 �
 | url | `%` followed by two hex digits | real (puzzle IV), distractor after |
 | rot47 | printable-ASCII gibberish, no `=`, includes punctuation | real (puzzles VII, IX) |
 | rot13 | looks like English-ish letters, shifted | **pure distractor** |
-| atbash | letters mirrored | real (puzzle IX) |
+| atbash | letters mirrored | real (puzzle IX, final layer) |
 
 Teaching arc: I–IV introduce one method each with an **unambiguous** string (the blob
 screams its method). V–IX mix layers and start baiting with decoys.
@@ -37,7 +43,7 @@ screams its method). V–IX mix layers and start baiting with decoys.
 | VI | Order Matters | `base64` → `hex` | `flag{peel_the_layers}` |
 | VII | Three Deep | `base64` → `rot47` → `hex` | `flag{three_layers_deep}` |
 | VIII | Two Faces | `hex` → flag / `base64` → troll | `flag{two_faces}` |
-| IX | Read the Room | `base64` → `atbash` → `rot47`, ignore decoys | `flag{read_every_line_first}` |
+| IX | Read the Room | `base64` → `rot47` → `atbash`, ignore decoys | `flag{read_every_line_first}` |
 
 ---
 
@@ -118,8 +124,10 @@ screams its method). V–IX mix layers and start baiting with decoys.
   deterministic `?ref=%3a%2f…` pad is appended to disguise the tail. It is **not** free —
   it passes through both decoders, so the builder pins three invariants:
   - `R % 4 == 0`, where `R` = pad chars surviving `[^A-Za-z0-9+/]`. The blob is a multiple
-    of 4 chars; `R ≡ 1 (mod 4)` makes JS append three `=`, **`atob` throws**, `METHODS.base64`
-    returns an empty array, and the trollface silently vanishes with no error anywhere.
+    of 4 chars, and `R ≡ 1 (mod 4)` would silently drop the pad's last character on both
+    decode paths, shifting the base64 face by a character. (Before the decoder was fixed to
+    drop that orphan, this case made `atob` throw and the trollface vanish entirely — the
+    invariant is now about fidelity rather than survival, but it is still asserted.)
   - `R <= 192`, so `px = 2304 + R/4 <= 2352` and `Math.round(sqrt(px))` still lands on 48.
     At 193+ every row shears diagonally. (The builder mirrors JS's half-up rounding with
     `floor(sqrt(px)+0.5)` — Python's `round()` is banker's rounding and would disagree.)
@@ -129,15 +137,26 @@ screams its method). V–IX mix layers and start baiting with decoys.
 - **Red herrings:** the whole puzzle *is* the red herring — the "obvious" base64 gives a
   joke image, the less-obvious hex gives the flag. The tail now baits `url` as well.
 
-### IX — Read the Room · `base64` → `atbash` → `rot47`, mind the decoys
-- **Blob:** `base64(atbash(rot47(plain)))` — **three** layers. Both `atbash` and `rot47` are
+### IX — Read the Room · `base64` → `rot47` → `atbash`, mind the decoys
+- **Blob:** `base64(rot47(atbash(plain)))` — **three** layers. Both `atbash` and `rot47` are
   byte-wise involutions, so the builder encodes with the same pair in mirror order and the
-  student's click order (`base64`, `atbash`, `rot47`) peels it. `\n` (0x0a) is outside
+  student's click order (`base64`, `rot47`, `atbash`) peels it. `\n` (0x0a) is outside
   rot47's `[33,126]` range and rides through untouched, so the dump keeps its line breaks.
-- **Order matters:** atbash and rot47 do **not** commute. The builder asserts that
-  `base64 → rot47 → atbash` does *not* recover the flag, so the check proves the intended
-  order instead of passing by luck. It also asserts no intermediate layer contains a
-  readable `flag{` — the preview highlights every `flag{...}`, which would leak the answer.
+- **Why rot47 outermost — do not swap these back.** The first shipped version was
+  `base64(atbash(rot47(plain)))` (student order base64 → atbash → rot47) and it had a
+  structural near-miss. The natural two-layer guess `base64 → rot47` computed
+  `rot47(atbash(rot47(plain)))`; lowercase `a`–`o` rot47 to `2`–`@`, which atbash leaves
+  untouched, so the second rot47 returns them **exactly**. ~58% of the alphabet is invariant
+  under the wrong order, so *any* English payload leaks a near-readable `flag~…|` there —
+  a property of the ciphers, not of this plaintext, so regenerating the blob cannot fix it.
+  With rot47 outermost the same wrong guess stops at `atbash(plain)`:
+  `uozt{ivzw_vevib_ormv_urihg}` — cleanly mirrored letters that point *at* the atbash tile,
+  with no legible near-flag and nothing for the preview to highlight.
+- **Order still matters:** atbash and rot47 do **not** commute. The builder asserts that
+  `base64 → atbash → rot47` does *not* recover the flag, so the check proves the intended
+  order instead of passing by luck. It also asserts that neither the blob nor either
+  intermediate layer contains a readable `flag{` (the preview highlights every `flag{...}`)
+  **or even a bare `flag`** — that second assert is what pins the near-miss shut.
 - **The fully-decoded dump** contains, in order, an **unlabelled**:
   1. `auth_token: florg{nice-try}` — flag-shaped but NOT the `flag{...}` format,
   2. a hex-looking `trace=676c61667b6e6f742d69747d` (decodes to `glaf{not-it}` — another
@@ -145,13 +164,15 @@ screams its method). V–IX mix layers and start baiting with decoys.
   3. a url-looking `ref=%67%6c%6f%72%66%7b%6e%6f%70%65%7d` (url-decodes to `glorf{nope}`),
   4. the real payload under `payload:` — `flag{read_every_line_first}`.
 - **Tell:** base64 (ends in `=`) surfaces punctuation soup rather than text — the giveaway
-  that more layers remain. Then it's a two-step guess with no hint (IX's hint box was
-  removed deliberately): the letter-mirror, then the printable-ASCII rotation. Nothing in
-  the text labels the decoys — earlier versions did, which gave the game away.
-- **History:** IX used to be `base64 → atbash` with the payload line pre-Atbashed inside an
-  otherwise-plain dump. `rot47` was added as a third layer "to throw them off"; the payload
+  that more layers remain. rot47 is the readable next step, and it lands on obviously
+  mirrored English (`uozt{…}`), which is atbash's own tell. IX has no hint box on purpose;
+  the layer *ordering* is what teaches here, not a hint. Nothing in the text labels the
+  decoys — earlier versions did, which gave the game away.
+- **History:** IX was originally `base64 → atbash`, with the payload line pre-Atbashed inside
+  an otherwise-plain dump. `rot47` was added as a third layer "to throw them off"; the payload
   is now plain inside the dump and the whole dump travels through all three layers, so the
-  decoys read as decoys at the *end* rather than in the middle.
+  decoys read as decoys at the *end* rather than in the middle. The first three-layer build
+  put atbash outermost and was reordered by user decision for the near-miss reason above.
 - **Why florg, not a fake `flag{...}`:** a second real-format `flag{...}` is unfair (no way
   to disambiguate) and the preview highlights every `flag{...}`. `florg{...}` teaches the
   **format** instead — only `flag{...}` highlights, so a careful student isn't misled, and a

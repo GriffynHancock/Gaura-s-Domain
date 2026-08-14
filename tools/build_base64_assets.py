@@ -26,6 +26,8 @@ OUTDIR = os.path.join(ROOT, "tools", "out")  # builder previews (gitignored)
 # ----------------------------------------------------------------------------
 def m_base64(b: bytes) -> bytes:
     t = re.sub(rb"[^A-Za-z0-9+/]", b"", b).decode("latin1")
+    if len(t) % 4 == 1:          # orphan char carries no whole byte -> drop it and degrade,
+        t = t[:-1]               # mirroring METHODS.base64 in index.html (never blank)
     while len(t) % 4:
         t += "="
     try:
@@ -319,11 +321,20 @@ def main():
     two_faces, tf_flag = build_two_faces("flag{two_faces}")
     flags["two_faces"] = tf_flag
 
-    # 9 — final: THREE layers, base64 -> atbash -> rot47, over a capture dump full of
+    # 9 — final: THREE layers, base64 -> rot47 -> atbash, over a capture dump full of
     # UNLABELLED decoys. Both atbash and rot47 are byte-wise involutions, so encoding
-    # is the same pair applied in the mirror order: blob = base64(atbash(rot47(plain))).
+    # is the same pair applied in the mirror order: blob = base64(rot47(atbash(plain))).
     # '\n' (0x0a) is outside rot47's [33,126] range and passes through untouched.
-    # ORDER MATTERS — atbash and rot47 do not commute; base64>rot47>atbash is asserted
+    #
+    # WHY THIS ORDER, NOT base64 -> atbash -> rot47 (which shipped first and was reordered
+    # by user decision): with atbash outermost, the natural two-layer guess base64 -> rot47
+    # computes rot47(atbash(rot47(plain))). Lowercase a-o rot47 to '2'-'@', which atbash
+    # leaves untouched, so the second rot47 returns them EXACTLY — ~58% of the alphabet is
+    # invariant under the wrong order, and ANY English payload leaks a near-readable
+    # 'flag~...|' there. That is structural, not a property of this plaintext; no amount of
+    # regenerating the blob fixes it. With rot47 outermost the same wrong guess stops at
+    # atbash(plain) — cleanly mirrored letters that point AT the remaining atbash tile.
+    # ORDER STILL MATTERS — atbash and rot47 do not commute; base64>atbash>rot47 is asserted
     # NOT to solve, so the checks prove the intended order rather than passing by luck.
     # The decoys (florg/glaf/glorf) look flag-ish but are clearly not 'flag'; nothing
     # labels them, and only a real flag{...} highlights in the preview. That's the puzzle.
@@ -335,13 +346,18 @@ def main():
                "payload:\n"
                + i_flag + "\n"
                "-- end of capture --\n")
-    i_mid = m_atbash(m_rot47(i_plain.encode("latin1")))
+    i_l1 = m_atbash(i_plain.encode("latin1"))          # what base64 -> rot47 lands on
+    i_mid = m_rot47(i_l1)                              # what base64 alone lands on
     i_b64 = base64.b64encode(i_mid).decode()
     flags["i"] = i_flag
     # no intermediate layer may leak a readable flag{...} (the preview highlights them)
-    assert b"flag{" not in i_b64.encode() and b"flag{" not in i_mid
-    assert b"flag{" not in m_atbash(i_mid), "9: flag readable one layer early"
-    assert i_flag not in run_pipeline(i_b64, ["base64", "rot47", "atbash"]).decode("latin1", "replace"), \
+    for name, layer in (("blob", i_b64.encode()), ("L1 base64", i_mid), ("L2 base64>rot47", i_l1)):
+        assert b"flag{" not in layer, f"9: flag readable at {name}"
+    # the near-miss the reorder exists to kill: the natural wrong guess (base64 -> rot47)
+    # must land on cleanly-mirrored letters that point at atbash, with no readable 'flag'
+    assert b"uozt{ivzw_vevib_ormv_urihg}" in i_l1, "9: L2 is not the atbash mirror of the flag"
+    assert b"flag" not in i_l1 and b"flag" not in i_mid, "9: near-readable 'flag' leaks early"
+    assert i_flag not in run_pipeline(i_b64, ["base64", "atbash", "rot47"]).decode("latin1", "replace"), \
         "9: wrong-order pipeline also solves — order no longer matters"
 
     # ---- assert every correct pipeline reproduces its flag ----
@@ -351,7 +367,7 @@ def main():
         ("4 url",           f_url, ["url"],                    f_flag),
         ("6 base64>hex",    d_b64, ["base64", "hex"],          d_flag),
         ("7 base64>rot47>hex", g_b64, ["base64", "rot47", "hex"], g_flag),
-        ("9 base64>atbash>rot47", i_b64, ["base64", "atbash", "rot47"], None),  # flag is substring
+        ("9 base64>rot47>atbash", i_b64, ["base64", "rot47", "atbash"], None),  # flag is substring
     ]
     for name, blob, pipe, expect in checks:
         out = run_pipeline(blob, pipe).decode("latin1", "replace")
