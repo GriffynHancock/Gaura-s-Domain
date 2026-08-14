@@ -116,6 +116,7 @@
   .xtoy .op{font-family:var(--mono); font-size:1.25rem; color:var(--dim)}
   .xtoy .bit{width:40px; height:40px; font-size:1.05rem}
   .truth{display:flex; gap:8px; margin-left:auto; flex-wrap:wrap}
+  @media(max-width:430px){ .truth{flex-basis:100%; margin-left:0; justify-content:flex-start} }
   .truth .tr{font-family:var(--mono); font-size:.72rem; color:var(--dim); padding:4px 8px; border-radius:5px;
     border:1px solid transparent; transition:.15s}
   .truth .tr.on{color:var(--ink); border-color:var(--gold); background:var(--panel)}
@@ -303,10 +304,11 @@
   <!-- DEMO (unscored) -->
   <div class="card" id="demo">
     <div class="head"><span class="idx demo">DEMO</span><span class="ttl">Lock It, Unlock It</span>
-      <span class="sub">play · not scored</span></div>
+      <span class="sub"></span></div>
     <div class="body">
-      <p class="prose">XOR (<b>⊕</b>) takes two bits and lights the bulb only when they <b>differ</b>. Tap the two
-        switches and watch.</p>
+      <p class="prose">XOR (<b>⊕</b>) takes two bits and outputs a <b>1</b> only when they differ,
+        outputting a <b>0</b> when they are the same. Tap the bits below and see how they combine
+        in an XOR operation.</p>
 
       <div class="lab">The gate &mdash; one bit ⊕ one bit</div>
       <div class="xtoy">
@@ -317,12 +319,13 @@
         <span class="bit bulb" id="tout">0</span>
         <div class="truth" id="ttable"></div>
       </div>
-      <p class="prose tiny">Where the key bit is <b>1</b> it flips; where it's <b>0</b> it leaves it. (Same thing
-        as: bulb on when the two differ.)</p>
 
-      <p class="prose">A letter is just <b>8 bits</b>. <b>Lock</b> it on the left; the scrambled result pipes to the
-        right, where the <b>same key unlocks</b> it &mdash; every bit returns. Pick a letter, tap the red key bits,
-        then press the buttons.</p>
+      <p class="prose">A letter is just <b>8 bits</b>, and those 8 bits are written in <b>hexadecimal</b> to save
+        space &mdash; that's why the scrambled messages on this page show up as hex rather than long runs of 1s
+        and 0s.</p>
+      <p class="prose">We'll use a single letter as a key here, to encrypt a message that's only a single letter
+        long. Play with it to get a feel for encrypting and decrypting XOR strings &mdash; change the message,
+        tap the red key bits to change the key, and watch how they mix and unmix.</p>
 
       <div class="chook">
         <span class="rd">message&nbsp; <input class="demo-char" id="dchar" maxlength="1" value="H"></span>
@@ -608,7 +611,7 @@ function addCard({id,title,sub,intro,hint,build}){
 /* ================= C1 · BRUTE FORCE (single-byte) ================= */
 addCard({
   id:'c1', title:'Brute Force', sub:'',
-  intro:"One secret byte was XOR'd across the whole message. A single byte is only <b>256 possibilities</b> — so just try them <i>all</i> and find the one that reads as English. Nobody hands you the answer; you spot it.",
+  intro:"If the key is a single letter, its 8 bits give only <b>256 possibilities</b> — so try every one. We've already run all 256 keys against the scrambled message with XOR, the way you'd whip up in a quick script, and the output looks like this. Nobody hands you the answer; you spot it.",
   hint:"Run all 256 and scroll — they're in key order (0x00→0xFF), nothing pre-marked. Stuck scrolling? Filter by a word you expect, like <code>flag</code>. You'll find <b>two</b> word-like rows: one <code>flag{…}</code> (lower-case) and a twin <code>FLAG[…]</code> (UPPER-case) — two keys <code>0x20</code> apart just flip letter <b>case</b>. A real flag is lower-case <code>flag{…}</code>; that's your key.",
   build(ctx){
     const plain='flag{brute_force_me}', key=0x37;
