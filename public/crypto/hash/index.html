@@ -546,7 +546,7 @@
 </style>
 </head>
 <body>
-<!-- Header-row icon sprite. Shapes after Lucide (ISC licence, lucide.dev), redrawn inline:
+<!-- Header-row icon sprite. Shapes after Lucide (ISC licence, lucide.dev — ISC License, Copyright (c) for portions of Lucide are held by Cothema 2020), redrawn inline:
      no CDN, no icon font, no external request. Stroke/fill are set on each button's own <svg>
      so they inherit into the symbol — never set them inside a <symbol>, a <use> can't override. -->
 <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
@@ -1303,10 +1303,11 @@ function keccak256WithTrace(bytes, suffix = 0x06, rateBytes = 136, outBytes = 32
   // still two-step, because a reload throws away whatever the student had set up.
   const REST='Reset this module to its starting state';
   rb.addEventListener('click',()=>{
-    if(!armed){ armed=true; rb.classList.add('armed'); label(rb,'Confirm — erase this module’s progress?');
+    if(!armed){ armed=true; rb.classList.add('armed'); label(rb,'Confirm — restart this module?');
       t=setTimeout(()=>{ armed=false; rb.classList.remove('armed'); label(rb,REST); },3500); }
     else { clearTimeout(t); if(window.fxReset) window.fxReset(); location.reload(); }
   });
+  label(rb, REST);   // the markup ships the generic label; this page's is module-specific
 })();
 
 // ---- presets ----
