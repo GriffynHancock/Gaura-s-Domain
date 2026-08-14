@@ -267,8 +267,8 @@ that cookie is gone, and FNAC's gate now asks the confetti engine for all three 
 
 ## Bonus — Five Nights at Crypto's (live, `/crypto/fnac`)
 File-forensics bonus module, deployed. Seven stages; **nights 1–3 are real, 4–7 are placeholders**
-(`ready:false`, dimmed). `FX_TOTAL = 7`, so module-completion confetti cannot fire until the placeholders
-become real.
+(`ready:false`, dimmed). `FX_TOTAL = 3`, matching the real, solvable nights — hard-coded, not derived
+from `STAGES.length` (which is 7), and must be raised by hand as each placeholder night goes live.
 
 **No helper widgets any more.** The RAW BYTES / WEAVE / XOR BENCH tools were all deleted: this module now
 assumes a commandline (`xxd`, `python`, CyberChef), so a night is **prose + files + a flag box** and nothing

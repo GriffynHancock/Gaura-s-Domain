@@ -89,8 +89,8 @@ async function open({ viewport = { width: 1100, height: 950 }, unlocked = true, 
   const titles = await page.locator('.stage h2').evaluateAll(e => e.map(x => x.textContent.trim()));
   check('night titles', titles[0] === 'Night 1 · Meta Parts' && titles[1] === 'Night 2 · Bit Weaving'
     && titles[2] === 'Night 3 · Triple T', titles.slice(0, 3).join(' / '));
-  check('stage count is still 7 (FX_TOTAL)', await page.locator('.stage').count() === 7
-    && await page.evaluate(() => window.FX_TOTAL) === 7);
+  check('stage count is still 7, FX_TOTAL matches the 3 real nights', await page.locator('.stage').count() === 7
+    && await page.evaluate(() => window.FX_TOTAL) === 3);
   check('confetti button is present and locked',
     await page.locator('#fx-btn').getAttribute('aria-disabled') === 'true'
     && await page.locator('#reset-mod').count() === 1);

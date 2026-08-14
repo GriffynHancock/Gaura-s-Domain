@@ -151,7 +151,11 @@ function ctfUid(){
 }
 const fnv=s=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; };
 ctfUid(); // ensures the shared ctf-uid cookie exists before the confetti engine seeds off it
-window.FX_TOTAL = 7; // matches STAGES.length — confetti fires once all 7 nights are real+solved
+window.FX_TOTAL = 3; // nights 1-3 are the only ones that are real (4-7 are ready:false placeholders
+                      // in STAGES below and cannot be solved); hard-coded to what ships, NOT derived
+                      // from STAGES.length — raise this by hand as each placeholder night goes live,
+                      // one at a time, or completion can never register and this module's own
+                      // confetti can never fire.
 
 /* ---- the gate ----------------------------------------------------------------------------
    FNAC opens once ALL THREE beginner modules are finished. Completion is asked of the shared

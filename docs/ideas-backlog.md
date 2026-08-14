@@ -134,3 +134,32 @@ can follow. `CLAUDE.md`'s teaching rule names this exact failure (the downhill-f
 visual). Modular arithmetic is not smooth — 25 and 1 are adjacent on the ring and far apart on the
 number line — so this visual would teach the opposite of the truth. Beautiful, dishonest.
 (Complex sine has the same objection.)
+
+## FNAC gate / completion-accounting resilience (2026-08-15)
+
+Deliberately NOT built now — user's call: too late to make the gate self-repairing, hard-coded
+totals are fine, and the konami bypass covers a stuck student. Recorded so it isn't re-lost.
+
+- **Derive `FX_TOTAL` from each page's own puzzle registry instead of a hand-set constant.**
+  Caesar and Encoding already do this correctly (`document.querySelectorAll('[data-puzzle]').length`
+  and `PUZZLES.length` respectively — both audited and correct as of this pass). XOR and FNAC instead
+  hard-code the number, and both have been wrong at least once as a direct result: XOR ships
+  `FX_TOTAL=4` against 3 built cards (deliberate, C4 in progress) and FNAC shipped `FX_TOTAL=7`
+  against 3 real nights (fixed this pass to `3`, but it's the same class of bug and will recur the
+  same way each time a night/card count changes without the constant being touched by hand).
+  A `STAGES.filter(s => s.ready).length` (FNAC) or a card-count derived from `addCard` registrations
+  (XOR) would make this un-forgettable instead of relying on someone remembering to bump a comment.
+- **No visibility into a wrong `FX_TOTAL` short of manual audit.** Nothing asserts, at build or test
+  time, that `FX_TOTAL` matches the actually-solvable puzzle count on any page. A regression here is
+  silent: the module just quietly never completes, and (for FNAC specifically) that silently locks
+  a *different* module's students out of the bonus content, one layer removed from the bug. A cheap
+  guard (a Playwright check per module: solve every real puzzle, assert `fxIsComplete()` becomes
+  true) would catch this class of bug without needing dynamic derivation.
+- **A module completed before the cross-module index existed isn't retroactively counted** until
+  the student re-opens it (each visit repairs its own index entry). FNAC's locked screen links to
+  each unfinished module so the repair is one click, not automatic — fine as a stopgap, but that
+  extra click through a stale "not done yet" is unexplained to the student who hits it.
+- **`ctf-complete:v1` has no versioning/migration story.** Worth a naming convention (like the
+  solved-store's `:v2`) decided before a schema change is needed mid-event, not after.
+
+Raised 2026-08-15 while auditing/fixing FX_TOTAL mismatches across all five crypto modules.
