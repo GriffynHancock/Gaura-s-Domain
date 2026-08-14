@@ -13,6 +13,9 @@
     --ink:#241f17; --dim:#7c7259; --line:#cabd9c;
     --signal:#b23a26; --brass:#a9772a; --lamp:#3f7d52;
     --read-bg:#1a1812; --read-dim:#5e5a3a; --read-on:#f0bb4d;
+    /* body text ON the dark readout ground. Deliberately near-identical in both themes:
+       --read-bg is near-black in BOTH, so this does NOT invert. Never substitute --ink. */
+    --read-fg:#ddd0b0;
     /* number-line palette. NOTE: --read-bg is near-black in BOTH themes, so these are
        always read against a dark ground — they are tuned for contrast there, not on --bone. */
     --nl-in:#5aa9e6;      /* input space (top row) */
@@ -27,7 +30,7 @@
     --bone:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
     --ink:#ece3cd; --dim:#9a8f72; --line:#403a28;
     --signal:#e0593d; --brass:#c79338; --lamp:#62ab77;
-    --read-bg:#14120c;
+    --read-bg:#14120c; --read-fg:#ddd0b0;
     --nl-in:#6ab6ee; --nl-ok:#5cc985; --nl-bad:#e86a4c;
   }
   *{box-sizing:border-box}
@@ -261,7 +264,7 @@
   .nl-root{font-family:var(--mono);background:var(--read-bg);border:1px solid var(--edge);border-radius:6px;
     padding:13px 12px 11px;box-shadow:0 0 0 1px #0003 inset,0 2px 10px #0003 inset;min-height:240px;overflow:hidden;margin-top:16px}
   /* NOTE: .nl-root sits on --read-bg, which is near-black in BOTH themes. Never use --ink here. */
-  .nl-riddle{font-family:var(--mono);font-size:.72rem;line-height:1.5;text-align:center;color:#ddd0b0;
+  .nl-riddle{font-family:var(--mono);font-size:.72rem;line-height:1.5;text-align:center;color:var(--read-fg);
     border-bottom:1px solid var(--edge);padding:0 4px 10px;margin-bottom:10px}
   .nl-riddle b{color:var(--read-on)}
   .nl-cap{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;flex-wrap:wrap}
@@ -309,7 +312,7 @@
   .nl-stack{fill:none;stroke:var(--nl-bad);stroke-width:1.3}
   .nl-rlabel{font-family:var(--mono);font-size:6px;text-anchor:middle;fill:var(--nl-bad);font-weight:700}
   .nl-foot{display:flex;justify-content:flex-end;margin-top:8px}
-  .nl-explainer{font-family:var(--mono);font-size:.7rem;line-height:1.6;color:#ddd0b0;
+  .nl-explainer{font-family:var(--mono);font-size:.7rem;line-height:1.6;color:var(--read-fg);
     border-top:1px solid var(--edge);margin-top:9px;padding-top:10px}
   .nl-explainer[hidden]{display:none}
   .nl-explainer p{margin:0 0 9px} .nl-explainer p:last-child{margin-bottom:0}
@@ -349,6 +352,7 @@
     .entry input{font-size:1.3rem}
     .plate{font-size:1.02rem; letter-spacing:.1em}
     .done{font-size:.58rem; letter-spacing:.06em; padding:2px 7px}
+    .ttl{font-size:1.12rem}   /* keeps the longest title (challenge I) to 2 lines at 360px */
   }
 </style>
 </head>
@@ -516,7 +520,7 @@
 
   <section class="unlock">
     <div class="lab">Bonus unlock</div>
-    <p>Some captures reveal a BONUS CODE. Key it in to unlock the reward — it stays unlocked on this device.</p>
+    <p>Some flags are reward codes too. Key one in to unlock the reward — it stays unlocked on this device.</p>
     <div class="ubar"><input id="ucode" placeholder="flag{...}" aria-label="bonus code"><button id="ubtn">UNLOCK</button></div>
     <div id="uverdict" class="uverdict"></div>
     <div id="uwall" class="uwall"></div>
@@ -806,7 +810,10 @@ function ctfUid(){
 }
 const fnv=s=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; };
 const UID=ctfUid();
-const COPRIMES=[3,5,7,9,11,15,17,19,21,23,25];   // valid affine multipliers (skip 1 = identity)
+// Valid affine multipliers: coprime with 26 (odd, not 13), skipping 1 = the identity (pure Caesar).
+// Narrowed from the full set {3,5,7,9,11,15,17,19,21,23,25}: 17, 19 and 23 are dropped because no
+// clue for them is universal to a teenager anywhere. Every value left here MUST have an A_CLUES entry.
+const COPRIMES=[3,5,7,9,11,15,21,25];
 const hKey=(id,salt)=>fnv(UID+':'+id+':'+salt);
 function deriveKeys(type,id){
   if(type==='affine') return [ COPRIMES[hKey(id,'a')%COPRIMES.length], hKey(id,'b')%26 ];
@@ -819,10 +826,23 @@ function encodeFor(type,plain,keys){
   let i=0; return plain.replace(/[a-z]/gi,ch=>{ const base=ch<='Z'?65:97, s=(26-keys[i++%keys.length])%26;
     return String.fromCharCode((ch.charCodeAt(0)-base+s)%26+base); });   // encode = shift back; decode forward recovers
 }
-// cryptic clues for the affine multiplier (the hard half — the slide is found by scanning once × is right)
-const A_CLUES={ 3:'the smallest crowd', 5:'fingers on one hand', 7:'days in a week', 9:"a cat's lives",
-  11:'louder than ten, on a Spinal Tap amp', 15:'minutes in a quarter-hour', 17:'the only prime between 16 and 18',
-  19:"a teenager's last year", 21:'blackjack', 23:"Jordan's jersey", 25:'a quarter of a hundred' };
+// Clues for the affine multiplier (the hard half — the slide is found by scanning once × is right).
+// Rule for anyone editing these: every clue must be a CONCRETE, COUNTABLE thing a 15-year-old
+// anywhere on earth can count. No sports jerseys, no film references, no "the only prime between
+// X and Y", no country-specific ages, money or leagues. One entry per value in COPRIMES.
+const A_CLUES={
+  3:'sides on a triangle',
+  5:'fingers and a thumb on one hand',
+  7:'days in a week',
+  // NOT "a cat's lives" (the original suggestion): the idiom is SEVEN lives in Italian, Spanish,
+  // Greek, German, Turkish, Portuguese and Arabic, and 7 is also a multiplier in this list — so
+  // that clue is ambiguous between two live keys for a big slice of any real classroom.
+  9:'three rows of three, on a noughts-and-crosses grid',
+  11:'players on a soccer team',
+  15:'minutes in a quarter of an hour',
+  21:'the spots on a die, all six faces added up',
+  25:'five rows of five'
+};
 
 let storedSolved = new Set(); try{ storedSolved = new Set(JSON.parse(localStorage.getItem('ctf-solved:v2:caesar') || '[]')); }catch(e){}
 document.querySelectorAll('[data-puzzle]').forEach(box => {
