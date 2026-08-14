@@ -22,8 +22,8 @@ worst-case/text-challenges/
 ├── caesar/       6 challenges  — single Caesar shift, Vigenère (2-key), Affine
 ├── encoding/     9 challenges  — base64, hex, url, layered encodings, decoys
 ├── xor/          3 challenges  — single-byte brute force, crib-the-key, keystream reuse
-└── fnac/         3 challenges  — "Five Nights at Crypto's": trailing bytes, PNG
-                                   metadata, LSB steganography
+└── fnac/         3 challenges  — "Five Nights at Crypto's": trailing bytes, bit-level
+                                   file splitting, repeating-key XOR
 ```
 
 Each challenge folder has:
@@ -44,9 +44,9 @@ Each challenge folder has:
    site. Each Caesar README documents a **freshly invented, programmatically verified**
    worked key/ciphertext instance instead — same mechanism and flag plaintext as the
    live page, different (but valid) key.
-2. **Encoding, XOR, and FNAC:** these modules are **not** per-user randomized (FNAC
-   Night 3's cover photo is the one exception — see its README), so every value in those
-   READMEs was extracted directly from the live source (`assets.js`, module JS, or the
+2. **Encoding, XOR, and FNAC:** these modules are **not** per-user randomized at all —
+   every student sees the same files and the same blobs — so every value in those READMEs
+   was extracted directly from the live source (`assets.js`, module JS, or the
    asset-generation script) and independently re-decoded to confirm it produces the
    stated flag.
 

@@ -8,7 +8,7 @@ description: |
   reversible mapping.
 
   ```
-  cipher = hlim{ihhwvc_saxc}
+  cipher = hlim{ihhwvc_isc}
   ```
 attribution: Crypto 101
 type: dynamic
@@ -22,6 +22,6 @@ extra:
 flags:
 - type: static
   data: case_insensitive
-  content: flag{affine_code}
+  content: flag{affine_ace}
 
 version: '0.1'

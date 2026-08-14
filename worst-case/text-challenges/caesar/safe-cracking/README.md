@@ -4,10 +4,17 @@
 
 **⚠ Worked-instance disclaimer:** the live site derives every student's shift from a
 cookie hash, so the real page has no single fixed ciphertext. This fallback fixes
-shift = 19 as one concrete worked instance. Note: the live page's static placeholder
-markup for this puzzle isn't self-consistent with its own "dial 20" label — this file's
-ciphertext was generated fresh and independently verified against the flag below, not
-lifted from that placeholder.
+shift = 15 as one concrete worked instance. The static ciphertext sitting in the live
+page's checked-in markup is **not** a valid instance of anything — it is overwritten
+client-side at mount by `encodeFor()` with the visitor's own key, and the checked-in
+string still encodes an older plaintext. This file's ciphertext was generated fresh and
+verified against the flag below, not lifted from that placeholder.
+
+**⚠ Flag changed:** this puzzle used to be `flag{Safe_Cracker}`. It is now
+`flag{bored_yet}` — the title stayed, the flag is the joke about being four single-dial
+warm-ups deep. Note it is all-lowercase and carries no `?`: a `?` would pass through the
+encoder untouched and sit visible in the ciphertext as a free structural crib, which is
+exactly the invariant the module asks students to find for themselves.
 
 ## Mechanism
 
@@ -16,9 +23,9 @@ Vigenère (puzzle V) and Affine (puzzle VI).
 
 ## Worked solution
 
-- Plaintext: `flag{Safe_Cracker}`
-- Key (shift): `19`
-- Ciphertext: `mshn{Zhml_Jyhjrly}`
+- Plaintext: `flag{bored_yet}`
+- Key (shift): `15`
+- Ciphertext: `qwlr{mzcpo_jpe}`
 
 Verified programmatically:
 
@@ -33,7 +40,7 @@ def shift(text, k):
             out.append(ch)
     return ''.join(out)
 
-assert shift('mshn{Zhml_Jyhjrly}', 19) == 'flag{Safe_Cracker}'
+assert shift('qwlr{mzcpo_jpe}', 15) == 'flag{bored_yet}'
 ```
 
-**Flag:** `flag{Safe_Cracker}`
+**Flag:** `flag{bored_yet}`

@@ -9,10 +9,11 @@ Spine: **recognise → identify → decode/crack → submit.**
 ## Modules
 | # | Module | State | URL / path |
 |---|--------|-------|-----------|
-| 1 | ROT / Caesar (+ Vigenère + Affine) | ✅ **live** | `ctf.sandhi.com.au/crypto/ceasar` |
-| 2 | Encoding | ✅ **live** | `ctf.sandhi.com.au/crypto/encoding` |
+| 1 | Encryption 101 — ROT / Caesar (+ Vigenère + Affine) | ✅ **live** | `ctf.sandhi.com.au/crypto/ceasar` |
+| 2 | Encoding is not encryption | ✅ **live** | `ctf.sandhi.com.au/crypto/encoding` |
 | 3 | Hashing | ✅ **live** | `ctf.sandhi.com.au/crypto/hash` |
 | 4 | XOR | 🚧 **in progress** (demo+C1–C3 done, C4 left, not deployed) | `public/crypto/xor/` → `/crypto/xor/` |
+| ★ | **Five Nights at Crypto's** (bonus, gated behind Module 2) | ✅ **live** (nights 1–3 real, 4–7 placeholders) | `ctf.sandhi.com.au/crypto/fnac` |
 | — | Live Kali demo (CyberChef + archive crack) | ⬜ presenter prep | n/a |
 
 ## Module 3 — Hashing (live, `/crypto/hash`)
@@ -113,41 +114,109 @@ feedback loop through 2026-08-13/14 produced the Canvas rebuild, phase controlle
 governor, step-through and π pacing described above. Specs in `docs/superpowers/specs/`, supporting
 research in `docs/research/`.
 
-## Module 1 — Caesar set (live, `/crypto/ceasar`) — 6 puzzles
-Dial instrument(s) + alphabet slide-rule + dark mode + solved-ticks. Ramp:
-- I–IV **Caesar** (single shift dial) — easy openers.
+## Module 1 — Encryption 101 (live, `/crypto/ceasar`) — 6 puzzles
+Titled **"Encryption 101"** (h1), kicker links back to Gaura's Domain. Opens with a plain-language framing of
+what encryption is, an ℹ note on letters-as-numbers, and a highlighted call to action telling students they're
+hunting a signal that reads `flag{`. Dial instrument(s) + alphabet slide-rule + dark mode + solved-ticks
+("✓ captured" everywhere; the stamp reads "flag captured"). Ramp:
+- I–IV **Caesar** (single shift dial) — easy openers. I is "I hope you know your alphabet".
 - V **Two Tones** — alternating **Vigenère** (2 dials: odd/even letters). Forces you to line up an `f`.
-- VI **Multiply & Slide** — **Affine** `a·x+b` (× dial + + dial). Genuinely hard without the riddle.
+- VI **Multiply & Slide** — **Affine** `a·x+b` (× STRETCH dial + + SHIFT dial). Genuinely hard without the riddle.
 - (Three Wheel / Vigenère-3 was built then **removed** — didn't land.)
 - **Per-user randomized answers**: every dial's key(s) derive from the `ctf-uid` cookie (FNV hash); the flag is
   re-encoded in-browser, so each student dials different numbers / sees different ciphertext (anti shoulder-surf).
-  Flags (the plaintext, constant): `flag{G}`, `flag{Bee}`, `flag{Caesar_Salad}`, `flag{Safe_Cracker}`,
-  `flag{two_tones}`, `flag{affine_code}`. The *keys* differ per user.
-- **Affine number-line visual** (`buildNumberLine`): stretch ×a → fold every 26 → collapse to output line;
-  coprime = clean fan, shared factor = oxblood `×N` collision rings = no inverse. Smoothing-follow animation
-  (eases toward target each frame — no held-knob stutter). Owns the **riddle** (top-center, cryptically encodes
-  this user's `a`) and the **Guardrail** toggle (top-right; off = hard mode, no collision warning).
+  Flags (the plaintext, constant): `flag{G}`, `flag{Bee}`, `flag{Caesar_Salad}`, `flag{bored_yet}`,
+  `flag{two_tones}`, `flag{affine_ace}`. The *keys* differ per user. (IV deliberately carries no `?` — `?`
+  passes through `encodeFor` untouched and would sit in the ciphertext as a free structural crib.)
+  ⚠ The static `.plate` ciphertexts checked into the HTML still encode the **old** IV/VI plaintexts. Harmless
+  at runtime (overwritten at mount by `encodeFor`) but a view-source student reads a wrong answer. Still open.
+- **`COPRIMES` is 8 values, not 11**: `[3,5,7,9,11,15,21,25]`. 17/19/23 are mathematically fine affine keys but
+  were dropped because they have no clue a 15-year-old anywhere can count. Each value needs an `A_CLUES` entry,
+  and the hard rule is that **no clue may name another surviving multiplier** — a stuck student types the number
+  they can see. That rule is why "a cat's lives" is retired (a cat has *seven* lives in Italian, Spanish, Greek,
+  German, Turkish, Portuguese and Arabic, and 7 is live) and why "three rows of three" became "squares on a
+  noughts-and-crosses grid". Changing `COPRIMES` rotates every existing student's challenge-VI key.
+- **Affine number-line visual** (`buildNumberLine`), rebuilt: blue input row → yellow stretch rows → green/red
+  output row, arrowheads as reusable SVG `<marker>`s at the leading tip, collisions layering **additively**
+  (multiply would vanish on the dark ground), and a full 0–25 output line with hollow "shadow" sockets so the
+  *holes* a non-coprime `a` leaves are visible rather than implied. `a·x+b mod 26` sits under the line. New
+  themed tokens including `--read-tick`; an `explainer` box covers modular arithmetic and injectivity.
+  Owns the **riddle** (cryptically encodes this user's `a`) and the **Guardrail**, now folded into the verdict
+  pill, colour-changing, **off by default but remembered** (`caesar-guardrail`) — off = hard mode, no collision
+  warning.
 - **Slide rule:** fluid percentage tape (1 alphabet window, 3-alphabet strip), CSS-transition slide, **seamless
   0↔25 wrap** (`setTape` repositions across identical copies invisibly).
-- **Bonus unlocks:** solving VI reveals a bonus code (`flag{affine_ace}`) → UNLOCK panel maps codes → reward
-  URLs (currently **placeholder rickrolls — swap real meme URLs** in `REWARDS`). Persisted in localStorage.
+- **Bonus unlock:** VI's flag **is** the reward code. Nothing is printed on solve any more — the student keys
+  `flag{affine_ace}` into the UNLOCK panel themselves, which maps codes → reward URLs (currently **placeholder
+  rickrolls — swap real meme URLs** in `REWARDS`). Persisted in localStorage (`caesar-unlocks`).
 
-## Module 2 — Encoding (live, `/crypto/encoding`) — 9 puzzles
-Click-to-build decode pipeline; **method tiles shuffle per card/refresh**; preview **TEXT ⇄ IMAGE** (resizable);
-type-the-flag SUBMIT; solved-tick; dark mode; resizable blob window. Methods: `base64 hex url rot13 rot47 atbash`
-(rot13/atbash pure distractors; url real in IV then distractor). Decoders never throw.
+## Module 2 — Encoding is not encryption (live, `/crypto/encoding`) — 9 puzzles
+Titled **"Encoding is not ~~encryption~~"**. Click-to-build decode pipeline; **method tiles shuffle per
+card/refresh**; preview **TEXT ⇄ IMAGE** (resizable) that **always starts on TEXT** — flipping to IMAGE is the
+student's move to make; type-the-flag SUBMIT; solved-tick; dark mode; resizable blob window. Methods:
+`base64 hex url rot13 rot47 atbash` (rot13 pure distractor; url real in IV then distractor). Decoders never throw.
 Ramp: I base64 · II base64→image · III hex · IV url · V image-hides-text (sting) · VI base64→hex ·
-VII base64→rot47→hex (3-layer) · **VIII Two Faces** (one blob: `hex`→exact flag PNG, `base64`→painted trollface —
-a real dual-image polyglot) · IX red-herring (`base64→atbash`; `florg{}`/`glaf{}`/`glorf{}` decoys).
-Assets: `tools/build_base64_assets.py` (Pillow) → `public/crypto/encoding/assets.js`. Real cha-ching SFX
-(`chaching.mp3`) on the V sting. Solve-paths/authoring guide: `docs/superpowers/module2-solve-paths.md`.
+VII base64→rot47→hex (3-layer) · **VIII Two Faces** (one blob: `hex`→flag PNG, `base64`→painted trollface —
+a real dual-image polyglot) · IX red-herring (`florg{}`/`glaf{}`/`glorf{}` decoys).
+**Only VIII has a hint box** — VI, VII and IX had theirs removed on purpose.
+- **V's sting** (real cha-ching SFX, `chaching.mp3`) now fires only on the exact intended move:
+  `pipeline === ['base64']` **and** the preview showing IMAGE. Any other route to the flag is silent.
+- **VIII** gained a URL-encoded tail pad (`?q=%4e%60.ref=…`). Its blob used to end in a long run of `/` right
+  after the flag-PNG hex, so scrolling the raw string to the bottom shouted "hex". The pad is not free — it
+  passes through both decoders, so `url_pad()` pins three invariants (pad-char residue `R % 4 == 0`, `R <= 192`
+  so the base64 face still lands on a 48×48 grid, and a hex tail of exactly `Rh//2` bytes). Current: `R=176`,
+  74 bytes after the PNG's `IEND`. It also baits `url` as a third wrong answer.
+- **IX is three layers: `base64 → rot47 → atbash`.** ⚠ **Do not reorder these back.** The first shipped version
+  was `base64 → atbash → rot47`, and that order has a *structural* near-miss: the natural two-layer guess
+  `base64 → rot47` then computes `rot47(atbash(rot47(plain)))`, and lowercase `a`–`o` rot47 to `2`–`@`, which
+  atbash leaves untouched — so the second rot47 returns them exactly. ~58% of the alphabet is invariant under
+  the wrong order for **any** English payload, meaning the wrong guess yields a near-readable fake flag. No
+  amount of regenerating the blob fixes it; it is a property of the two ciphers, not of this plaintext. With
+  rot47 outermost the same wrong guess stops cleanly at `atbash(plain)`, which points *at* the atbash tile.
+  The builder asserts `base64 → atbash → rot47` does **not** solve, so the check proves the order.
+Assets: `tools/build_base64_assets.py` (Pillow) → `public/crypto/encoding/assets.js`.
+Solve-paths/authoring guide: `docs/superpowers/module2-solve-paths.md` (current — reflects all of the above).
+Clearing every puzzle here sets the `ctf-fnac-unlocked` cookie and reveals the FNAC banner link.
+
+## Bonus — Five Nights at Crypto's (live, `/crypto/fnac`)
+File-forensics bonus module, deployed. **Gated:** the page renders only if the `ctf-fnac-unlocked` cookie is
+set, which Module 2 sets on full completion (also set on load if Module 2 is already complete from a past
+session — that was a real bug). A konami code unlocks it the same way. Seven stages; **nights 1–3 are real,
+4–7 are placeholders** (`ready:false`, dimmed). `FX_TOTAL = 7`, so module-completion confetti cannot fire until
+the placeholders become real. Each night ships an on-page tool standing in for a Kali utility.
+- **Night 1 · Static** — two noise PNGs, flag halves appended after `IEND`. Tool: RAW BYTES (stands in for
+  `xxd`). Flag `flag{tune_into_the_static}`.
+- **Night 2 · Raw Bit Weaving** — a rage-face PNG (flag appended after `IEND`) split **at the bit level** into
+  `file-a.bin` / `file-b.bin`, neither of which opens or contains `flag{`. Tools: RAW BYTES + WEAVE.
+  Flag `flag{raw_bit_weaving}`, at offset `0x0dd6` of the 3588-byte reassembled file.
+  **The split convention is the whole puzzle, and the in-page JS weave tool must stay the exact inverse of
+  `fnac_png.bit_split`:** bits within a source byte are numbered 7 (MSB)…0 (LSB); **file-a takes the even bits
+  in the order 6, 4, 2, 0**, **file-b the odd bits 7, 5, 3, 1**; each source byte thus contributes one nibble to
+  each half; nibbles are packed **MSB-first in source order** (source byte 0 → high nibble of output byte 0,
+  source byte 1 → low nibble of output byte 0, …); each half is `ceil(len/2)` bytes. An odd-length source
+  zero-pads the final low nibble and loses its own length, so `build_fnac_assets.py` asserts an **even-length
+  source** (tuned via `pad_after`) to keep the weave an exact inverse.
+- **Night 3 · Tung Tung Tung Sahur** — `message.txt`, 118 bytes of repeating-key XOR, key `tung tung tung sahur`
+  (20 bytes). The plaintext starts with the flag, so a `flag{` crib at offset 0 recovers `tung ` and the
+  vendored hint image (`hint-sahur.webp`, 31 KB, downloaded not hotlinked) supplies the rest of the name.
+  Tool: XOR BENCH (stands in for `xortool`/CyberChef). Flag `flag{tung_tung_tung_sahur}`.
+  The ciphertext is asserted 7-bit and CR/LF-free so it survives a text-mode transfer; it *does* contain nine
+  NUL bytes (the flag repeats the key's own words) which transfer verbatim.
+Assets: `tools/build_fnac_assets.py` + `tools/fnac_png.py` → `public/crypto/fnac/assets/**` (~60 KB total).
+The builder is idempotent and its `_clean()` **deletes** any file a night no longer ships. Source images live in
+the repo-root `fnac-assets/`; `fnac-assets/cats/` (10 JPGs) is now unreferenced — left on disk pending a call.
+Text fallbacks: `worst-case/text-challenges/fnac/{static,raw-bit-weaving,tung-tung-tung-sahur}/`.
 
 ## Shared — victory confetti engine (`public/crypto/confetti/`)
 `engine.js` + `manifest.js` + 20 meme sprites (incl. generated suss-imposter), built by `tools/build_confetti.py`.
 Each user gets ONE signature effect per module (cookie-seeded, unique per person + per module). Confetti is the
 **module-completion reward** — fires only once EVERY puzzle in the module is solved (drives tutoring). Progress
-**persists** in `localStorage` (`ctf-solved:v2:<module>`); **★ REPLAY** button appears beside the theme toggle on
-completion; two-step **RESET MODULE** button (below footer) clears a module's progress.
+**persists** in `localStorage` (`ctf-solved:v2:<module>`); a two-step **RESET MODULE** control clears a module's
+progress, and a replay control re-fires the effect once the module is complete.
+⚠ **In flight:** those two controls are being migrated into a shared icon button row in the page header
+(reset / confetti lock→star / theme, inline Lucide-style SVG, bottom reset rows deleted, engine gaining a
+completion API instead of injecting its own REPLAY button). FNAC already has the new row; the other pages are
+mid-migration. Re-check this paragraph against the pages once that lands.
 
 ## Module 4 · XOR — IN PROGRESS (`public/crypto/xor/index.html`)
 **Full handoff + remaining work: `docs/2026-06-26-module4-xor-spec.md` (v2) — read it before touching this.**
@@ -175,8 +244,6 @@ Rebuilt from a v1 that was "demos in costume". Frame: *the keystream is the weak
 into `ctx.work` and **returns the flag string**. IDs `c1`–`c4` in `const VALID`; stale ids are pruned on load
 (can't bump store to v3 without editing the shared engine). **Node-verify every attack before wiring UI.**
 
-Then **Module 3 Hashing** (SHA-256 avalanche + crack weak MD5 via embedded table).
-
 ## Conventions
 - One static HTML file per module under `public/crypto/<name>/`; all JS client-side; flat `warm-editorial-ui` skin.
 - Deploy: `cd /Users/gaura/PCAN/ceasar-ctf && npx wrangler deploy` (needs `wrangler login`; CF MCP is read-only).
@@ -187,10 +254,21 @@ Then **Module 3 Hashing** (SHA-256 avalanche + crack weak MD5 via embedded table
 ## Open / todo
 
 **Waiting on the user**
-- [ ] **Multi-page feedback on the older modules** — the user said they were writing structured
-      (XML-tagged) feedback on Modules 1/2/4. It had not arrived when the session ended. Ask for it.
-- [ ] **Visual pass** — remove redundant inline text boxes, insert real presenter copy (Modules 1/2).
-- [ ] **Swap placeholder reward URLs** (rickrolls) in the Caesar `REWARDS` map for real meme links.
+- [x] ~~Multi-page feedback on the older modules~~ — it arrived and has been implemented across Modules 1
+      and 2 (see those sections). XOR (Module 4) has not had a feedback pass.
+- [x] ~~Visual pass on Modules 1/2~~ — substantially done: redundant inline text boxes removed, presenter
+      copy written, affine number-line rebuilt, hint boxes pruned in Encoding.
+- [ ] **Swap placeholder reward URLs** (rickrolls) in the Caesar `REWARDS` map for real meme links —
+      **still placeholder.** `flag{affine_ace}` currently opens a rickroll.
+- [ ] **Decide on `fnac-assets/cats/`** — 10 source JPGs, unreferenced since the Night 3 rewrite. Keep or delete.
+
+**Housekeeping owed after the current branch**
+- [ ] **Regenerate `worst-case/launch_offline.py`** (`.venv/bin/python tools/build_offline_launcher.py`) — it
+      embeds copies of the module pages and is stale for every page rewritten on this branch. Run it once the
+      shared header row has landed on all pages, not before.
+- [ ] **Refresh or placeholder the static `.plate` ciphertexts** for Caesar IV and VI — they still encode the
+      retired plaintexts. Cosmetic (overwritten at mount) but wrong in view-source.
+- [ ] The offline launcher still excludes FNAC on a size rationale that no longer holds (~92 KB now, not 7 MB).
 
 **Next build work**
 - [ ] **Module 4 XOR: build C4** — the last challenge. Spec'd + content node-verified in

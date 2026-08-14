@@ -5,11 +5,11 @@ national CTF. Educational material for **PeCan+ 2026**. Hosted at `ctf.sandhi.co
 
 **→ [ctf.sandhi.com.au/crypto/](https://ctf.sandhi.com.au/crypto/)** — module directory, links to everything live below.
 
-- **Module 1 — Caesar / ROT** · `public/crypto/ceasar/` — ring algebra, key vs cipher, Vigenère + Affine.
-- **Module 2 — Encoding** · `public/crypto/encoding/` — base64/hex/url/rot, encoding ≠ encryption, 9-puzzle ramp.
+- **Module 1 — Encryption 101 (Caesar / ROT)** · `public/crypto/ceasar/` — ring algebra, key vs cipher, Vigenère + Affine.
+- **Module 2 — Encoding is not encryption** · `public/crypto/encoding/` — base64/hex/url/rot, encoding ≠ encryption, 9-puzzle ramp.
 - **Module 3 — Hashing** · `public/crypto/hash/` — avalanche effect, MD5 (Merkle–Damgård) vs SHA-3 (sponge) internals, real MD5 collision demo. Both algorithms are complete from-scratch implementations running live in the browser (verified against Node's `crypto` and Python's `hashlib`), with a Canvas-2D render of Keccak's real 5×5×64 state and step-through controls. **Has a 16-script test suite in `tools/` — run all of it before merging changes**, especially `verify_flash_safety.mjs` (photosensitivity limiter; see `CLAUDE.md`).
 - **Module 4 — XOR** · `public/crypto/xor/` — keystream-reuse, brute force, crib-dragging (in progress, not deployed).
-- **Bonus — Five Nights at Crypto's** · `public/crypto/fnac/` — haunted-house sequel track, unlocks after Encoding (in progress, not deployed).
+- **Bonus — Five Nights at Crypto's** · `public/crypto/fnac/` — haunted-house file-forensics track, unlocks after Encoding. **Live**; nights 1–3 real (trailing bytes / bit-level file splitting / repeating-key XOR), 4–7 placeholders.
 
 See `CLAUDE.md` for conventions, local dev, and deploy — and `STATUS.md` for current state and
 what's outstanding. Design specs live under `docs/superpowers/specs/`; implementation plans under
@@ -17,8 +17,8 @@ what's outstanding. Design specs live under `docs/superpowers/specs/`; implement
 period desktop themes) under `docs/research/`; parked ideas in `docs/ideas-backlog.md`. Module 2's
 per-puzzle solve paths and red-herring authoring guide is `docs/superpowers/module2-solve-paths.md`.
 
-Module 2 and Module 3 assets are generated — edit `tools/build_base64_assets.py` /
-`tools/build_hash_assets.py`, not their output files, and rebuild with
+Module 2, Module 3 and FNAC assets are generated — edit `tools/build_base64_assets.py` /
+`tools/build_hash_assets.py` / `tools/build_fnac_assets.py`, not their output files, and rebuild with
 `.venv/bin/python tools/build_<name>_assets.py`.
 
 `worst-case/` holds a paper/offline fallback (contains flags/answers — presenter eyes only):

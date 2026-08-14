@@ -6,7 +6,7 @@ description: |
   and the tumblers align.
 
   ```
-  cipher = mshn{Zhml_Jyhjrly}
+  cipher = qwlr{mzcpo_jpe}
   ```
 attribution: Crypto 101
 type: dynamic
@@ -20,6 +20,6 @@ extra:
 flags:
 - type: static
   data: case_insensitive
-  content: flag{Safe_Cracker}
+  content: flag{bored_yet}
 
 version: '0.1'

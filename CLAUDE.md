@@ -114,6 +114,30 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
 - **`public/crypto/encoding/assets.js` is GENERATED** by `tools/build_base64_assets.py` — edit the script, not the
   output. Run builders with `.venv/bin/python`. Confetti sprites: `tools/build_confetti.py` reads the repo-root
   `confetti/` drop folder → `public/crypto/encoding/confetti/*.png` + `manifest.js`.
+- **`public/crypto/fnac/assets/**` is GENERATED** by `tools/build_fnac_assets.py` (+ `tools/fnac_png.py`).
+  Two traps: (a) its `_clean()` **deletes** any file in a night's folder that the night no longer ships, so
+  running it is destructive to anything else living there; (b) Night 2's puzzle *is* the bit-split convention,
+  and the JS weave tool inside `public/crypto/fnac/index.html` must stay the **exact inverse** of
+  `fnac_png.bit_split` — file-a = bits 6,4,2,0 of each source byte, file-b = bits 7,5,3,1, packed one nibble
+  per source byte, MSB-first, in source order. Change one side and the page silently reassembles garbage, with
+  no error anywhere. The builder also asserts an even-length source (odd lengths zero-pad the last nibble and
+  lose the original length) and that `flag{` leaks into neither half.
+- **Encoding challenge IX must stay `base64 → rot47 → atbash`, in that order.** With atbash outermost instead,
+  the natural two-layer guess `base64 → rot47` computes `rot47(atbash(rot47(plain)))`; lowercase `a`–`o` rot47
+  into characters atbash leaves untouched, so ~58% of the alphabet survives the *wrong* order and any English
+  payload produces a near-readable fake flag. That is structural — regenerating the blob does not fix it.
+  `tools/build_base64_assets.py` asserts the wrong order does not solve; don't relax that assert.
+- **Caesar affine clues (`A_CLUES` in `public/crypto/ceasar/index.html`): no clue may name another surviving
+  multiplier.** A stuck student types the number they can see. This is why 9 is "squares on a noughts-and-
+  crosses grid" (not "three rows of three" — 3 is a live key) and why "a cat's lives" is banned (seven lives in
+  Italian/Spanish/Greek/German/Turkish/Portuguese/Arabic, and 7 is live). Every value in `COPRIMES` needs an
+  entry, clueable by a countable everyday fact any 15-year-old *anywhere* can count — no sports, films,
+  currencies or local ages. Editing `COPRIMES` also rotates every existing student's challenge-VI key.
+- **A flag or blob change is never confined to `public/`.** Each challenge is mirrored in
+  `worst-case/text-challenges/<module>/<slug>/` (`challenge.yml` + `README.md` + sometimes a `blob.txt`), listed
+  again in `worst-case/challenges-student-handout.md`, and baked into the generated
+  `worst-case/launch_offline.py`. Those mirrors are the presenter's only fallback if the site is down on the
+  day, and nothing tests them — they go stale silently. Change a flag, change all of it.
 - **Victory confetti** is shared: `public/crypto/confetti/engine.js` (+ `manifest.js`, sprites).
   A page sets `window.FX_MODULE` (per-user signature seed) and `window.FX_TOTAL` (puzzle count),
   then calls `window.fxSolved(id)` per capture. The rain fires once **only when all puzzles in

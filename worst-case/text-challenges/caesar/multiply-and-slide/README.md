@@ -6,28 +6,36 @@
 per student (`a` drawn from the fixed list of values coprime with 26, `b` from 0–25), so
 the real page has no single fixed ciphertext. This fallback fixes `a = 5, b = 8` as one
 concrete worked instance. Mechanism and flag plaintext match the live module exactly.
-Solving this puzzle on the live site also reveals a bonus code (`flag{affine_ace}`) that
-unlocks a reward link — that bonus mechanic is cosmetic to the live page and is **not**
-reproduced in this paper fallback; only the main flag is scored here.
+
+**⚠ Flag changed:** this puzzle used to be `flag{affine_code}`, with a *separate* bonus
+code printed on solve. That two-string mechanism is gone — the flag **is** the reward
+code now. On the live site, capturing `flag{affine_ace}` and keying that same string into
+the Bonus Unlock panel opens the reward link. Nothing is handed to the student; they type
+what they captured. The reward-link half is cosmetic to the live page and is **not**
+reproduced in this paper fallback; only the flag is scored here.
 
 ## Mechanism
 
 Affine cipher: `y = (a·x + b) mod 26`, where `x` is the plaintext letter's index (a=0,
 b=1, ... z=25) and `y` is the resulting ciphertext letter's index. `a` must be coprime
-with 26 (i.e. not divisible by 2 or 13) or the mapping collides and can't be inverted —
-the live page's valid multiplier set is `{3,5,7,9,11,15,17,19,21,23,25}` (1 excluded as
-the trivial identity).
+with 26 (i.e. not divisible by 2 or 13) or the mapping collides and can't be inverted.
+Mathematically that leaves `{3,5,7,9,11,15,17,19,21,23,25}` (1 excluded as the trivial
+identity), but the live page assigns from a **narrower set of 8**:
+`{3,5,7,9,11,15,21,25}`. The cut is a *teaching* constraint, not a maths one — every
+assigned `a` has to be clueable by a riddle any 15-year-old anywhere can solve, and
+17/19/23 have no such clue. `a = 17, 19, 23` are still perfectly valid affine keys and a
+student brute-forcing on paper should try them.
 
 To decode, invert: `x = a⁻¹·(y − b) mod 26`, where `a⁻¹` is the modular inverse of `a`
 mod 26.
 
 ## Worked solution
 
-- Plaintext: `flag{affine_code}`
+- Plaintext: `flag{affine_ace}`
 - Multiplier `a`: `5` (coprime with 26 — valid)
 - Slide `b`: `8`
 - Modular inverse: `a⁻¹ = 21` (since `5 × 21 = 105 = 4×26 + 1`)
-- Ciphertext: `hlim{ihhwvc_saxc}`
+- Ciphertext: `hlim{ihhwvc_isc}`
 
 Verified programmatically:
 
@@ -61,16 +69,17 @@ def affine_decode(text, a, b):
             out.append(ch)
     return ''.join(out)
 
-assert affine_encode('flag{affine_code}', 5, 8) == 'hlim{ihhwvc_saxc}'
-assert affine_decode('hlim{ihhwvc_saxc}', 5, 8) == 'flag{affine_code}'
+assert affine_encode('flag{affine_ace}', 5, 8) == 'hlim{ihhwvc_isc}'
+assert affine_decode('hlim{ihhwvc_isc}', 5, 8) == 'flag{affine_ace}'
 ```
 
-**Flag:** `flag{affine_code}`
+**Flag:** `flag{affine_ace}`
 
 ## Presenter notes
 
 This is deliberately the hardest puzzle in the set — brute-forcing by hand means trying
-every valid `a` (11 options) crossed with every `b` (26 options) unless you can spot `a`
-some other way (the live page hides `a` behind a riddle). On paper, give participants the
-valid-`a` list above so they aren't wasting time on non-coprime guesses that can never
-decode cleanly.
+every valid `a` (11 mathematically valid options, or 8 if you assume the live page's
+assigned set) crossed with every `b` (26 options), unless you can spot `a` some other way
+(the live page hides `a` behind a riddle — a countable everyday fact like "days in a
+week"). On paper, give participants the valid-`a` list above so they aren't wasting time
+on non-coprime guesses that can never decode cleanly.

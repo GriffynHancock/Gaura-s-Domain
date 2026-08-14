@@ -2,9 +2,9 @@ name: Read the Room
 author: Crypto 101
 category: crypto
 description: |
-  Decode `blob.txt` as base64 first, then read carefully — the flag-shaped things
-  you see aren't all the real flag, and the payload itself is one more step away
-  from plain.
+  Decode `blob.txt` as base64 first. What comes out is still not language — it's two
+  more layers deep, and each layer tells you what kind of nonsense you're holding.
+  Then read carefully: the flag-shaped things you see aren't all the real flag.
 
 files:
   - blob.txt

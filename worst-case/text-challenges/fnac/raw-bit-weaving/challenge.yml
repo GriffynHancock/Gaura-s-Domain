@@ -1,0 +1,33 @@
+name: Raw Bit Weaving
+author: Crypto 101
+category: crypto
+description: |
+  Something got taken apart in here. Not cut in half — taken apart smaller than that.
+  Two files came out. Neither one opens, neither one is anything. Attach
+  `file-a.bin` and `file-b.bin`, dump the raw bytes of each, and put it back together.
+
+  Every byte of the original contributed four bits to each half: `file-a.bin` holds bit
+  6, 4, 2, 0 of each source byte, `file-b.bin` holds bits 7, 5, 3, 1. Those four-bit
+  groups are packed two-per-output-byte, high nibble first, in source order. Interleave
+  them back and the original file appears — and it is a picture. Then look past the end
+  of the image data.
+
+files:
+  - ../../../../public/crypto/fnac/assets/night2/file-a.bin
+  - ../../../../public/crypto/fnac/assets/night2/file-b.bin
+
+attribution: Crypto 101
+type: dynamic
+
+extra:
+  initial: 500
+  decay: 4
+  function: linear
+  minimum: 100
+
+flags:
+- type: static
+  data: case_insensitive
+  content: flag{raw_bit_weaving}
+
+version: '0.1'

@@ -3,59 +3,75 @@
 # Read the Room (Encoding module, puzzle IX)
 
 **Source:** real, fixed content extracted from `public/crypto/encoding/assets.js`
-(key `i_b64`), cross-checked against `flags.i`. Not per-user randomized.
+(key `i_b64`), cross-checked against `flags.i`. Not per-user randomized. Cross-checks
+with `docs/superpowers/module2-solve-paths.md` (§IX), which agrees with the live source
+on pipeline, flag and decoys.
 
-**⚠ Documentation staleness flag:** `docs/superpowers/module2-solve-paths.md` disagrees
-with the live source in two places for this puzzle, and its own internal table
-disagrees with its own per-puzzle notes:
-
-- The doc's ramp-table row claims pipeline `base64` only, and flag
-  `flag{read_to_the_very_end}`. That is **wrong** — the real pipeline is
-  `base64 → atbash` (confirmed by the live page's own hint text, which says "it's a
-  letter-mirror away from plain — try Atbash"), and the real flag is
-  `flag{read_every_line_first}` (confirmed against `assets.js`'s `flags.i` and by
-  decoding below).
-- The doc's per-puzzle decoy list names `florg{that-isnt-a-flag}`,
-  `trace=...`→`flag{no}`, `ref=...`→`flag`. The **actual decoded decoys** (verified
-  below) are `florg{nice-try}` (plain), `trace=` → hex-decodes directly to
-  `glaf{not-it}`, and `ref=` → url-decodes directly to `glorf{nope}` — matching
-  `florg{}` / `glaf{}` / `glorf{}` as named in `STATUS.md`, not the doc's specific
-  strings. Only the `payload:` line is atbash-shifted; `trace=`/`ref=` decode exactly
-  as their own labels suggest (hex, url) with no atbash step involved.
-
-This README uses the verified-real values. Flag it to whoever maintains
-`module2-solve-paths.md`.
+**⚠ This puzzle was re-layered.** It used to be two layers (`base64 → atbash`). It is
+now **three**: `base64 → rot47 → atbash`. If you are holding an older printout, the
+blob, the pipeline and the intermediate text have all changed — the flag has not.
 
 ## Mechanism
 
-Single base64 layer, but the decoded text is itself atbash-shifted (a letter mirror:
-a↔z, b↔y, ...) and contains decoys mixed in with the real payload:
+Three layers. Both `atbash` and `rot47` are byte-wise involutions, so the blob was built
+by applying the same pair in the mirror order: `blob = base64(rot47(atbash(plain)))`.
+`\n` (0x0a) sits outside rot47's `[33,126]` range and rides through untouched, so the
+dump keeps its line breaks at every layer.
 
-1. `florg{...}` — plain text, looks flag-shaped but is not the `flag{...}` format.
-2. `trace=...` — a hex string; decodes (plain hex, no further step) to a `glaf{...}` decoy.
-3. `ref=...` — a url-percent string; decodes (plain url-decode, no further step) to a
-   `glorf{...}` decoy.
-4. `payload:` — the real content, and the *only* line that's additionally atbash-shifted.
+The decoded dump is a fake packet capture salted with **unlabelled decoys**:
+
+1. `auth_token: florg{...}` — plain text, flag-shaped but not the `flag{...}` format.
+2. `trace=...` — a hex string; hex-decodes (no further step) to a `glaf{...}` decoy.
+3. `ref=...` — a url-percent string; url-decodes (no further step) to a `glorf{...}` decoy.
+4. `payload:` — the real flag, sitting in plain sight once all three layers are off.
+
+Nothing labels any of them. Picking the real one is the puzzle; the live page has no hint
+box on this card on purpose.
+
+**Why rot47 is the outer layer and must not be swapped back.** atbash and rot47 do not
+commute. The first shipped version was `base64(atbash(rot47(plain)))` — student order
+`base64 → atbash → rot47` — and it had a structural near-miss: the natural two-layer
+guess `base64 → rot47` then computes `rot47(atbash(rot47(plain)))`, and lowercase `a`–`o`
+rot47 to `2`–`@`, which atbash leaves alone, so the second rot47 returns them *exactly*.
+About 58% of the alphabet is invariant under the wrong order for **any** English payload,
+so the wrong guess produces a near-readable fake flag. With rot47 outermost, that same
+wrong guess stops cleanly at `atbash(plain)` — mirrored English that points *at* the
+remaining atbash step. The asset builder asserts that `base64 → atbash → rot47` does
+**not** recover the flag, so the check proves the intended order rather than passing by
+luck.
 
 ## Solution
 
 ```python
 import base64
 
-def atbash(s):
-    out = []
-    for ch in s:
-        c = ord(ch)
-        if 97 <= c <= 122: out.append(chr(219 - c))
-        elif 65 <= c <= 90: out.append(chr(155 - c))
-        else: out.append(ch)
-    return ''.join(out)
+def rot47(b):
+    return bytes((c - 33 + 47) % 94 + 33 if 33 <= c <= 126 else c for c in b)
 
-raw = base64.b64decode(open('blob.txt').read()).decode()
-print(raw)
+def atbash(b):
+    return bytes(
+        (ord('z') - (c - ord('a'))) if ord('a') <= c <= ord('z')
+        else (ord('Z') - (c - ord('A'))) if ord('A') <= c <= ord('Z')
+        else c for c in b)
+
+raw = base64.b64decode(open('blob.txt').read())
+print(atbash(rot47(raw)).decode())
 ```
 
-Decoded base64 (before atbash) reads:
+Layer by layer, verified against the shipped `blob.txt`:
+
+```
+after base64                    after base64 → rot47
+\\ IK<87:G _4dF \\              -- xzkgfiv 0c5u --
+K78D08=AG>i F@=:EL>CIG\8:3N     zfgs_glpvm: uolit{mrxv-gib}
+8:KIGlefeIe`eefJeGeFfcaHehfcfH  gizxv=676x61667y6v6u742w69747w
+:GFlTefTeITeFTfaTeeTfJTeGTeF…   ivu=%67%6x%6u%72%66%7y%6v%6u%70%65%7w
+<K3@=KHi                        kzbolzw:
+F@KEL:GKH0G6G:30@C>G0FC:98N     uozt{ivzw_vevib_ormv_urihg}
+\\ G>H =F IK<87:G \\            -- vmw lu xzkgfiv --
+```
+
+after `base64 → rot47 → atbash`:
 
 ```
 -- capture 0x5f --
@@ -63,24 +79,22 @@ auth_token: florg{nice-try}
 trace=676c61667b6e6f742d69747d
 ref=%67%6c%6f%72%66%7b%6e%6f%70%65%7d
 payload:
-uozt{ivzw_vevib_ormv_urihg}
+flag{read_every_line_first}
 -- end of capture --
 ```
 
-Applying atbash to the `payload:` line: `atbash('uozt{ivzw_vevib_ormv_urihg}')` →
-`'flag{read_every_line_first}'`.
-
-The `trace=` and `ref=` lines are **not** atbash — they decode directly, exactly as
-their own labels claim: `bytes.fromhex('676c61667b6e6f742d69747d')` → `glaf{not-it}`,
-and `urllib.parse.unquote('%67%6c%6f%72%66%7b%6e%6f%70%65%7d')` → `glorf{nope}`. Both
-are plain, readable decoy tokens the moment you apply the obvious decode — the trap is
-that they *look* like they might need more work, not that they hide anything further.
+The `trace=` and `ref=` lines decode exactly as their own labels claim — no atbash or
+rot47 involved once you are down to plain: `bytes.fromhex('676c61667b6e6f742d69747d')` →
+`glaf{not-it}`, and `urllib.parse.unquote('%67%6c%6f%72%66%7b%6e%6f%70%65%7d')` →
+`glorf{nope}`. Both are readable decoy tokens the moment the obvious decode is applied —
+the trap is that they *look* like they need more work, not that they hide anything.
 
 **Flag:** `flag{read_every_line_first}`
 
 ## Presenter notes
 
-The lesson is *reading carefully*, not extra crypto — the base64 layer is the only real
-encoding step; everything after is about not grabbing the first flag-shaped string. The
-`payload:` line is deliberately unlabelled as "atbash" — a careful student should notice
-it looks like a letter-mirror of an English phrase.
+The middle layer is the teachable moment: `base64` alone lands on punctuation-heavy
+gibberish (rot47's tell — printable ASCII, no `=`, lots of symbols), and `rot47` lands on
+cleanly mirrored English (`uozt{…}` — atbash's tell). Each layer announces the next one if
+you look at *what kind* of nonsense you're holding. After that the lesson is reading
+carefully, not more crypto: three of the four flag-shaped strings in the dump are decoys.
