@@ -176,6 +176,7 @@
   [data-theme="dark"] .plate{background:linear-gradient(180deg,#15130d,#201d14); color:#cdbf9f}
 
   .deck{display:flex; gap:clamp(16px,5vw,34px); align-items:center; margin-top:10px}
+  .deck-note{font-family:var(--mono); font-size:.72rem; line-height:1.55; color:var(--dim); margin-top:14px}
 
   /* gauge dial */
   .gauge{display:flex; flex-direction:column; align-items:center; gap:7px; flex:0 0 auto}
@@ -406,11 +407,12 @@
 
   <div class="note"><b>&#8505;</b> In this case, the information being hidden is a string of text, and its
     key is a number. To use this simple method of encryption, all you have to do is convert every letter
-    into a number between 0 and 25, then shift every letter individually by adding the key to it. So the
-    letter <b>a</b> ROT3 is <b>D</b>. While you're trying to solve these, look for the <b>invariants</b> —
+    into a number between 0 and 25, add the key, and wrap back to 0 if you go past 25. So the
+    letter <b>a</b> ROT3 is <b>d</b>, and <b>z</b> ROT3 comes back around to <b>c</b>. While you're trying to solve these, look for the <b>invariants</b> —
     what structure stays consistent every time, that you can go hunting for while you try to decrypt?</div>
 
-  <div class="calltoaction">The following pieces of text have been encrypted with some rotation cipher key.
+  <div class="calltoaction">The signals below use a few different tricks — some are a straight rotation
+    (one shift key), one alternates between two shift keys, and the last one multiplies before it shifts.
     Turn the knobs to try decryption keys — you are looking for a signal that reads
     <span class="hl-flag">flag{</span> and some text.</div>
 
@@ -522,6 +524,7 @@
         <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">B · EVEN</span></div>
         <div class="entry"><span class="lab">Shift B</span><input type="number" min="0" max="25" value="0" aria-label="shift B"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
       </div>
+      <div class="deck-note">Odd/even counts letters only — punctuation like <b>{ _ }</b> doesn't take a turn.</div>
       <div class="readout">———<span class="lamp"></span></div>
       <div class="stamp">flag captured</div>
     </div>
@@ -704,8 +707,8 @@ function buildNumberLine(container, opts){
   exp.innerHTML =
     '<p>The whole time, we have actually been doing <b>modular arithmetic</b> — also known as '
     +'<b>clock arithmetic</b>, because you can picture the input number as a hand on a clock face, '
-    +'and the ROT number as how far past the numbers on that face the hand has to travel before it '
-    +'wraps back around to where it started. In the same way that 10am + 5 hours is 3pm, '
+    +'and the ROT number as how many steps the hand moves forward — if it runs past the last number '
+    +'on the face, it just keeps going from 0. In the same way that 10am + 5 hours is 3pm, '
     +'<code>(10 + 5) mod 12</code> is 3.</p>'
     +'<p>In the visualisation: the <b class="nl-blue">blue</b> line of dots is the input space. The '
     +'<b>yellow</b> dots below show that input space being stretched by the multiplication. The dots '

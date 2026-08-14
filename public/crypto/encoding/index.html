@@ -169,7 +169,7 @@
     </div></div>
     <h1><span class="hl">Encoding</span> is not <s>encryption</s></h1>
     <p>Encoding is used every day to move information around by changing its form while preserving its
-       contents. It's about changing the <em>form</em> of the information, not about actually making it
+       contents. It's <em>not</em> about actually making it
        secret &mdash; though it is used to hide malicious information from automated detection. Learning to
        recognise the difference between encoding methods is very important in cybersecurity.</p>
   </header>
@@ -177,10 +177,15 @@
   <div class="note"><b>&#8505;</b> The most common forms of encoding are <b>base64</b>, <b>hexadecimal</b>
     and <b>URL</b> encoding. Encoding methods turn information from one standard into another, and each
     standard has a fixed set of characters available to it. <b>Base64</b> can be recognised because it uses
-    uppercase letters, lowercase letters and numbers together &mdash; like <span class="vs">dGhpcw==</span>,
-    which is the word &ldquo;this&rdquo;. <b>Hexadecimal</b> only uses the numbers <span class="vs">0&ndash;9</span>
+    uppercase letters, lowercase letters, numbers, and the symbols <span class="vs">+</span> and
+    <span class="vs">/</span> &mdash; and it's often (not always) padded with one or two
+    <span class="vs">=</span> signs on the end. <span class="vs">dGhpcw==</span> is base64 for
+    &ldquo;this&rdquo; &mdash; see the <span class="vs">==</span> on the end? That padding is usually the
+    fastest tell you've got. <b>Hexadecimal</b> only uses the numbers <span class="vs">0&ndash;9</span>
     and the letters <span class="vs">a&ndash;f</span>, and is usually lowercase. <b>URL encoding</b> uses lots
-    of <span class="vs">%</span> signs paired with two-digit numbers to stand in for symbols and spaces.</div>
+    of <span class="vs">%</span> signs paired with two hex digits (<span class="vs">0&ndash;9</span> and
+    <span class="vs">A&ndash;F</span>) to stand in for symbols and spaces &mdash; <span class="vs">%20</span>
+    is a space, <span class="vs">%2F</span> is a slash.</div>
 
   <footer>ctf.sandhi.com.au · crypto · encoding</footer>
 </div>
@@ -372,7 +377,7 @@ function wireCopy(btn, label, getText){
   };
 }
 
-const TWOFACE_HINT = 'One blob, <b>two pictures</b> — both real, both precomputed. Decode as <b>hex</b> for one face; then decode as <b>base64</b> and flip the preview to <b>IMAGE</b> for the other. The string is a hex dump with junk letters wedged in: hex throws the letters away, base64 keeps them.';
+const TWOFACE_HINT = 'One blob, <b>two pictures</b> — both real, both precomputed. Decode as <b>hex</b> and flip the preview to <b>IMAGE</b> for one face; then CLEAR it, decode as <b>base64</b> and flip to <b>IMAGE</b> for the other. The string is a hex dump with junk letters wedged in: hex throws the letters away, base64 keeps them.';
 // every card starts on the TEXT preview; the TEXT/IMAGE toggle is the student's move to make
 const PUZZLES = [
   {id:'I',   title:'Decode the Signal', blob:A.a_b64,     answer:A.flags.a},
