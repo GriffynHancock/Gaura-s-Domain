@@ -18,6 +18,23 @@ button currently sits — off by default, on when you want to see the whole grap
 
 Not done in-session only because another agent held that file at the time.
 
+### 0b. Input row needs its own number line
+> "there should be an identical (but recoloured) number line for the blue dots (above them) in
+> affine."
+
+The **output** row has a full 0–25 number line — axis, a tick and label per integer, hollow shadow
+sockets showing the holes. The **input** row (the blue dots at `Y_ORIG`) has none: it is a bare
+axis with 26 dots and no labels, so a student cannot read *which* input a thread came from.
+
+Give the input row the same number line, recoloured to the input blue (`--nl-in`) — same axis,
+same per-integer ticks and labels, positioned **above** the blue dots so it doesn't collide with
+the threads dropping from them. It should read as the same object as the output line, which is
+exactly the lesson: the same 26 slots go in as come out, and the map either fills them all or
+doesn't. No shadow sockets on the input row — every input is always present; the holes are an
+output-only phenomenon and drawing empty sockets up there would imply otherwise.
+
+Do this in the same pass as item 0 (both are `buildNumberLine()` layout work).
+
 ---
 
 ## 1. Rainbow-table challenge set for the hashing module
