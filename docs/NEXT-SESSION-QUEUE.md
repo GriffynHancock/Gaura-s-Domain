@@ -135,3 +135,29 @@ Torus first (Z/26 × Z/26 already *is* challenge V's object; shows keyspace mult
 Complex plane second (it's secretly the Hill cipher — a real bridge to block ciphers). The 1–100
 dial needs a bigger alphabet or it silently repeats every 26. The spiral is dropped: it implies a
 gradient, which is the exact false metaphor `CLAUDE.md` forbids.
+
+---
+
+## 1b. XOR — a long-crib challenge with a 2D crib window (author, 2026-08-15)
+> "we should have a really long crib xor, so we should have another challenge... might even want
+> one that lets you move the crib window up and down a line as well as left and right. maybe two
+> stacked sliders? a big block of xor'd text."
+
+A **large block** of repeating-key XOR ciphertext, rendered as a grid of lines, with a crib window
+the student drags over it in **two dimensions**:
+- **Horizontal slider** — the crib's offset within a line (the classic crib-drag, already taught by
+  C2/C3).
+- **Vertical slider** — which line the crib sits on.
+
+Two stacked sliders is the author's suggested control; a draggable window over the block may read
+better on a phone — decide on merit and say why.
+
+**What the second axis actually teaches** (this is the reason it's worth building, and it should be
+what the challenge is designed around): with a repeating key and a block laid out at the *right
+line width*, the key aligns vertically — the same key byte lands in the same column on every line.
+So sliding the crib **down** a line and finding it still fits is how a student *discovers* the key
+length, rather than being told it. Choose the line width so this is true and discoverable, and make
+the vertical alignment visible when they hit it.
+
+Sequencing note: this is a **fifth** XOR challenge. **C4 is still unbuilt** (item 5) and the FNAC
+gate now depends on XOR being completable, so build C4 first — or renumber deliberately.
