@@ -720,7 +720,7 @@ function addCard({id,title,sub,intro,hint,build}){
 /* ================= C1 · BRUTE FORCE (single-byte) ================= */
 addCard({
   id:'c1', title:'Brute Force', sub:'',
-  intro:"If the key is a single letter, its 8 bits give only <b>256 possibilities</b> — so try every one. We've already run all 256 keys against the scrambled message with XOR, the way you'd whip up in a quick script, and the output looks like this. Nobody hands you the answer; you spot it.",
+  intro:"If the key is a single letter, its 8 bits give only <b>256 possibilities</b> — few enough to just try every one. Running them all is the kind of thing you'd whip up in a quick script. Nobody hands you the answer; you spot it.",
   build(ctx){
     const plain='flag{brute_force_me}', key=0x37;
     const cipher = xorBytes(toBytes(plain), Uint8Array.of(key));
