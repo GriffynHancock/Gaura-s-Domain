@@ -94,14 +94,21 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   no matching asset (e.g. a bare `/` redirect, which works either way since nothing there 404s into the worker).
 - **Module 2 (Encoding) lives at `public/crypto/encoding/` → served at `/crypto/encoding/`**.
   Module 1 (Caesar) is `public/crypto/ceasar/` → `/crypto/ceasar/`.
-- **Module 3 (Hashing, `public/crypto/hash/index.html`) has a 16-script test suite in `tools/` —
-  run all of it before merging anything.** Two are pure Node (`test_md5_trace`, `test_keccak_trace`
-  — digest parity against Node's own `crypto`); the rest are Playwright and need
+- **Module 3 (Hashing, `public/crypto/hash/index.html`) has a 16-script test suite in `tools/`.**
+  Two are pure Node (`test_md5_trace`, `test_keccak_trace` — digest parity against Node's own
+  `crypto`); the rest are Playwright and need
   `HASH_MODULE_URL="http://localhost:<port>/public/crypto/hash/"`. See STATUS.md for the full list.
+  Run the ones your change can plausibly break — not the whole suite reflexively.
   Three things in that file are **not** ordinary code and must not be quietly weakened:
   - **`verify_flash_safety.mjs` and the photosensitivity governor.** The SHA-3 animation measures its
     own real flash pace and clamps luminance excursion under WCAG 2.3.1's 3-flashes-per-second bound.
-    This is projected to a room of teenagers, any of whom may be photosensitive. Slow ~4 min; run it.
+    This is projected to a room of teenagers, any of whom may be photosensitive.
+    **It takes ~4 min, so run it only when the change can actually move a flash:** animation
+    timing or pacing, the escalation/aliasing curves, per-frame colour or luminance, opacity or
+    blur, the governor itself, or anything that alters how often the canvas repaints. Copy edits,
+    layout, non-animated CSS, MD5-side register work and trace/digest changes do **not** need it.
+    When in doubt about whether a change touches luminance-over-time, run it — but "I touched the
+    hash page" is not by itself a reason.
   - **The FIPS 202 sweep axes** (θ +x plane, χ −x per-row races, ρ along z per-lane, π x-y swirl,
     ι point at lane (0,0)). These are pinned by tests because getting one wrong teaches false
     structure. Note χ is +x, NOT y — a Keccak row is *indexed by* y but *runs along* x.
