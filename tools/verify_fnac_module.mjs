@@ -256,6 +256,146 @@ for (const [name, extraClicks, gap] of [['double-tap', 1, 40], ['fast triple-cli
   await ctx.close();
 }
 
+// ---------------------------------------------------------------- 5b. type "scary" to arm
+// Every case below starts from the WORST case for the feature: the cookie already says the creep
+// has fired, and the roll is forced to a loser. So anything that runs, ran because of "scary".
+async function armedPage() {
+  const { page, ctx, errs } = await open({ creepFired: true });
+  await page.waitForSelector('#spook');
+  await page.evaluate(() => { window.__creepRandom = () => 0.9; });
+  return { page, ctx, errs };
+}
+
+{
+  const { page, ctx, errs } = await armedPage();
+  await page.keyboard.type('scary');                       // real keystrokes, nothing focused
+  check('typing "scary" arms it', await page.evaluate(() => window.__creep.armed()));
+  await page.mouse.click(550, 500);
+  await page.waitForTimeout(400);
+  check('the next click fires the sequence at 100% despite a losing roll and a set cookie',
+    await page.evaluate(() => window.__creep.state.phase !== 'idle'));
+  check('the arming was consumed by that click', await page.evaluate(() => !window.__creep.armed()));
+  const log = await page.evaluate(() => window.__playLog);
+  check('the armed click is a gesture: play() resolved', log.length > 0 && log.every(e => e.ok), JSON.stringify(log));
+  await page.evaluate(() => window.__creep.abort('test'));
+  await page.waitForTimeout(100);
+  await page.mouse.click(560, 520);
+  await page.waitForTimeout(400);
+  check('a second click does NOT fire it again — one click, then back to normal',
+    await page.evaluate(() => window.__creep.state.phase === 'idle'));
+  check('no console errors on the "scary" path', errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+
+// case-insensitive, and armed by a skipped run counts as consumed
+{
+  const { page, ctx } = await armedPage();
+  await page.keyboard.type('ScArY');
+  check('"scary" matches case-insensitively', await page.evaluate(() => window.__creep.armed()));
+  await page.mouse.click(550, 500);
+  await page.waitForTimeout(300);
+  check('uppercase spelling still fires it', await page.evaluate(() => window.__creep.state.phase !== 'idle'));
+  await page.keyboard.press('Space');                       // skip it
+  check('skipping still leaves the arming spent',
+    await page.evaluate(() => window.__creep.state.phase === 'idle' && !window.__creep.armed()));
+  await page.mouse.click(550, 500);
+  await page.waitForTimeout(400);
+  check('after a SKIPPED armed run, the next click does not re-fire',
+    await page.evaluate(() => window.__creep.state.phase === 'idle'));
+  await ctx.close();
+}
+
+// typing it twice does not stack
+{
+  const { page, ctx } = await armedPage();
+  await page.keyboard.type('scaryscary');
+  check('typing it twice is a no-op, not a stack', await page.evaluate(() => window.__creep.armed()));
+  await page.mouse.click(550, 500);
+  await page.waitForTimeout(300);
+  check('double-armed: first click fires', await page.evaluate(() => window.__creep.state.phase !== 'idle'));
+  await page.evaluate(() => window.__creep.abort('test'));
+  await page.mouse.click(550, 500);
+  await page.waitForTimeout(400);
+  check('double-armed: the second click does NOT fire a second run',
+    await page.evaluate(() => window.__creep.state.phase === 'idle'));
+  await ctx.close();
+}
+
+// THE TRAP AGAIN: the arming click must not count toward the 3-click skip
+{
+  const { page, ctx } = await armedPage();
+  await page.keyboard.type('scary');
+  await page.mouse.click(550, 500);                          // this one fires it
+  for (let i = 0; i < 3; i++) { await page.mouse.click(550, 500, { delay: 5 }); await page.waitForTimeout(40); }
+  await page.waitForTimeout(150);
+  check('a fast triple-click right after the arming click does not abort the sequence',
+    await page.evaluate(() => window.__creep.state.phase !== 'idle'),
+    await page.evaluate(() => JSON.stringify({ phase: window.__creep.state.phase, clicks: window.__creep.state.clicks })));
+  await page.evaluate(() => window.__creep.abort('test'));
+  await ctx.close();
+}
+
+// typing in a flag field must not arm anything
+{
+  const { page, ctx } = await armedPage();
+  await page.click('#stage-night1 .flag-input');
+  await page.keyboard.type('scary');
+  check('typing "scary" INTO a flag input does not arm it', await page.evaluate(() => !window.__creep.armed()));
+  check('the text went into the field where it belongs',
+    await page.inputValue('#stage-night1 .flag-input') === 'scary');
+  await page.mouse.click(550, 700);
+  await page.waitForTimeout(400);
+  check('and the following click does not fire the sequence',
+    await page.evaluate(() => window.__creep.state.phase === 'idle'));
+  await ctx.close();
+}
+
+// while the sequence is running, "scary" is ignored (it must not arm the click that follows it)
+{
+  const { page, ctx } = await armedPage();
+  await page.keyboard.type('scary');
+  await page.mouse.click(550, 500);
+  await page.waitForTimeout(300);
+  await page.keyboard.type('scary');                         // typed mid-sequence
+  check('"scary" typed during the sequence is ignored', await page.evaluate(() => !window.__creep.armed()));
+  await page.evaluate(() => window.__creep.abort('test'));
+  await page.mouse.click(550, 500);
+  await page.waitForTimeout(400);
+  check('so the click after it does not fire another run',
+    await page.evaluate(() => window.__creep.state.phase === 'idle'));
+  await ctx.close();
+}
+
+// the konami handler had the same typing-in-a-field hole; it is now guarded
+{
+  const { page, ctx } = await open({ unlocked: true });
+  await page.waitForSelector('#stage-night1 .flag-input');
+  // drop the unlock cookie WITHOUT reloading: the module stays rendered (inputs exist), but
+  // konami is now live again — exactly the state where the hole would bite. Cleared through the
+  // context, not document.cookie: addCookies() scoped it to the module's path, so a path=/
+  // deletion would silently leave it in place and make this check pass for the wrong reason.
+  await ctx.clearCookies();
+  check('the unlock cookie really is gone before the konami keys are typed',
+    !(await page.evaluate(() => document.cookie.includes('ctf-fnac-unlocked=1'))));
+  await page.click('#stage-night2 .flag-input');
+  await page.keyboard.type('flag{almost}');
+  for (const k of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'])
+    await page.keyboard.press(k);
+  check('konami keys typed inside a flag field do not trigger the unlock re-render',
+    await page.evaluate(() => !document.cookie.includes('ctf-fnac-unlocked=1')));
+  check('...and the half-typed flag survives',
+    (await page.inputValue('#stage-night2 .flag-input')).startsWith('flag{almost}'),
+    await page.inputValue('#stage-night2 .flag-input'));
+  // NEGATIVE CONTROL — without this the check above passes for any reason at all (wrong keys,
+  // dead handler, cookie never cleared). The SAME keystrokes with nothing focused must unlock.
+  await page.evaluate(() => document.activeElement.blur());
+  for (const k of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'])
+    await page.keyboard.press(k);
+  check('control: the same konami keys with no field focused DO unlock',
+    await page.evaluate(() => document.cookie.includes('ctf-fnac-unlocked=1')));
+  await ctx.close();
+}
+
 // "spook me again" clears the flag and runs it, from a real click
 {
   const { page, ctx, errs } = await open({ creepFired: true });

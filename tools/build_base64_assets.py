@@ -322,41 +322,79 @@ def main():
     flags["two_faces"] = tf_flag
 
     # 9 — final: THREE layers, base64 -> rot47 -> atbash, over a capture dump full of
-    # UNLABELLED decoys. Both atbash and rot47 are byte-wise involutions, so encoding
-    # is the same pair applied in the mirror order: blob = base64(rot47(atbash(plain))).
-    # '\n' (0x0a) is outside rot47's [33,126] range and passes through untouched.
+    # UNLABELLED decoys. Layered PER-REGION, not per-document — this is the whole design:
     #
-    # WHY THIS ORDER, NOT base64 -> atbash -> rot47 (which shipped first and was reordered
-    # by user decision): with atbash outermost, the natural two-layer guess base64 -> rot47
-    # computes rot47(atbash(rot47(plain))). Lowercase a-o rot47 to '2'-'@', which atbash
-    # leaves untouched, so the second rot47 returns them EXACTLY — ~58% of the alphabet is
-    # invariant under the wrong order, and ANY English payload leaks a near-readable
-    # 'flag~...|' there. That is structural, not a property of this plaintext; no amount of
-    # regenerating the blob fixes it. With rot47 outermost the same wrong guess stops at
-    # atbash(plain) — cleanly mirrored letters that point AT the remaining atbash tile.
+    #   blob = base64(dump), where `dump` is PLAIN readable text except for one field whose
+    #   value is rot47(atbash(flag)).
+    #
+    # Three beats for the student:
+    #   1. base64 alone            -> a readable capture dump. The decoys (florg/glaf/glorf)
+    #                                 and the `payload:` signpost are legible; the payload
+    #                                 VALUE is visibly scrambled punctuation soup.
+    #   2. base64 -> rot47         -> rot47 is an involution, so the payload value resolves
+    #                                 to atbash(flag) = `uozt{ivzw_vevib_ormv_urihg}`: it
+    #                                 reads as YET ANOTHER decoy, exactly the shape of the
+    #                                 ones they have already learned to dismiss. That is the
+    #                                 bamboozle — the correct next step looks like a dead end.
+    #                                 (The surrounding dump is rot47 soup by now; expected —
+    #                                 the page's pipeline applies each method to the whole
+    #                                 blob, and the student's eye is on the payload.)
+    #   3. base64 -> rot47 -> atbash -> the flag.
+    #
+    # '\n' (0x0a) is outside rot47's [33,126] range and passes through untouched, so the
+    # dump keeps its line breaks at every layer.
+    #
+    # WHY rot47 INSIDE atbash, NOT the mirror (base64 -> atbash -> rot47, which shipped once
+    # and was reordered by user decision — DO NOT revert it):
+    #   * Under the old WHOLE-DOCUMENT layering, atbash-outermost had a structural near-miss:
+    #     the natural two-layer guess base64 -> rot47 computed rot47(atbash(rot47(plain))),
+    #     and lowercase a-o rot47 to '2'-'@' which atbash leaves untouched, so the second
+    #     rot47 returned them EXACTLY. ~58% of the alphabet was invariant under the wrong
+    #     order and ANY English payload leaked a near-readable 'flag~...|'. Per-region
+    #     layering narrows where that could bite, but the assert below still pins it shut.
+    #   * The order is now also what MAKES beat 2. rot47-inside lands the payload on
+    #     atbash(flag) — mirrored English in flag{} shape, i.e. a convincing fourth decoy
+    #     that nonetheless points AT the remaining atbash tile. The mirror order would land
+    #     it on rot47(flag): symbol soup, which reads as "wrong turn", not as a decoy.
     # ORDER STILL MATTERS — atbash and rot47 do not commute; base64>atbash>rot47 is asserted
     # NOT to solve, so the checks prove the intended order rather than passing by luck.
     # The decoys (florg/glaf/glorf) look flag-ish but are clearly not 'flag'; nothing
     # labels them, and only a real flag{...} highlights in the preview. That's the puzzle.
     i_flag = "flag{read_every_line_first}"
-    i_plain = ("-- capture 0x5f --\n"
-               "auth_token: florg{nice-try}\n"
-               "trace=" + b"glaf{not-it}".hex() + "\n"
-               "ref=" + "".join("%%%02x" % b for b in b"glorf{nope}") + "\n"
-               "payload:\n"
-               + i_flag + "\n"
-               "-- end of capture --\n")
-    i_l1 = m_atbash(i_plain.encode("latin1"))          # what base64 -> rot47 lands on
-    i_mid = m_rot47(i_l1)                              # what base64 alone lands on
-    i_b64 = base64.b64encode(i_mid).decode()
+    # the payload VALUE as it sits inside the otherwise-plain dump: rot47(atbash(flag)).
+    # Peeling rot47 (involution) exposes atbash(flag); peeling atbash exposes the flag.
+    i_secret = m_rot47(m_atbash(i_flag.encode("latin1"))).decode("latin1")
+    i_dump = ("-- capture 0x5f --\n"
+              "auth_token: florg{nice-try}\n"
+              "trace=" + b"glaf{not-it}".hex() + "\n"
+              "ref=" + "".join("%%%02x" % b for b in b"glorf{nope}") + "\n"
+              "payload: " + i_secret + "\n"
+              "-- end of capture --\n")
+    i_b64 = base64.b64encode(i_dump.encode("latin1")).decode()
     flags["i"] = i_flag
-    # no intermediate layer may leak a readable flag{...} (the preview highlights them)
-    for name, layer in (("blob", i_b64.encode()), ("L1 base64", i_mid), ("L2 base64>rot47", i_l1)):
-        assert b"flag{" not in layer, f"9: flag readable at {name}"
-    # the near-miss the reorder exists to kill: the natural wrong guess (base64 -> rot47)
-    # must land on cleanly-mirrored letters that point at atbash, with no readable 'flag'
-    assert b"uozt{ivzw_vevib_ormv_urihg}" in i_l1, "9: L2 is not the atbash mirror of the flag"
-    assert b"flag" not in i_l1 and b"flag" not in i_mid, "9: near-readable 'flag' leaks early"
+    # ---- the three beats, asserted one per bullet ----
+    i_L1 = m_base64(i_b64.encode("latin1"))            # beat 1: base64 alone
+    i_L2 = m_rot47(i_L1)                               # beat 2: base64 -> rot47
+    i_L3 = m_atbash(i_L2)                              # beat 3: base64 -> rot47 -> atbash
+    FLAG_RE = re.compile(rb"flag\{[^}]{0,40}\}", re.I)  # mirrors FLAG_RE in index.html
+    # beat 1 — the dump must survive base64 as PLAIN READABLE TEXT: signpost + decoys legible
+    assert i_L1 == i_dump.encode("latin1"), "9 beat 1: base64 alone is not the plain dump"
+    assert b"payload: " in i_L1, "9 beat 1: payload signpost not legible"
+    assert b"florg{nice-try}" in i_L1, "9 beat 1: decoy not legible"
+    assert i_secret.encode("latin1") in i_L1 and i_secret.isascii(), "9 beat 1: payload value missing"
+    # beat 2 — must look like ANOTHER DECOY: mirrored English in flag{} shape, no near-flag
+    assert b"uozt{ivzw_vevib_ormv_urihg}" in i_L2, "9 beat 2: not the atbash mirror of the flag"
+    # beat 3 — the flag, and EXACTLY ONE FLAG_RE match on the page
+    assert i_flag.encode() in i_L3, "9 beat 3: flag not recovered"
+    assert FLAG_RE.findall(i_L3) == [i_flag.encode()], f"9 beat 3: {FLAG_RE.findall(i_L3)!r}"
+    # no earlier layer may leak flag{...} (the preview highlights every match) OR a bare
+    # 'flag' — the bare-substring check is what pins the historical near-miss shut.
+    for name, layer in (("blob", i_b64.encode()), ("L1 base64", i_L1), ("L2 base64>rot47", i_L2)):
+        assert not FLAG_RE.search(layer), f"9: flag{{...}} readable at {name}"
+        assert b"flag" not in layer.lower(), f"9: bare 'flag' leaks at {name}"
+    # the decoys are decoys: flag-SHAPED, but none of them matches FLAG_RE
+    for decoy in (b"florg{nice-try}", b"glaf{not-it}", b"glorf{nope}"):
+        assert not FLAG_RE.search(decoy), f"9: decoy {decoy!r} matches FLAG_RE"
     assert i_flag not in run_pipeline(i_b64, ["base64", "atbash", "rot47"]).decode("latin1", "replace"), \
         "9: wrong-order pipeline also solves — order no longer matters"
 

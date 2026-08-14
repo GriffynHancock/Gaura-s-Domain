@@ -345,6 +345,21 @@ const shouldFire = () => !creepFired() && creepRandom() < 0.2;
 
 let creepState = { phase:'idle', timers:[], log:[], clicks:0, startedAt:0, el:null, audio:{} };
 
+// Keyboard easter eggs must never fire while someone is typing in a field. This page has three
+// flag inputs; a student typing a flag is not asking for a jump scare, and the konami handler
+// below (which RE-RENDERS the module, wiping what they typed) had the same hole before this.
+const typingInField = e => {
+  const t = e.target;
+  return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+};
+
+// "scary": type it and the NEXT click is a guaranteed scare — the keyboard sibling of the
+// "spook me again" button, so it overrides both the 1-in-5 roll and the already-fired cookie.
+// The arming is spent by that click whether or not the sequence runs to the end; type it again
+// to re-arm. Typing it twice does not stack — it is a boolean, not a counter.
+const SCARY = 'scary';
+let creepArmed = false;
+
 function creepLog(phase){
   creepState.phase = phase;
   creepState.log.push({phase, t: Math.round(performance.now())});
@@ -514,11 +529,38 @@ function installCreep(){
   // only fires after this gesture's pointerdown/pointerup are already spent, so the gesture that
   // STARTS the sequence can never be one of the three that abort it. Capture phase, so a click
   // on a button still counts as the tap that woke it up.
-  function onFirstTap(){
-    document.removeEventListener('click', onFirstTap, true);
+  //
+  // The listener is NOT removed after the first tap any more, because "scary" can arm a
+  // guaranteed run at any later click. The once-per-visit natural roll is spent by the first
+  // tap that reaches it (rollSpent); an armed tap never reaches it, and does not need to — a
+  // run sets the cookie, so shouldFire() is false from then on either way.
+  let rollSpent = false;
+  function onTap(){
+    if(creepState.phase !== 'idle') return;   // a tap during the sequence belongs to the skip
+    if(creepArmed){
+      creepArmed = false;                     // consumed by THIS click, completed or skipped
+      creepStart();
+      return;
+    }
+    if(rollSpent) return;
+    rollSpent = true;
     if(shouldFire()) creepStart();
   }
-  document.addEventListener('click', onFirstTap, true);
+  document.addEventListener('click', onTap, true);
+
+  // ---- type "scary" to arm the next click ----
+  let scaryIdx = 0;
+  document.addEventListener('keydown', e=>{
+    if(typingInField(e)) { scaryIdx = 0; return; }   // typing a flag must not arm a jump scare
+    if(creepState.phase !== 'idle') { scaryIdx = 0; return; }  // ignored while it is already running
+    const key = (e.key || '').toLowerCase();
+    if(key === SCARY[scaryIdx]){
+      scaryIdx++;
+      if(scaryIdx === SCARY.length){ scaryIdx = 0; creepArmed = true; }
+    } else {
+      scaryIdx = (key === SCARY[0]) ? 1 : 0;
+    }
+  });
 }
 
 // test hooks — the sequence is driven and measured through these, never through fake events
@@ -531,7 +573,8 @@ window.__creep = {
   abort: creepFinish,
   state: creepState,
   log: () => creepState.log,
-  audio: () => creepState.audio
+  audio: () => creepState.audio,
+  armed: () => creepArmed
 };
 
 // ---- gate check (runs last, once everything above is defined) ----
@@ -546,6 +589,9 @@ if(!unlocked()){
   const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
   let idx = 0;
   document.addEventListener('keydown', e=>{
+    if(typingInField(e)){ idx = 0; return; }  // same hole as the "scary" handler had: a student
+                                              // editing a flag field must not trip an unlock that
+                                              // re-renders the module out from under them
     const expected = KONAMI[idx];
     const key = expected.length === 1 ? e.key.toLowerCase() : e.key;
     if(key === expected){
