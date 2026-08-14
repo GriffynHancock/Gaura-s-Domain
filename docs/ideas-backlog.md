@@ -163,3 +163,26 @@ totals are fine, and the konami bypass covers a stuck student. Recorded so it is
   solved-store's `:v2`) decided before a schema change is needed mid-event, not after.
 
 Raised 2026-08-15 while auditing/fixing FX_TOTAL mismatches across all five crypto modules.
+
+## Local/offline hosting for locked-down school networks — NOT NEEDED, recorded only
+
+The school network blocks `ctf.sandhi.com.au`, so students reach the modules through the **Kali
+VMs, which are hosted elsewhere and can get out to the internet**. The live site is therefore
+reachable on the day and **no local deployment is required** — the author explicitly decided not
+to build one (2026-08-15). This entry exists only so the reasoning isn't re-derived from scratch
+if the situation changes.
+
+If a local version is ever actually needed, the shape is deliberately boring:
+- **No deployment machinery, no venv, no dependencies.** Every module is a static
+  dependency-free HTML file, so `python3 -m http.server` served **from `public/`** is the whole
+  thing — and serving from `public/` (not the repo root) makes the paths `/crypto/<name>/`,
+  identical to production, dodging the `/public/` prefix quirk that bites during local dev.
+- So the student-facing instruction collapses to: clone the repo, run one script, open the
+  printed URL. A `serve.sh` wrapper that picks a free port and prints the URL is the only new
+  artifact needed.
+- **The one thing to check before trusting this**: whether the pages fetch anything off-machine
+  (web fonts, any CDN asset). A page that hotlinks Google Fonts still *renders* offline but loses
+  its typography, and on a network that blocks by domain it may hang on the request rather than
+  fail fast. Verify with the network panel / an offline profile before promising it works.
+- Unrelated to `worst-case/launch_offline.py`, which is the **presenter's** paper/offline fallback
+  (embedded page copies + text challenges), not a student-facing server.
