@@ -91,6 +91,42 @@
      as a tint, not a box. --dim gives it a visible edge without inventing a new look. */
   .blob.boxed{border-color:var(--dim)}
 
+  /* --- HEX | BINARY | TEXT toggle on a byte display (fmtToggle) ---
+     The control is dropped into the display's own .lab, which becomes a flex row: label left,
+     toggle right. That is "top right of the box" as a reader sees it, with no absolute
+     positioning, so it can never overlap the bytes — binary mode is several times wider than hex.
+     .segfmt is the on-panel variant of the demo's .seg: .seg's own #2c2a20 border and --read-dim
+     ink are tuned for the near-black readout and read as a black stamp on a light --panel2 blob. */
+  .lab.labrow{display:flex; justify-content:space-between; align-items:center; gap:12px}
+  .seg.segfmt{border-color:var(--edge); background:var(--panel); flex:0 0 auto}
+  .seg.segfmt button{color:var(--dim)}
+  .seg.segfmt button:hover{color:var(--ink)}
+  /* --cc-key-ink, not #fff: it is #fff in light, and dark ink in dark theme where --accent
+     lightens to #e0593d and white would miss 4.5:1. Same token, same reason, as C2's key cells. */
+  .seg.segfmt button.on{background:var(--accent); color:var(--cc-key-ink)}
+  /* Binary wraps BETWEEN bytes, never inside one: break-all would split 01101001 across two lines
+     and quietly show the student a byte that isn't there. Same reason the text view uses '·'. */
+  .blob.binv{word-break:normal; overflow-wrap:normal; white-space:pre-wrap}
+
+  /* --- C3 key-cancel diagram ---
+     Same colour convention as C2's crib cells and the demo's bit rows: key red, message light,
+     via the shared --cc-* tokens (a literal --ink message half renders dark in light theme).
+     The two red halves are placed either side of the ⊕ so the thing that cancels is adjacent. */
+  .kx{display:flex; align-items:flex-end; justify-content:center; gap:9px; flex-wrap:wrap; margin:16px 0 0}
+  .kxbox{flex:0 1 auto; min-width:112px}
+  .kxt{font-family:var(--mono); font-size:.58rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--dim); text-align:center; margin-bottom:5px}
+  .kxh{display:flex; border:1px solid var(--edge); border-radius:6px; overflow:hidden}
+  .kxh>span{flex:1 1 0; font-family:var(--mono); font-weight:700; font-size:.82rem; text-align:center; padding:11px 6px}
+  .kxh>.kkey{background:var(--accent); color:var(--cc-key-ink)}
+  .kxh>.kmsg{background:var(--cc-msg-bg); color:var(--cc-msg-ink)}
+  .kxh>.kmsg+.kmsg{border-left:1px solid var(--edge)}
+  .kxop{font-family:var(--mono); font-size:1.05rem; color:var(--dim); padding-bottom:11px}
+  .kxcap{font-family:var(--mono); font-size:.68rem; line-height:1.55; color:var(--dim); text-align:center; margin:10px 0 0}
+  .kxcap b{color:var(--accent)}
+  /* the ⊕ / = between C3's stacked scrambled-message boxes */
+  .eqop{font-family:var(--mono); font-size:1.15rem; color:var(--dim); text-align:center; margin:9px 0 0}
+
   /* --- bit gate (demo + expandable byte view) --- */
   .gate{margin:14px 0 6px}
   .brow{display:flex; align-items:center; gap:12px; margin:9px 0}
@@ -427,6 +463,41 @@ const toHex   = b => Array.from(b,x=>x.toString(16).padStart(2,'0')).join(' ');
 const xorBytes = (b,key) => { const o=new Uint8Array(b.length); for(let i=0;i<b.length;i++) o[i]=b[i]^key[i%key.length]; return o; };
 const printable = s => s.replace(/[^\x20-\x7E]/g,'·');
 const bits8 = n => Array.from({length:8},(_,i)=>(n>>(7-i))&1);
+const toBin  = b => Array.from(b,x=>x.toString(2).padStart(8,'0')).join(' ');   // MSB first, one group per byte
+const toText = b => Array.from(b,x=>(x>=32&&x<=126)?String.fromCharCode(x):'·').join('');
+
+/* ---- fmtToggle: the module's ONE format switch for byte displays -------------------------
+   Every hex display in the module gets HEX | BINARY | TEXT from here rather than a per-challenge
+   copy. Reuses the demo's .seg segmented control (extended to three options, .segfmt skin) and
+   parks it in the display's preceding .lab — see .lab.labrow in the stylesheet for why it is not
+   absolutely positioned over the box.
+
+   `mode` lives in this closure, so set(bytes) repaints in whatever view the student left it on:
+   a content update can never snap the box back to HEX. TEXT never drops a byte — every
+   non-printable is one visible '·', the same placeholder printable() uses, so the character
+   count always equals the byte count.
+
+   render(el,bytes,mode) is optional; C1's paired hex-over-text dump passes its own so it can keep
+   its per-byte cells instead of becoming one run-on string. */
+const FMT_LABELS = {hex:'HEX', bin:'BINARY', text:'TEXT'};
+function fmtToggle(el, bytes, render){
+  const draw = render || ((node,b,mode)=>{ node.textContent = mode==='hex'?toHex(b):mode==='bin'?toBin(b):toText(b); });
+  const seg = document.createElement('span');
+  seg.className = 'seg segfmt';
+  seg.innerHTML = Object.keys(FMT_LABELS).map(v=>
+    '<button type="button" data-v="'+v+'"'+(v==='hex'?' class="on"':'')+'>'+FMT_LABELS[v]+'</button>').join('');
+  const lab = el.previousElementSibling;
+  if(lab && lab.classList.contains('lab')){ lab.classList.add('labrow'); lab.appendChild(seg); }
+  else { const row=document.createElement('div'); row.className='lab labrow'; row.appendChild(seg);
+         el.parentNode.insertBefore(row, el); }
+  let mode='hex', cur=bytes||new Uint8Array(0);
+  const paint = ()=>{ el.classList.toggle('binv', mode==='bin'); draw(el,cur,mode); };
+  seg.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+    seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
+    mode=b.dataset.v; paint(); }));
+  paint();
+  return { set(nb){ cur=nb; paint(); }, get mode(){ return mode; } };
+}
 
 // parse a typed key: hex bytes ("5a", "0x5a", "5a 6b") OR plain text ("sun"). Empty -> null.
 function parseKey(str){
@@ -657,7 +728,7 @@ addCard({
     // the lab copy says "try a few keys yourself, then click the button below", so the manual box
     // has to sit above the button it refers back to.
     ctx.work.innerHTML =
-      '<div class="lab">The scrambled message — hex (top) and text (bottom)</div>'+
+      '<div class="lab">The scrambled message — byte on top, text below</div>'+
       '<div class="hexdump"></div>'+
       '<div class="lab">Apply a key — type a character, or type its hex code</div>'+
       '<div class="keyrow"><input class="keyin" maxlength="1" spellcheck="false" autocomplete="off" placeholder="one character" aria-label="key character">'+
@@ -667,10 +738,23 @@ addCard({
       '<div class="lab">Try a few keys yourself, then when you get bored, click the button below to brute force it — trying every combination.</div>'+
       '<button class="mini runbrute">BRUTE FORCE ▸</button>'+
       '<div class="brutewrap hide"><div class="brutelist"></div></div>';
+    // The dump keeps its per-byte cells in every mode — the exercise is positional, so a student
+    // has to be able to point at one byte and its character. HEX is the original paired view
+    // (hex over text); BINARY swaps the top row to 8 bits; TEXT keeps one cell per byte so the
+    // columns still line up with the two other views. The toggle only ever ADDS a view here.
     const hd=ctx.work.querySelector('.hexdump');
-    [...cipher].forEach(b=>{ const c=document.createElement('div'); c.className='hx';
-      c.innerHTML='<div class="hxh">'+b.toString(16).padStart(2,'0')+'</div><div class="hxc">'+
-        (b>=32&&b<=126?String.fromCharCode(b):'·')+'</div>'; hd.appendChild(c); });
+    fmtToggle(hd, cipher, (node,bytes,mode)=>{
+      node.innerHTML='';
+      const cell=(cls,txt)=>{ const d=document.createElement('div'); d.className=cls; d.textContent=txt; return d; };
+      [...bytes].forEach(b=>{
+        const c=document.createElement('div'); c.className='hx';
+        const ch=(b>=32&&b<=126)?String.fromCharCode(b):'·';
+        if(mode==='text') c.appendChild(cell('hxh',ch));
+        else { c.appendChild(cell('hxh', mode==='bin' ? b.toString(2).padStart(8,'0')
+                                                      : b.toString(16).padStart(2,'0')));
+               c.appendChild(cell('hxc',ch)); }
+        node.appendChild(c); });
+    });
     const wrap=ctx.work.querySelector('.brutewrap'), list=ctx.work.querySelector('.brutelist'),
           keyin=ctx.work.querySelector('.keyin'), keyhex=ctx.work.querySelector('.keyhexin'),
           decout=ctx.work.querySelector('.decout');
@@ -731,7 +815,7 @@ addCard({
       '</div>';
     ctx.work.innerHTML =
       '<div class="lab">Encrypted message</div>'+
-      '<div class="blob boxed">'+toHex(cipher)+'</div>'+
+      '<div class="blob boxed"></div>'+
       '<div class="lab">The crib — type the start you can guess every flag has</div>'+
       '<div class="cribrow">'+
         '<div class="keyrow"><input class="cribin" spellcheck="false" autocomplete="off" placeholder="what do all flags start with?"></div>'+
@@ -743,6 +827,7 @@ addCard({
       '<div class="decout">(enter the key)</div>'+
       '<div class="cnote"><b>Why crib, not brute?</b> A 1-byte key has 256 options — tools like CyberChef spray all 256 in a blink. But this key is 3 bytes, and its “XOR Brute Force” won’t search keys longer than a byte or two. Multi-byte repeating keys dodge the brute — so you lean on a scrap of the original message you already know instead.</div>';
     ctx.node.querySelector('.flagin').placeholder='Paste the flag here';   // C2 only
+    fmtToggle(ctx.work.querySelector('.blob'), cipher);
     const cribin=ctx.work.querySelector('.cribin'), calc=ctx.work.querySelector('.cribcalc'),
           keyin=ctx.work.querySelector('.keyin'), decout=ctx.work.querySelector('.decout');
 
@@ -772,34 +857,51 @@ addCard({
 
 /* ================= C3 · SAME KEY TWICE (keystream reuse — the boss) ================= */
 addCard({
-  id:'c3', title:'Same Key Twice', sub:'',
-  intro:"The big one. Two secret messages were scrambled with the <b>same key</b> — a lazy, fatal mistake. You don't get the key. But you don't need it: XOR the two scrambled messages together and the key <b>cancels</b>. What's left is <code>message1 ⊕ message2</code>. Then you <i>crib-drag</i> — slide a guessed word along until it reads — to peel both apart.",
-  hint:"Combine them, then crib-drag. Type <code>flag{</code> at position 0: the other message reads <code>meet&nbsp;</code> — so message 2 starts “meet …”. Guess the rest of that sentence (<code>meet me by the docks!</code>) and drag it from position 0 — message 1 falls out, and that's your flag.",
+  id:'c3', title:'Reuse, Recycle', sub:'',
+  intro:"If two messages have been mixed using the <b>same key</b> — or different keys but the same message — they can be used to cancel out the string they share. So if I encrypt two messages with a single key, combining those two encrypted messages destroys the key, because the key halves match. That leaves you able to attack one message using the other one directly.",
+  hint:"In 1977 Australia voted on a national song. <i>Advance Australia Fair</i> won with 43% and was proclaimed the national anthem in 1984; the runner-up, on 28%, was <b>Waltzing Matilda</b>. Message 2 is that runner-up's name — sung twice over. Type it into the crib and slide it along until message 1 reads back.",
   build(ctx){
-    const p1='flag{same_key_twice}', p2='meet me by the docks!';
+    // The two messages and the flag are the only content knobs in this card — swapping them is a
+    // one-line change. Their LENGTHS are load-bearing, though: 'you got it right! ' and
+    // 'waltzing matilda, ' are both 18 characters, which is what puts flag{ and the second
+    // 'waltz' at the same offset, so the crib pays off mid-phrase rather than at position 0.
+    const p1='you got it right! flag{compost!}', p2='waltzing matilda, waltzing matilda';
+    const flag='flag{compost!}';          // NOT p1 — p1 carries an 18-char prefix in front of it
     const key=toBytes('PURPLEHAZE');
     const c1=xorBytes(toBytes(p1),key), c2=xorBytes(toBytes(p2),key);
     const L=Math.min(c1.length,c2.length);
     const xored=new Uint8Array(L); for(let i=0;i<L;i++) xored[i]=c1[i]^c2[i];
+    // The relationship is shown as a static stacked equation — no "combine" button. The two
+    // scrambled messages, an ⊕ between them, an = below, and what's left once the key cancels.
+    // The crib-drag underneath is always visible: there is nothing left to unlock.
     ctx.work.innerHTML =
-      '<div class="lab">Message 1 — scrambled (hex)</div><div class="blob">'+toHex(c1)+'</div>'+
-      '<div class="lab">Message 2 — scrambled (hex) · same key, reused</div><div class="blob">'+toHex(c2)+'</div>'+
-      '<div class="cnote"><b>The mistake:</b> one key, used twice. XOR the two scrambled messages together and the key <b>cancels itself</b> — no key left, just <code>message1 ⊕ message2</code>.</div>'+
-      '<button class="mini combine">XOR THE TWO TOGETHER ▸</button>'+
-      '<div class="dragwrap hide">'+
-        '<div class="lab">message1 ⊕ message2  (the key is gone)</div><div class="blob xored"></div>'+
-        '<div class="lab">Crib-drag — slide a guess; where it reads English, you\'ve cracked the OTHER message there</div>'+
-        '<div class="keyrow"><input class="guess" spellcheck="false" autocomplete="off" placeholder="a word you bet is in a message, e.g. flag{"><span class="keyhint">position <b class="posv">0</b></span></div>'+
-        '<input class="posr" type="range" min="0" max="'+(L-1)+'" value="0">'+
-        '<div class="dragrow"></div>'+
-        '<div class="lab">What the other message says here</div><div class="decout">(type a guess above)</div>'+
-      '</div>';
-    const combine=ctx.work.querySelector('.combine'), wrap=ctx.work.querySelector('.dragwrap'),
-          guess=ctx.work.querySelector('.guess'), posr=ctx.work.querySelector('.posr'),
+      '<div class="kx">'+
+        '<div class="kxbox"><div class="kxt">encrypted 1</div>'+
+          '<div class="kxh"><span class="kmsg">M1</span><span class="kkey">K1</span></div></div>'+
+        '<span class="kxop">⊕</span>'+
+        '<div class="kxbox"><div class="kxt">encrypted 2</div>'+
+          '<div class="kxh"><span class="kkey">K1</span><span class="kmsg">M2</span></div></div>'+
+        '<span class="kxop">=</span>'+
+        '<div class="kxbox"><div class="kxt">no key left</div>'+
+          '<div class="kxh"><span class="kmsg">M1</span><span class="kmsg">M2</span></div></div>'+
+      '</div>'+
+      '<div class="kxcap">the <b>red</b> halves are the same key in both, so they cancel each other out — what survives is message 1 ⊕ message 2</div>'+
+      '<div class="lab">Encrypted message 1</div><div class="blob b1"></div>'+
+      '<div class="eqop">⊕</div>'+
+      '<div class="lab">Encrypted message 2 — same key, reused</div><div class="blob b2"></div>'+
+      '<div class="eqop">=</div>'+
+      '<div class="lab">message1 ⊕ message2 — the key is gone</div><div class="blob xored"></div>'+
+      '<div class="lab">Crib-drag — slide a guess; where it reads English, you\'ve cracked the OTHER message there</div>'+
+      '<div class="keyrow"><input class="guess" spellcheck="false" autocomplete="off" placeholder="a word you bet is in a message, e.g. flag{"><span class="keyhint">position <b class="posv">0</b></span></div>'+
+      '<input class="posr" type="range" min="0" max="'+(L-1)+'" value="0">'+
+      '<div class="dragrow"></div>'+
+      '<div class="lab">What the other message says here</div><div class="decout">(type a guess above)</div>';
+    const guess=ctx.work.querySelector('.guess'), posr=ctx.work.querySelector('.posr'),
           posv=ctx.work.querySelector('.posv'), dragrow=ctx.work.querySelector('.dragrow'),
           decout=ctx.work.querySelector('.decout');
-    ctx.work.querySelector('.xored').textContent = toHex(xored);
-    combine.onclick=()=>{ wrap.classList.toggle('hide'); };
+    fmtToggle(ctx.work.querySelector('.b1'), c1);
+    fmtToggle(ctx.work.querySelector('.b2'), c2);
+    fmtToggle(ctx.work.querySelector('.xored'), xored);
 
     const isEng = rv => rv===32 || (rv>=65&&rv<=90) || (rv>=97&&rv<=122) || (rv>=48&&rv<=57) || '{}_!.,?'.includes(String.fromCharCode(rv));
     function render(){
@@ -816,7 +918,7 @@ addCard({
     }
     guess.addEventListener('input',render); posr.addEventListener('input',render);
     render();
-    return p1;
+    return flag;
   }
 });
 
@@ -851,8 +953,8 @@ addCard({
         '<input class="ktype" spellcheck="false" autocomplete="off" placeholder="or type: 0x41 / A">'+
       '</div>';
     ctx.work.innerHTML =
-      '<div class="lab">The scrambled message — hex bytes</div>'+
-      '<div class="blob">'+toHex(cipher)+'</div>'+
+      '<div class="lab">The scrambled message</div>'+
+      '<div class="blob"></div>'+
       '<div class="cnote">You are given the <b>key length: 3</b>. Nothing else. A 3-byte key has 16,777,216 combinations — far too many to eyeball. But you do not have to take it as one lock: each knob below only touches its own third of the message, so you can judge it on its own.</div>'+
       '<div class="lab">Three knobs — one byte each</div>'+
       '<div class="knobs">'+knobHtml(0)+knobHtml(1)+knobHtml(2)+'</div>'+
@@ -863,6 +965,7 @@ addCard({
       '<div class="klegend"><span><i class="k0">knob 1</i></span><span><i class="k1">knob 2</i></span><span><i class="k2">knob 3</i></span><span>· = not a readable character yet</span></div>'+
       '<div class="cnote"><b>The punchline:</b> a “long” XOR key is not one big key. It is as many single-byte keys as it is bytes long — three, here — standing on each other’s shoulders in a trenchcoat, and each one falls to 256 tries. Length alone never made it strong. Real encryption does not repeat its key.</div>';
 
+    fmtToggle(ctx.work.querySelector('.blob'), cipher);
     const kEls   = [...ctx.work.querySelectorAll('.knob')],
           keyshow= ctx.work.querySelector('.keyshow'),
           msg    = ctx.work.querySelector('.msg');
