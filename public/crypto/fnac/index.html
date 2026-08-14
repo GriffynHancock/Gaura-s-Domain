@@ -25,6 +25,25 @@
 
   .locked{font-family:var(--mono); font-size:.9rem; color:var(--dim); text-align:center; padding:80px 20px}
 
+  /* --- header button row: reset · confetti. Icon-only, >=40px touch targets.
+     NO theme button here: this module is a deliberately single-palette black skin — it has no
+     [data-theme] rules at all, so a toggle would be an inert control that lies about what it
+     does. See the task report; giving FNAC a light palette is a design task, not chrome. --- */
+  .kicker{font-family:var(--mono); font-size:.7rem; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--accent); display:flex; justify-content:space-between; align-items:center; margin-bottom:10px}
+  .hdr-btns{display:flex; gap:8px; align-items:center; flex:0 0 auto}
+  .hdr-btn{width:40px; height:40px; padding:0; display:inline-flex; align-items:center;
+    justify-content:center; line-height:0; border-radius:6px; cursor:pointer; color:var(--ink);
+    background:linear-gradient(#1b1813,#111008); border:1px solid var(--edge);
+    transition:color .18s, background .18s, border-color .18s, opacity .18s}
+  .hdr-btn svg{width:19px; height:19px; pointer-events:none}
+  .hdr-btn:hover{border-color:var(--dim)}
+  .hdr-btn[aria-disabled="true"]{opacity:.45; cursor:default}
+  .hdr-btn.unlocked{color:var(--gold)}
+  .hdr-btn.unlocked svg{fill:currentColor}
+  .hdr-btn.armed{color:#fff; background:var(--accent); border-color:var(--accent)}
+  @media(max-width:430px){ .kicker{gap:10px} .kicker>span{font-size:.58rem; letter-spacing:.12em; min-width:0} }
+
   .grid{display:grid; gap:18px}
   .stage{background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:20px 22px}
   .stage.placeholder{opacity:.45}
@@ -45,6 +64,15 @@
 </style>
 </head>
 <body>
+<!-- Header-row icon sprite. Shapes after Lucide (ISC licence, lucide.dev), redrawn inline:
+     no CDN, no icon font, no external request. Deliberately a SIBLING of #app — renderModule()
+     replaces #app's innerHTML (and konami can call it again), which would wipe a sprite inside.
+     Stroke/fill are set on each button's own <svg> so they inherit into the symbol. -->
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.49-6.01"/><path d="M22 6h-4V2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.6 14.26 8.89 20.94 9.1 15.66 13.19 17.53 19.6 12 15.85 6.47 19.6 8.34 13.19 3.06 9.1 9.74 8.89Z"/></symbol>
+</svg>
 <div class="wrap" id="app"></div>
 <script>
 function ctfUid(){
@@ -60,33 +88,63 @@ function unlocked(){ return document.cookie.match(/(?:^|; )ctf-fnac-unlocked=1(?
 
 const app = document.getElementById('app');
 
+const ICON_SVG = id => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+
 function renderModule(){
   app.innerHTML = `
     <header>
+      <div class="kicker"><span>Crypto 101 · Bonus</span><div class="hdr-btns">
+        <button id="reset-mod" class="hdr-btn" type="button" aria-label="Reset module progress" title="Reset module progress">${ICON_SVG('reset')}</button>
+        <button id="fx-btn" class="hdr-btn" type="button" aria-disabled="true" aria-label="Confetti locked" title="Confetti locked">${ICON_SVG('lock')}</button>
+      </div></div>
       <h1>Five Nights at <em>Crypto's</em></h1>
       <p>You made it through. This part isn't graded like the rest — it's what's left running after
          hours. Same tools, worse lighting.</p>
     </header>
     <div class="raw-html"><p>visitor log — do not remove<br>everything past this point is off the books.</p></div>
     <div class="grid" id="stages"></div>
-    <div class="reset-row" style="display:flex;justify-content:center;margin:48px 0 36px">
-      <button id="reset-mod" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;cursor:pointer;color:var(--dim);background:none;border:1px solid var(--edge);border-radius:6px;padding:8px 14px">RESET MODULE</button>
-    </div>
   `;
   renderStages();
-  wireResetButton();
+  wireHeaderButtons();
 }
 
-function wireResetButton(){
-  const btn=document.getElementById('reset-mod'); if(!btn) return;
+// ---- header button row: reset · confetti ----
+// Two buttons, not three: this module is a single-palette black skin with no [data-theme] rules,
+// so there is no light mode for a theme button to switch to (see the task report).
+// renderModule() can run TWICE (gate render, then the konami unlock), so the buttons are re-wired
+// per render, while the engine's 'fx:state' listener is registered ONCE at top level below and
+// simply no-ops when the header isn't on the page (locked state renders no header at all).
+function wireHeaderButtons(){
+  const label=(btn,text)=>{ btn.title=text; btn.setAttribute('aria-label',text); };
+  syncFxButton();
+  const fx=document.getElementById('fx-btn');
+  if(fx) fx.addEventListener('click', ()=>{ if(window.fxIsComplete && window.fxIsComplete() && window.fxReplay) window.fxReplay(); });
+
+  const rb=document.getElementById('reset-mod'); if(!rb) return;
   let armed=false, t;
-  btn.addEventListener('click', ()=>{
-    if(!armed){ armed=true; btn.textContent='CONFIRM — ERASE PROGRESS?';
-      t=setTimeout(()=>{ armed=false; btn.textContent='RESET MODULE'; }, 3500); }
-    else { clearTimeout(t); if(window.fxReset) window.fxReset();
-      try{ localStorage.removeItem('ctf-solved:v2:fnac'); }catch(e){} location.reload(); }
+  const REST='Reset module progress';
+  rb.addEventListener('click', ()=>{
+    if(!armed){ armed=true; rb.classList.add('armed'); label(rb,'Confirm — erase this module’s progress?');
+      t=setTimeout(()=>{ armed=false; rb.classList.remove('armed'); label(rb,REST); }, 3500); }
+    else { clearTimeout(t); if(window.fxReset) window.fxReset(); location.reload(); }
   });
 }
+
+// lock while the nights are unfinished, star once all seven are captured. Completion comes from
+// the shared confetti engine — this page never re-reads the solved-store key itself.
+function syncFxButton(){
+  const fx=document.getElementById('fx-btn'); if(!fx) return;
+  const done=!!(window.fxIsComplete && window.fxIsComplete());
+  fx.classList.toggle('unlocked',done);
+  const u=fx.querySelector('use'); if(u) u.setAttribute('href', done?'#i-star':'#i-lock');
+  // aria-disabled rather than [disabled]: keeps the "how do I unlock this" tooltip readable.
+  fx.setAttribute('aria-disabled', done?'false':'true');
+  const text = done ? 'Replay your victory confetti'
+                    : 'Locked — capture every flag in this module to unlock the confetti';
+  fx.title=text; fx.setAttribute('aria-label',text);
+}
+// registered before engine.js (the last script on the page), so the engine's init dispatch lands
+document.addEventListener('fx:state', syncFxButton);
 
 // small deterministic rotation per stage id, stable across reloads — "slightly off," not jittery
 function seededRotation(id){ return (fnv('rot:'+id) % 500) / 100 - 2.5; } // -2.5deg .. +2.5deg

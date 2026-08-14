@@ -35,6 +35,20 @@
   .theme-btn{font-family:var(--mono); font-size:.64rem; letter-spacing:.18em; cursor:pointer; color:var(--ink);
     background:linear-gradient(#f4eedd,#ddd2b6); border:1px solid var(--edge); border-radius:4px; padding:5px 11px}
   [data-theme="dark"] .theme-btn{background:linear-gradient(#322d1d,#211e14)}
+  /* --- header button row: reset · confetti · theme. Icon-only, >=40px touch targets, both
+     themes. Sits after the .theme-btn rules on purpose: same specificity, later wins. --- */
+  .hdr-btns{display:flex; gap:8px; align-items:center; flex:0 0 auto}
+  .hdr-btn{width:40px; height:40px; padding:0; display:inline-flex; align-items:center;
+    justify-content:center; line-height:0; border-radius:6px; color:var(--ink);
+    transition:color .18s, background .18s, border-color .18s, opacity .18s}
+  .hdr-btn svg{width:19px; height:19px; pointer-events:none}
+  .hdr-btn:hover{border-color:var(--dim)}
+  .hdr-btn[aria-disabled="true"]{opacity:.45; cursor:default}
+  .hdr-btn.unlocked{color:var(--gold)}
+  .hdr-btn.unlocked svg{fill:currentColor}
+  .hdr-btn.armed{color:#fff; background:var(--accent); border-color:var(--accent)}
+  [data-theme="dark"] .hdr-btn.armed{background:var(--accent); border-color:var(--accent)}
+  @media(max-width:430px){ .kicker{gap:10px} .kicker>span{font-size:.58rem; letter-spacing:.12em; min-width:0} }
   h1{font-family:var(--disp); font-weight:900; font-size:clamp(2.1rem,6.5vw,3.3rem); line-height:.96; margin:0; letter-spacing:-.02em}
   h1 em{font-style:italic; font-weight:400; color:var(--accent)}
   header p{font-family:var(--disp); font-size:1.02rem; line-height:1.5; opacity:.82; margin:12px 0 0; max-width:56ch}
@@ -219,17 +233,26 @@
   .hide{display:none}
 
   footer{text-align:center; font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; color:var(--dim); margin-top:42px; text-transform:uppercase}
-  .reset-row{display:flex; justify-content:center; margin:48px 0 36px}
-  .reset-btn{font-family:var(--mono); font-size:.66rem; letter-spacing:.16em; cursor:pointer; color:var(--dim);
-    background:none; border:1px solid var(--edge); border-radius:6px; padding:8px 14px; transition:.2s}
-  .reset-btn:hover{color:var(--ink); border-color:var(--dim)}
-  .reset-btn.armed{color:#fff; background:var(--accent); border-color:var(--accent); letter-spacing:.1em}
 </style>
 </head>
 <body>
+<!-- Header-row icon sprite. Shapes after Lucide (ISC licence, lucide.dev), redrawn inline:
+     no CDN, no icon font, no external request. Stroke/fill are set on each button's own <svg>
+     so they inherit into the symbol — never set them inside a <symbol>, a <use> can't override. -->
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.49-6.01"/><path d="M22 6h-4V2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.6 14.26 8.89 20.94 9.1 15.66 13.19 17.53 19.6 12 15.85 6.47 19.6 8.34 13.19 3.06 9.1 9.74 8.89Z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></symbol>
+</svg>
 <div class="wrap">
   <header>
-    <div class="kicker"><span>Crypto 101 · Module 04 · XOR</span><button id="theme" class="theme-btn">DARK</button></div>
+    <div class="kicker"><span>Crypto 101 · Module 04 · XOR</span><div class="hdr-btns">
+      <button id="reset-mod" class="theme-btn hdr-btn" type="button" aria-label="Reset module progress" title="Reset module progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-reset"/></svg></button>
+      <button id="fx-btn" class="theme-btn hdr-btn" type="button" aria-disabled="true" aria-label="Confetti locked" title="Confetti locked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-lock"/></svg></button>
+      <button id="theme" class="theme-btn hdr-btn" type="button" aria-label="Switch theme" title="Switch theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-moon"/></svg></button>
+    </div></div>
     <h1>Same Key, <em>Both</em> Ways</h1>
     <p>XOR is the atom of real crypto: a switch that flips a bit only when the key bit is on. Lock with
        a key, unlock with the <em>same</em> key. And the crack: if you know a little of the message, you
@@ -302,7 +325,6 @@
   </div>
 
   <footer>ctf.sandhi.com.au · crypto · xor</footer>
-  <div class="reset-row"><button id="reset-mod" class="reset-btn">RESET MODULE</button></div>
 </div>
 
 <template id="mod">
@@ -339,10 +361,45 @@ function parseKey(str){
   return toBytes(t); // treat as ASCII text
 }
 
-// theme (shared key across modules)
-(function(){const r=document.documentElement, s=localStorage.getItem('caesar-theme'); if(s)r.dataset.theme=s;
-  const b=document.getElementById('theme'); const sync=()=>b.textContent=r.dataset.theme==='dark'?'LIGHT':'DARK'; sync();
-  b.onclick=()=>{r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; localStorage.setItem('caesar-theme',r.dataset.theme); sync();};})();
+// ---- header button row: reset · confetti · theme ----
+// One wiring block, identical on every module page. The confetti button is ALWAYS present and
+// swaps its icon: lock while the module is incomplete, star once every puzzle is captured.
+// Completion comes from the shared engine (window.fxIsComplete + the 'fx:state' event) — pages
+// never re-read the solved-store key themselves. This listener is registered before engine.js
+// (last script on the page), so the engine's init dispatch always lands here.
+(function(){
+  const root=document.documentElement;
+  const saved=localStorage.getItem('caesar-theme'); if(saved) root.dataset.theme=saved;
+  const use=(btn,id)=>{ const u=btn.querySelector('use'); if(u) u.setAttribute('href','#'+id); };
+  const label=(btn,text)=>{ btn.title=text; btn.setAttribute('aria-label',text); };
+
+  const tb=document.getElementById('theme');
+  function syncTheme(){ const dark=root.dataset.theme==='dark';
+    use(tb, dark?'i-sun':'i-moon'); label(tb, dark?'Switch to light mode':'Switch to dark mode'); }
+  syncTheme();
+  tb.addEventListener('click',()=>{ root.dataset.theme=root.dataset.theme==='dark'?'light':'dark';
+    localStorage.setItem('caesar-theme',root.dataset.theme); syncTheme(); });
+
+  const fx=document.getElementById('fx-btn');
+  function syncFx(){ const done=!!(window.fxIsComplete && window.fxIsComplete());
+    fx.classList.toggle('unlocked',done); use(fx, done?'i-star':'i-lock');
+    // aria-disabled rather than [disabled]: the button stays focusable and keeps showing its
+    // "how do I unlock this" tooltip, which a disabled button does not.
+    fx.setAttribute('aria-disabled', done?'false':'true');
+    label(fx, done ? 'Replay your victory confetti'
+                   : 'Locked — capture every flag in this module to unlock the confetti'); }
+  document.addEventListener('fx:state', syncFx);
+  syncFx();
+  fx.addEventListener('click',()=>{ if(window.fxIsComplete && window.fxIsComplete() && window.fxReplay) window.fxReplay(); });
+
+  const rb=document.getElementById('reset-mod'); let armed=false, t;
+  const REST='Reset module progress';
+  rb.addEventListener('click',()=>{
+    if(!armed){ armed=true; rb.classList.add('armed'); label(rb,'Confirm — erase this module’s progress?');
+      t=setTimeout(()=>{ armed=false; rb.classList.remove('armed'); label(rb,REST); },3500); }
+    else { clearTimeout(t); if(window.fxReset) window.fxReset(); location.reload(); }
+  });
+})();
 
 /* ---------------- DEMO: atomic toy ---------------- */
 (function(){
@@ -656,16 +713,6 @@ addCard({
   }
 });
 
-// two-step reset
-(function(){
-  const btn=document.getElementById('reset-mod'); if(!btn) return;
-  let armed=false, t;
-  btn.addEventListener('click', ()=>{
-    if(!armed){ armed=true; btn.classList.add('armed'); btn.textContent='CONFIRM — ERASE PROGRESS?';
-      t=setTimeout(()=>{ armed=false; btn.classList.remove('armed'); btn.textContent='RESET MODULE'; }, 3500); }
-    else { clearTimeout(t); if(window.fxReset) window.fxReset(); try{ localStorage.removeItem('ctf-solved:v2:xor'); }catch(e){} location.reload(); }
-  });
-})();
 </script>
 
 <script src="../confetti/manifest.js"></script>

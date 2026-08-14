@@ -5,6 +5,7 @@
              window.FX_TOTAL=7;</script>                   // number of main puzzles in the module
      <script src="../confetti/engine.js"></script>
    Then call window.fxSolved(id) as EACH puzzle is captured (id = any stable per-puzzle key).
+   Set window.FX_NO_PUZZLES=true instead of FX_TOTAL for a module with nothing to capture.
 
    The rain is the MODULE-COMPLETION reward: it fires once, only after all FX_TOTAL puzzles
    are solved — so students tutor each other to finish and see each person's meme.
@@ -93,29 +94,35 @@
   const STORE = 'ctf-solved:v2:' + MODULE;
   const load = ()=>{ try{ return new Set(JSON.parse(localStorage.getItem(STORE) || '[]')); }catch(e){ return new Set(); } };
   const solved = load();
-  let celebrated = !!(window.FX_TOTAL && solved.size >= window.FX_TOTAL);   // already done -> don't re-rain on load
 
-  // "replay" button beside the theme toggle — appears once the module is complete so a
-  // finisher can re-show their meme to friends (encourages them to finish too).
-  let replayBtn=null;
-  function ensureReplay(){
-    if(replayBtn) return replayBtn;
-    const theme=document.getElementById('theme'); if(!theme) return null;
-    replayBtn=document.createElement('button'); replayBtn.id='fx-replay';
-    replayBtn.className=theme.className||'theme-btn'; replayBtn.textContent='★ REPLAY';
-    replayBtn.style.marginRight='8px'; replayBtn.hidden=true;
-    replayBtn.addEventListener('click',()=>spawn(EFFECTS[myIndex]));
-    theme.parentNode.insertBefore(replayBtn, theme);
-    return replayBtn;
-  }
-  function showReplay(){ const b=ensureReplay(); if(b) b.hidden=false; }
-  if(celebrated) showReplay();   // already completed in a past session
+  // A module with no capturable flags at all (the hash module) is vacuously complete — its
+  // confetti button ships unlocked. This is an explicit per-page OPT-IN, never inferred from
+  // FX_TOTAL being 0/unset: caesar computes FX_TOTAL from a DOM query, and a selector that ever
+  // returned 0 would otherwise silently light the star on a real puzzle module.
+  const NO_PUZZLES = !!window.FX_NO_PUZZLES;
+  const isComplete = ()=> NO_PUZZLES || !!(window.FX_TOTAL && solved.size >= window.FX_TOTAL);
+  let celebrated = isComplete();   // already done -> don't re-rain on load
+
+  // Completion state for the page chrome. Each module page renders ONE always-present confetti
+  // button in its header (lock icon while incomplete, star once complete); the engine owns the
+  // store key, so pages must ask here rather than re-reading localStorage themselves. The engine
+  // no longer injects any button of its own.
+  //   window.fxIsComplete()  -> boolean, safe to call any time after this script has run
+  //   document 'fx:state'    -> fired at init, on the completing solve, and on reset;
+  //                             detail:{complete}. Pages register the listener BEFORE this
+  //                             script (it is the last script on every page), so the init
+  //                             dispatch always reaches them.
+  window.fxIsComplete = isComplete;
+  window.fxReplay = ()=> spawn(EFFECTS[myIndex]);
+  const emitState = ()=>{ try{ document.dispatchEvent(new CustomEvent('fx:state',{detail:{complete:isComplete()}})); }catch(e){} };
 
   window.fxSolved = (id)=>{
     if(!solved.has(id)){ solved.add(id); try{ localStorage.setItem(STORE, JSON.stringify([...solved])); }catch(e){} }
     const total = window.FX_TOTAL || 0;
-    if(total && solved.size >= total && !celebrated){ celebrated = true; spawn(EFFECTS[myIndex]); showReplay(); }
+    if(total && solved.size >= total && !celebrated){ celebrated = true; spawn(EFFECTS[myIndex]); emitState(); }
   };
   window.fxSolvedSet = ()=> [...solved];
-  window.fxReset = ()=>{ solved.clear(); celebrated = false; if(replayBtn) replayBtn.hidden=true; try{ localStorage.removeItem(STORE); }catch(e){} };
+  window.fxReset = ()=>{ solved.clear(); celebrated = NO_PUZZLES; try{ localStorage.removeItem(STORE); }catch(e){} emitState(); };
+
+  emitState();   // initial lock-vs-star state for the page chrome
 })();
