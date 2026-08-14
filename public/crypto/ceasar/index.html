@@ -13,6 +13,11 @@
     --ink:#241f17; --dim:#7c7259; --line:#cabd9c;
     --signal:#b23a26; --brass:#a9772a; --lamp:#3f7d52;
     --read-bg:#1a1812; --read-dim:#5e5a3a; --read-on:#f0bb4d;
+    /* number-line palette. NOTE: --read-bg is near-black in BOTH themes, so these are
+       always read against a dark ground — they are tuned for contrast there, not on --bone. */
+    --nl-in:#5aa9e6;      /* input space (top row) */
+    --nl-ok:#4fbf78;      /* output hit exactly once */
+    --nl-bad:#e2593d;     /* output with a collision */
     --disp:"Fraunces",Georgia,serif;
     --ui:"Hanken Grotesk",system-ui,sans-serif;
     --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
@@ -23,6 +28,7 @@
     --ink:#ece3cd; --dim:#9a8f72; --line:#403a28;
     --signal:#e0593d; --brass:#c79338; --lamp:#62ab77;
     --read-bg:#14120c;
+    --nl-in:#6ab6ee; --nl-ok:#5cc985; --nl-bad:#e86a4c;
   }
   *{box-sizing:border-box}
   html{-webkit-text-size-adjust:100%}
@@ -73,6 +79,33 @@
     border-left:3px solid var(--brass); padding:12px 15px; border-radius:3px; margin:24px 0 32px;
   }
   .note b{color:var(--signal)}
+  /* the leading U+2139 must read as an ICON, not as a stray italic letter — and must render as
+     the TEXT glyph, never Apple Color Emoji. font-variant-emoji plus a text-first font stack. */
+  .note > b:first-child{
+    font-family:"Helvetica Neue",Helvetica,Arial,"Segoe UI Symbol","DejaVu Sans",sans-serif;
+    font-variant-emoji:text; font-weight:400; font-size:1.25rem; line-height:1;
+    vertical-align:-.12em; color:var(--brass); margin-right:3px;
+  }
+
+  /* kicker home link — same instrument-label look, obviously live on hover */
+  .home-link{
+    color:var(--signal); text-decoration:none; font:inherit; letter-spacing:inherit;
+    border-bottom:1px solid transparent; padding-bottom:1px; transition:color .18s, border-color .18s;
+  }
+  .home-link:hover, .home-link:focus-visible{color:var(--brass); border-bottom-color:currentColor}
+  .home-link:focus-visible{outline:none}
+
+  /* highlighter-pen call to action. The amber wash is IDENTICAL in both themes (it's a marker
+     stroke, not a panel), so the text colour is pinned dark rather than inheriting --ink. */
+  .calltoaction{
+    font-family:var(--disp); font-weight:600; font-size:1.05rem; line-height:1.62;
+    color:#2a2114; margin:0 0 30px; padding:11px 16px 12px; border-radius:2px; max-width:60ch;
+    background-image:linear-gradient(100deg,
+      #f0bb4d00 0%, #f0bb4de6 2.5%, #f7cf72f2 45%, #f0bb4de6 97.5%, #f0bb4d00 100%);
+    /* pinned so var(--signal) below stays legible on amber in dark mode too */
+    --signal:#8f2d1c;
+  }
+  .hl-flag{font-family:var(--mono); color:var(--signal); font-weight:700; font-size:.94em}
 
   /* ---- instrument module ---- */
   .module{
@@ -101,6 +134,7 @@
     font-family:var(--mono); font-size:.68rem; letter-spacing:.14em; color:var(--lamp);
     border:1px solid var(--lamp); border-radius:20px; padding:2px 9px;
     opacity:0; transform:scale(.8); transition:.25s;
+    white-space:nowrap; flex:0 0 auto;   /* never let the pill break across two lines */
   }
   details.solved .done{opacity:1; transform:none}
   .sub{font-family:var(--mono); font-size:.72rem; color:var(--dim); margin-left:auto; letter-spacing:.1em}
@@ -193,7 +227,6 @@
   .rrow.top .cell.used{color:var(--signal); background:#0000000a}
   .rrow.bot .cell{color:var(--read-dim); border-right:1px solid #000}
   .rrow.bot .strip .cell.lit{color:var(--read-on)}
-  .rlabels{display:flex; justify-content:space-between; font-family:var(--mono); font-size:.6rem; letter-spacing:.2em; color:var(--dim); margin:6px 2px 0}
 
   /* readout */
   .readout{
@@ -219,11 +252,6 @@
   .amap-note{font-family:var(--mono); font-size:.66rem; line-height:1.5; color:var(--dim); margin-top:10px}
   .amap-note .bad{color:var(--accent,#b23a26); font-weight:700}
 
-  .bonus{font-family:var(--mono); font-size:.72rem; letter-spacing:.04em; color:var(--lamp);
-    background:var(--read-bg); border:1px dashed var(--lamp); border-radius:5px; padding:10px 13px; margin-top:14px;
-    opacity:0; transform:translateY(4px); transition:.3s; display:none; word-break:break-all}
-  .bonus.show{opacity:1; transform:none; display:block}
-
   .riddle{font-family:var(--mono); font-size:.74rem; line-height:1.55; color:var(--ink); opacity:.92;
     background:var(--read-bg); border:1px solid var(--edge); border-left:3px solid var(--signal); border-radius:5px;
     padding:11px 14px; margin:16px 0 4px}
@@ -232,43 +260,64 @@
   /* affine number-line: stretch ×a → fold every 26 → collapse to result line */
   .nl-root{font-family:var(--mono);background:var(--read-bg);border:1px solid var(--edge);border-radius:6px;
     padding:13px 12px 11px;box-shadow:0 0 0 1px #0003 inset,0 2px 10px #0003 inset;min-height:240px;overflow:hidden;margin-top:16px}
-  .nl-riddle{font-family:var(--mono);font-size:.72rem;line-height:1.5;text-align:center;color:var(--ink);opacity:.94;
+  /* NOTE: .nl-root sits on --read-bg, which is near-black in BOTH themes. Never use --ink here. */
+  .nl-riddle{font-family:var(--mono);font-size:.72rem;line-height:1.5;text-align:center;color:#ddd0b0;
     border-bottom:1px solid var(--edge);padding:0 4px 10px;margin-bottom:10px}
-  .nl-riddle b{color:var(--signal)}
+  .nl-riddle b{color:var(--read-on)}
   .nl-cap{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;flex-wrap:wrap}
   .nl-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
   .nl-guard{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.56rem;letter-spacing:.12em;
-    text-transform:uppercase;color:var(--dim);cursor:pointer;user-select:none}
-  .nl-guard input{accent-color:var(--signal);cursor:pointer;margin:0}
+    text-transform:uppercase;color:var(--read-dim);cursor:pointer;user-select:none}
+  .nl-guard input{accent-color:var(--read-on);cursor:pointer;margin:0}
+  .nl-guard:hover{color:#c9bb96}
   .nl-formula{font-size:clamp(.72rem,2.6vw,.9rem);font-weight:700;color:var(--read-on);letter-spacing:.03em;
     text-shadow:0 0 12px #f0bb4d55}
-  .nl-formula .nl-bad{color:var(--signal);text-shadow:none}
-  .nl-verdict{font-size:.58rem;letter-spacing:.15em;text-transform:uppercase;padding:2px 8px;border-radius:20px;
-    border:1px solid var(--lamp);color:var(--lamp);white-space:nowrap}
-  .nl-verdict.nl-collide{border-color:var(--signal);color:var(--signal)}
+  .nl-formula .nl-bad{color:var(--nl-bad);text-shadow:none}
+  /* the verdict pill IS the guardrail switch (role=switch button) — no separate checkbox */
+  .nl-verdict{font-family:var(--mono);font-size:.58rem;letter-spacing:.15em;text-transform:uppercase;
+    padding:3px 9px;border-radius:20px;background:transparent;cursor:pointer;white-space:nowrap;
+    border:1px solid var(--nl-ok);color:var(--nl-ok);transition:border-color .18s,color .18s,background .18s}
+  .nl-verdict:hover{background:#ffffff14}
+  .nl-verdict:focus-visible{outline:2px solid var(--read-on);outline-offset:2px}
+  .nl-verdict.nl-collide{border-color:var(--nl-bad);color:var(--nl-bad)}
   .nl-verdict.nl-off{border-color:var(--read-dim);color:var(--read-dim)}
   .nl-svg{display:block;width:100%;height:auto}
   .nl-axis{stroke:var(--read-dim);stroke-width:1}
-  .nl-axis.nl-result{stroke:var(--dim)}
-  .nl-tick{stroke:var(--read-dim);stroke-width:.8}
+  /* the output line is drawn as a dashed silhouette so unfilled sockets read as HOLES */
+  .nl-axis.nl-result{stroke:var(--read-dim);stroke-dasharray:2.5 2.5;opacity:.9}
+  .nl-tick{stroke:var(--read-dim);stroke-width:.7}
   .nl-tlabel{fill:var(--read-dim);font-family:var(--mono);font-size:6px;text-anchor:middle}
-  .nl-band{fill:#f0bb4d0e;stroke:#f0bb4d33;stroke-width:1}
+  .nl-band{fill:#f0bb4d0e;stroke:#f0bb4d26;stroke-width:1}
   .nl-lapband{fill:none;stroke:var(--read-dim);stroke-width:.6;stroke-dasharray:2 2;opacity:.55}
-  .nl-rowlbl{fill:var(--dim);font-family:var(--mono);font-size:6px;letter-spacing:.1em;text-transform:uppercase}
+  .nl-rowlbl{fill:var(--read-dim);font-family:var(--mono);font-size:6px;letter-spacing:.1em;text-transform:uppercase}
   .nl-laplbl{fill:var(--read-dim);font-family:var(--mono);font-size:5.5px;text-anchor:end}
-  .nl-dot{fill:var(--read-on)}
-  .nl-dot.nl-dim{fill:var(--read-dim)}
-  .nl-thread{stroke:var(--read-on);stroke-width:.8;fill:none;opacity:.35}
-  .nl-thread.nl-dim{stroke:var(--read-dim);opacity:.22}
-  .nl-rdot{fill:var(--read-on)}
-  .nl-rdot.nl-clash{fill:var(--signal)}
-  .nl-stack{fill:none;stroke:var(--signal);stroke-width:1.3}
-  .nl-rlabel{font-family:var(--mono);font-size:6px;text-anchor:middle;fill:var(--signal);font-weight:700}
-  .nl-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:.6rem;color:var(--dim);letter-spacing:.03em}
-  .nl-legend span{display:inline-flex;align-items:center;gap:5px}
-  .nl-sw{width:9px;height:9px;border-radius:50%;display:inline-block}
-  .nl-sw.nl-good{background:var(--read-on)}
-  .nl-sw.nl-bad{background:var(--signal)}
+  .nl-dot{fill:var(--nl-in)}                                   /* input space */
+  .nl-fly{fill:var(--read-on)}                                 /* stretched / folded laps */
+  .nl-fly.nl-dim{fill:var(--read-dim)}
+  /* empty sockets on the output line */
+  .nl-shadow{fill:none;stroke:var(--read-dim);stroke-width:.7;opacity:.75}
+  /* stacked alpha (NOT a blend mode): the ground is dark in both themes, so two threads landing
+     on one output visibly build up. multiply would have made them vanish here. */
+  .nl-thread{stroke:var(--nl-in);stroke-width:.8;fill:none;opacity:.45}
+  .nl-thread2{stroke:var(--read-on);stroke-width:.8;fill:none;opacity:.45}
+  .nl-thread.nl-dim,.nl-thread2.nl-dim{stroke:var(--read-dim);opacity:.22}
+  .nl-mk-in{fill:var(--nl-in)}
+  .nl-mk-lap{fill:var(--read-on)}
+  .nl-mk-dim{fill:var(--read-dim)}
+  .nl-rdot{fill:var(--nl-ok)}
+  .nl-rdot.nl-clash{fill:var(--nl-bad)}
+  .nl-stack{fill:none;stroke:var(--nl-bad);stroke-width:1.3}
+  .nl-rlabel{font-family:var(--mono);font-size:6px;text-anchor:middle;fill:var(--nl-bad);font-weight:700}
+  .nl-foot{display:flex;justify-content:flex-end;margin-top:8px}
+  .nl-explainer{font-family:var(--mono);font-size:.7rem;line-height:1.6;color:#ddd0b0;
+    border-top:1px solid var(--edge);margin-top:9px;padding-top:10px}
+  .nl-explainer[hidden]{display:none}
+  .nl-explainer p{margin:0 0 9px} .nl-explainer p:last-child{margin-bottom:0}
+  .nl-explainer b{color:var(--read-on)}
+  .nl-explainer .nl-blue{color:var(--nl-in)} .nl-explainer .nl-green{color:var(--nl-ok)}
+  .nl-explainer .nl-red{color:var(--nl-bad)}
+  .nl-explainer code{font-family:var(--mono);color:var(--read-on);background:#ffffff10;
+    border-radius:3px;padding:0 3px}
 
   .unlock{border:1px solid var(--edge); border-radius:10px; padding:18px 20px; margin-top:34px; background:var(--read-bg)}
   .unlock p{font-family:var(--mono); font-size:.74rem; line-height:1.5; color:var(--dim); margin:6px 0 12px}
@@ -299,6 +348,7 @@
     .deck{gap:16px}
     .entry input{font-size:1.3rem}
     .plate{font-size:1.02rem; letter-spacing:.1em}
+    .done{font-size:.58rem; letter-spacing:.06em; padding:2px 7px}
   }
 </style>
 </head>
@@ -314,26 +364,33 @@
 
 <div class="wrap">
   <header>
-    <div class="kicker"><span>Crypto 101 · Substitution</span><button id="theme" class="theme-btn">☾ DARK</button></div>
-    <h1>The <em>Caesar</em> Set</h1>
-    <p>A Caesar cipher slides every letter forward by a fixed amount. No code to break — just a setting to find.
-       Turn the dial like tuning a receiver or working a safe until the static resolves into language.</p>
+    <div class="kicker"><a class="home-link" href="../">Gaura's Domain</a><button id="theme" class="theme-btn">☾ DARK</button></div>
+    <h1><em>Encryption</em> 101</h1>
+    <p>Encryption is the art of hiding a secret so that the person you <em>want</em> to read it sees it
+       immediately, while the person you're hiding it from might never find it, even if they searched
+       for the rest of time.</p>
   </header>
 
-  <div class="note"><b>OPERATION.</b> Each module holds a scrambled signal. Work the dial — or key a number —
-    to shift every letter. Most settings read as noise; one snaps into a clean <span style="color:var(--signal)">flag{…}</span>.
-    Flip <b>SLIDE RULE</b> to watch the two alphabets line up. Modules get harder top to bottom.</div>
+  <div class="note"><b>&#8505;</b> In this case, the information being hidden is a string of text, and its
+    key is a number. To use this simple method of encryption, all you have to do is convert every letter
+    into a number between 0 and 25, then shift every letter individually by adding the key to it. So the
+    letter <b>a</b> ROT3 is <b>D</b>. While you're trying to solve these, look for the <b>invariants</b> —
+    what structure stays consistent every time, that you can go hunting for while you try to decrypt?</div>
+
+  <div class="calltoaction">The following pieces of text have been encrypted with some rotation cipher key.
+    Turn the knobs to try decryption keys — you are looking for a signal that reads
+    <span class="hl-flag">flag{</span> and some text.</div>
 
   <!-- MODULE I -->
   <details class="module" open>
     <span class="scr1"></span><span class="scr2"></span>
-    <summary><span class="idx">I</span><span class="ttl">Test Signal</span><span class="done">✓ captured</span><span class="sub">ROT · band 5</span></summary>
+    <summary><span class="idx">I</span><span class="ttl">I hope you know your alphabet</span><span class="done">✓ captured</span><span class="sub"></span></summary>
     <div class="panel-body" data-puzzle data-id="c1" data-type="caesar" data-plain="flag{G}">
-      <div class="lab">Scrambled signal</div>
+      <div class="lab">Encrypted signal</div>
       <div class="plate">agvb{B}</div>
       <div class="lab">Tuning</div>
       <div class="deck">
-        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">SPIN</span></div>
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg></div>
         <div class="entry"><span class="lab">Shift</span>
           <input type="number" min="0" max="25" value="0" aria-label="shift">
           <div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div>
@@ -342,22 +399,22 @@
       <label class="toggle-row"><span class="switch"><input type="checkbox" class="rtoggle" aria-label="slide rule"><span class="track"></span><span class="knb"></span></span><span class="tlabel">Slide rule — alphabet alignment</span></label>
       <div class="ruler"><div class="ruler-scroll"><div class="ruler-inner">
         <div class="rrow top"></div><div class="rrow bot"><div class="strip"></div></div>
-      </div></div><div class="rlabels"><span>CIPHER LETTER →</span><span>← DECODES TO</span></div></div>
+      </div></div></div>
       <div class="readout">———<span class="lamp"></span></div>
-      <div class="stamp">Signal locked · flag captured</div>
+      <div class="stamp">flag captured</div>
     </div>
   </details>
 
   <!-- MODULE II -->
   <details class="module">
     <span class="scr1"></span><span class="scr2"></span>
-    <summary><span class="idx">II</span><span class="ttl">Bee Line</span><span class="done">✓ captured</span><span class="sub">ROT · band 16</span></summary>
+    <summary><span class="idx">II</span><span class="ttl">Bee Line</span><span class="done">✓ captured</span><span class="sub"></span></summary>
     <div class="panel-body" data-puzzle data-id="c2" data-type="caesar" data-plain="flag{Bee}">
-      <div class="lab">Scrambled note</div>
+      <div class="lab">Encrypted signal</div>
       <div class="plate">pvkq{Loo}</div>
       <div class="lab">Tuning</div>
       <div class="deck">
-        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">SPIN</span></div>
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg></div>
         <div class="entry"><span class="lab">Shift</span>
           <input type="number" min="0" max="25" value="0" aria-label="shift">
           <div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div>
@@ -366,22 +423,22 @@
       <label class="toggle-row"><span class="switch"><input type="checkbox" class="rtoggle" aria-label="slide rule"><span class="track"></span><span class="knb"></span></span><span class="tlabel">Slide rule — alphabet alignment</span></label>
       <div class="ruler"><div class="ruler-scroll"><div class="ruler-inner">
         <div class="rrow top"></div><div class="rrow bot"><div class="strip"></div></div>
-      </div></div><div class="rlabels"><span>CIPHER LETTER →</span><span>← DECODES TO</span></div></div>
+      </div></div></div>
       <div class="readout">———<span class="lamp"></span></div>
-      <div class="stamp">Signal locked · flag captured</div>
+      <div class="stamp">flag captured</div>
     </div>
   </details>
 
   <!-- MODULE III -->
   <details class="module">
     <span class="scr1"></span><span class="scr2"></span>
-    <summary><span class="idx">III</span><span class="ttl">Radio Tuning</span><span class="done">✓ captured</span><span class="sub">ROT · band 13</span></summary>
+    <summary><span class="idx">III</span><span class="ttl">Radio Tuning</span><span class="done">✓ captured</span><span class="sub"></span></summary>
     <div class="panel-body" data-puzzle data-id="c3" data-type="caesar" data-plain="flag{Caesar_Salad}">
-      <div class="lab">Intercepted signal</div>
+      <div class="lab">Encrypted signal</div>
       <div class="plate">synt{Pnrfne_Fnynq}</div>
       <div class="lab">Tuning</div>
       <div class="deck">
-        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">SPIN</span></div>
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg></div>
         <div class="entry"><span class="lab">Shift</span>
           <input type="number" min="0" max="25" value="0" aria-label="shift">
           <div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div>
@@ -390,22 +447,21 @@
       <label class="toggle-row"><span class="switch"><input type="checkbox" class="rtoggle" aria-label="slide rule"><span class="track"></span><span class="knb"></span></span><span class="tlabel">Slide rule — alphabet alignment</span></label>
       <div class="ruler"><div class="ruler-scroll"><div class="ruler-inner">
         <div class="rrow top"></div><div class="rrow bot"><div class="strip"></div></div>
-      </div></div><div class="rlabels"><span>CIPHER LETTER →</span><span>← DECODES TO</span></div></div>
+      </div></div></div>
       <div class="readout">———<span class="lamp"></span></div>
-      <div class="stamp">Signal locked · flag captured</div>
+      <div class="stamp">flag captured</div>
     </div>
   </details>
 
   <!-- MODULE IV -->
   <details class="module">
     <span class="scr1"></span><span class="scr2"></span>
-    <summary><span class="idx">IV</span><span class="ttl">Safe Cracking</span><span class="done">✓ captured</span><span class="sub">ROT · dial 20</span></summary>
-    <div class="panel-body" data-puzzle data-id="c4" data-type="caesar" data-plain="flag{Safe_Cracker}">
-      <div class="lab">Locked text</div>
+    <summary><span class="idx">IV</span><span class="ttl">Safe Cracking</span><span class="done">✓ captured</span><span class="sub"></span></summary>
+    <div class="panel-body" data-puzzle data-id="c4" data-type="caesar" data-plain="flag{bored_yet}">
+      <div class="lab">Encrypted signal</div>
       <div class="plate">zfua{Muzy_Wluweyl}</div>
-      <div class="lab">Dial</div>
       <div class="deck">
-        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">SPIN</span></div>
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg></div>
         <div class="entry"><span class="lab">Shift</span>
           <input type="number" min="0" max="25" value="0" aria-label="shift">
           <div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div>
@@ -414,20 +470,19 @@
       <label class="toggle-row"><span class="switch"><input type="checkbox" class="rtoggle" aria-label="slide rule"><span class="track"></span><span class="knb"></span></span><span class="tlabel">Slide rule — alphabet alignment</span></label>
       <div class="ruler"><div class="ruler-scroll"><div class="ruler-inner">
         <div class="rrow top"></div><div class="rrow bot"><div class="strip"></div></div>
-      </div></div><div class="rlabels"><span>CIPHER LETTER →</span><span>← DECODES TO</span></div></div>
+      </div></div></div>
       <div class="readout">———<span class="lamp"></span></div>
-      <div class="stamp">Tumblers aligned · flag captured</div>
+      <div class="stamp">flag captured</div>
     </div>
   </details>
 
   <!-- MODULE V — Alternating Vigenère (2 knobs) -->
   <details class="module">
     <span class="scr1"></span><span class="scr2"></span>
-    <summary><span class="idx">V</span><span class="ttl">Two Tones</span><span class="done">✓ captured</span><span class="sub">VIGENÈRE · 2 keys</span></summary>
+    <summary><span class="idx">V</span><span class="ttl">Two Tones</span><span class="done">✓ captured</span><span class="sub"></span></summary>
     <div class="panel-body" data-puzzle data-id="v1" data-type="vig2" data-plain="flag{two_tones}">
-      <div class="lab">Scrambled signal — one shift isn't enough here</div>
+      <div class="lab">Encrypted signal</div>
       <div class="plate">bawv{plk_ikcah}</div>
-      <div class="lab">Tuning — dial A decodes the 1st, 3rd, 5th… letter; dial B the 2nd, 4th, 6th…</div>
       <div class="deck">
         <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">A · ODD</span></div>
         <div class="entry"><span class="lab">Shift A</span><input type="number" min="0" max="25" value="0" aria-label="shift A"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
@@ -435,20 +490,19 @@
         <div class="entry"><span class="lab">Shift B</span><input type="number" min="0" max="25" value="0" aria-label="shift B"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
       </div>
       <div class="readout">———<span class="lamp"></span></div>
-      <div class="stamp">Both tones aligned · flag captured</div>
+      <div class="stamp">flag captured</div>
     </div>
   </details>
 
   <!-- MODULE VI — Affine (2 knobs: multiply + shift) -->
   <details class="module">
     <span class="scr1"></span><span class="scr2"></span>
-    <summary><span class="idx">VI</span><span class="ttl">Multiply &amp; Slide</span><span class="done">✓ captured</span><span class="sub">AFFINE · a·x+b</span></summary>
-    <div class="panel-body" data-puzzle data-id="a1" data-type="affine" data-plain="flag{affine_code}" data-bonus="flag{affine_ace}">
-      <div class="lab">Scrambled signal — each letter is multiplied, then shifted</div>
+    <summary><span class="idx">VI</span><span class="ttl">Multiply &amp; Slide</span><span class="done">✓ captured</span><span class="sub"></span></summary>
+    <div class="panel-body" data-puzzle data-id="a1" data-type="affine" data-plain="flag{affine_ace}">
+      <div class="lab">Encrypted signal</div>
       <div class="plate">hlim{ihhwvc_saxc}</div>
-      <div class="lab">Tuning — × multiplies, + slides</div>
       <div class="deck">
-        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">× MULT</span></div>
+        <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">× STRETCH</span></div>
         <div class="entry"><span class="lab">Multiply (a)</span><input type="number" min="0" max="25" value="1" aria-label="multiplier"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
         <div class="gauge"><svg class="knob" viewBox="0 0 200 200"></svg><span class="cap-lbl">+ SHIFT</span></div>
         <div class="entry"><span class="lab">Shift (b)</span><input type="number" min="0" max="25" value="0" aria-label="shift"><div class="steps"><button data-step="-1">−</button><button data-step="1">+</button></div></div>
@@ -456,8 +510,7 @@
       <!-- number-line visual (owns its riddle + guardrail toggle) mounts here -->
       <div class="numline" data-numline></div>
       <div class="readout">———<span class="lamp"></span></div>
-      <div class="stamp">Mapping inverted · flag captured</div>
-      <div class="bonus"></div>
+      <div class="stamp">flag captured</div>
     </div>
   </details>
 
@@ -543,22 +596,29 @@ function buildKnob(svg){
   return {pointer};
 }
 
-// ---- affine number-line (owns its riddle + guardrail). STRETCH (×a spreads the line)
-// → FOLD every 26 into stacked "laps" → COLLAPSE onto the 0–25 output line. Coprime a →
-// one dot per column (clean fan); shared factor → dots stack (oxblood ×N rings) → no inverse.
-// Position-tweened: dots glide from current spots to the new target on every change, so
-// turning the knob (rapid updates) animates smoothly instead of snapping. ----
+// ---- affine number-line (owns its riddle + guardrail switch + explainer). STRETCH (×a spreads
+// the line) → FOLD every 26 into stacked "laps" → COLLAPSE onto the 0–25 output line. Coprime a →
+// one dot per socket (clean fan, every socket green); shared factor → dots stack (red, ×N rings)
+// and sockets are left empty → no inverse. Position-tweened: dots glide from current spots to the
+// new target on every change, so turning the knob (rapid updates) animates smoothly. ----
 function buildNumberLine(container, opts){
   opts = opts || {};
   const NS="http://www.w3.org/2000/svg";
   const el=(n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e;};
   const gcd=(x,y)=>{x=Math.abs(x);y=Math.abs(y);while(y){[x,y]=[y,x%y];}return x;};
-  const lerp=(a,b,t)=>a+(b-a)*t;
 
-  const W=260, PADX=12, DOTR=2.3, SPAN=W-PADX*2, U=SPAN/25;
-  const X=i => PADX + i*U;
+  // GUTTER (not PADX) reserves the left column for the lap labels — "…+650" is 5 mono glyphs at
+  // 5.5px ≈ 17 user units, which is exactly what used to get clipped off the left edge.
+  const W=260, GUTTER=24, PADR=10, DOTR=2.3, SPAN=W-GUTTER-PADR, U=SPAN/25;
+  const X=i => GUTTER + i*U;
   const Y_ORIG=14, LAP_TOP=34, LAP_H=11, LAP_MAX=6;
-  const Y_RESULT=LAP_TOP+LAP_H*LAP_MAX+20, H=Y_RESULT+22;
+  const Y_RESULT=LAP_TOP+LAP_H*LAP_MAX+20, H=Y_RESULT+31;
+
+  // ---- guardrail state: OFF for a fresh visitor, but remembered once they switch it on.
+  // Own key; deliberately NOT part of ctf-solved:v2:caesar or caesar-unlocks.
+  const GKEY='caesar-guardrail';
+  let guardOn = (opts.guard===true);
+  try{ const st=localStorage.getItem(GKEY); if(st!==null) guardOn = (st==='1'); }catch(e){}
 
   container.innerHTML="";
   const root=document.createElement("div"); root.className="nl-root";
@@ -567,27 +627,71 @@ function buildNumberLine(container, opts){
   const cap=document.createElement("div"); cap.className="nl-cap";
   const formula=document.createElement("div"); formula.className="nl-formula";
   const right=document.createElement("div"); right.className="nl-right";
-  const verdict=document.createElement("div"); verdict.className="nl-verdict";
-  const guardLbl=document.createElement("label"); guardLbl.className="nl-guard";
-  const guardCb=document.createElement("input"); guardCb.type="checkbox"; guardCb.checked=(opts.guard!==false);
-  guardLbl.appendChild(guardCb); guardLbl.appendChild(document.createTextNode("guardrail"));
-  right.appendChild(verdict); right.appendChild(guardLbl);
+  // the verdict pill IS the switch now (real <button>, so Enter/Space come for free)
+  const verdict=document.createElement("button");
+  verdict.type="button"; verdict.className="nl-verdict";
+  verdict.setAttribute("role","switch");
+  verdict.setAttribute("aria-label","guardrail — explicit collision warnings");
+  right.appendChild(verdict);
   cap.appendChild(formula); cap.appendChild(right); root.appendChild(cap);
 
   const svg=el("svg",{class:"nl-svg",viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:"xMidYMid meet"});
-  root.appendChild(svg); container.appendChild(root);
+  root.appendChild(svg);
 
-  // static scaffold (no input-row label, no legend)
-  svg.appendChild(el("line",{class:"nl-axis",x1:PADX,y1:Y_ORIG,x2:W-PADX,y2:Y_ORIG}));
+  // ---- explainer (hidden by default; state is not persisted, by design) ----
+  const foot=document.createElement("div"); foot.className="nl-foot";
+  const expLbl=document.createElement("label"); expLbl.className="nl-guard";
+  const expCb=document.createElement("input"); expCb.type="checkbox";
+  expLbl.appendChild(expCb); expLbl.appendChild(document.createTextNode("explainer"));
+  foot.appendChild(expLbl); root.appendChild(foot);
+  const exp=document.createElement("div"); exp.className="nl-explainer"; exp.hidden=true;
+  exp.innerHTML =
+    '<p>The whole time, we have actually been doing <b>modular arithmetic</b> — also known as '
+    +'<b>clock arithmetic</b>, because you can picture the input number as a hand on a clock face, '
+    +'and the ROT number as how far past the numbers on that face the hand has to travel before it '
+    +'wraps back around to where it started. In the same way that 10am + 5 hours is 3pm, '
+    +'<code>(10 + 5) mod 12</code> is 3.</p>'
+    +'<p>In the visualisation: the <b class="nl-blue">blue</b> line of dots is the input space. The '
+    +'<b>yellow</b> dots below show that input space being stretched by the multiplication. The dots '
+    +'at the bottom are the output space — they go <b class="nl-green">green</b> when the mapping is '
+    +'clean and <b class="nl-red">red</b> when the function destroys information, which means it '
+    +'cannot be reversed, and therefore is not useful encryption.</p>'
+    +'<p>When every input maps to its own distinct output — no collisions, every socket on the output '
+    +'line filled — the map is called <b>injective</b> (a one-to-one map). An injective map is exactly '
+    +'the property encryption needs: it is the reason a unique decryption exists at all. '
+    +'<code>a·x + b mod 26</code> is injective precisely when <code>a</code> shares no factor with 26 '
+    +'— i.e. when <code>gcd(a, 26) = 1</code>.</p>';
+  root.appendChild(exp);
+  expCb.addEventListener('change', ()=>{ exp.hidden = !expCb.checked; });
+
+  container.appendChild(root);
+
+  // ---- arrowheads: defined ONCE in <defs> and referenced via marker-end. paint() wipes the
+  // dynamic <g>s every frame, so these live directly on the <svg>, never inside a group.
+  // SVG markers don't inherit the referencing line's stroke, so there is one marker per colour.
+  const defs=el("defs",{});
+  [["nlArrIn","nl-mk-in"],["nlArrLap","nl-mk-lap"],["nlArrDim","nl-mk-dim"]].forEach(([id,cls])=>{
+    const mk=el("marker",{id:id,markerUnits:"userSpaceOnUse",markerWidth:3.4,markerHeight:3.4,
+      refX:3.2,refY:1.7,orient:"auto"});
+    mk.appendChild(el("path",{class:cls,d:"M0,0 L3.2,1.7 L0,3.4 Z"}));
+    defs.appendChild(mk);
+  });
+  svg.appendChild(defs);
+
+  // ---- static scaffold ----
+  svg.appendChild(el("line",{class:"nl-axis",x1:GUTTER,y1:Y_ORIG,x2:W-PADR,y2:Y_ORIG}));
   for(let i=0;i<26;i++) svg.appendChild(el("circle",{class:"nl-dot",cx:X(i),cy:Y_ORIG,r:DOTR}));
-  svg.appendChild(el("text",{class:"nl-rowlbl",x:PADX,y:LAP_TOP-6})).textContent="× a stretch, then fold every 26 →";
-  svg.appendChild(el("text",{class:"nl-rowlbl",x:PADX,y:Y_RESULT-8})).textContent="output (a·x+b) mod 26";
-  svg.appendChild(el("rect",{class:"nl-band",x:PADX-2,y:Y_RESULT-6,width:SPAN+4,height:12,rx:2}));
-  svg.appendChild(el("line",{class:"nl-axis nl-result",x1:PADX,y1:Y_RESULT,x2:W-PADX,y2:Y_RESULT}));
-  for(let i=0;i<=25;i+=5){
-    svg.appendChild(el("line",{class:"nl-tick",x1:X(i),y1:Y_RESULT-2.5,x2:X(i),y2:Y_RESULT+2.5}));
-    svg.appendChild(el("text",{class:"nl-tlabel",x:X(i),y:Y_RESULT+11})).textContent=i;
+  svg.appendChild(el("rect",{class:"nl-band",x:GUTTER-2,y:Y_RESULT-6,width:SPAN+4,height:12,rx:2}));
+  // dashed silhouette + 26 empty sockets: when the map isn't injective the HOLES are the lesson
+  svg.appendChild(el("line",{class:"nl-axis nl-result",x1:GUTTER,y1:Y_RESULT,x2:W-PADR,y2:Y_RESULT}));
+  for(let i=0;i<26;i++) svg.appendChild(el("circle",{class:"nl-shadow",cx:X(i),cy:Y_RESULT,r:DOTR+0.5}));
+  // every integer 0–25 is labelled; staggered onto two rows so 26 labels fit at 360px wide
+  for(let i=0;i<26;i++){
+    const odd=i%2===1;
+    svg.appendChild(el("line",{class:"nl-tick",x1:X(i),y1:Y_RESULT+3,x2:X(i),y2:Y_RESULT+(odd?9.5:5)}));
+    svg.appendChild(el("text",{class:"nl-tlabel",x:X(i),y:Y_RESULT+(odd?17.5:13)})).textContent=i;
   }
+  svg.appendChild(el("text",{class:"nl-rowlbl",x:GUTTER,y:Y_RESULT+27})).textContent="output (a·x+b) mod 26";
 
   const gLapBands=el("g",{}); svg.appendChild(gLapBands);
   const gThreads=el("g",{}); svg.appendChild(gThreads);
@@ -595,6 +699,13 @@ function buildNumberLine(container, opts){
   const gResult=el("g",{}); svg.appendChild(gResult);
 
   const lapY=lap => LAP_TOP + Math.min(lap,LAP_MAX-1)*LAP_H + LAP_H/2;
+  // pull the arrow tip back along the segment by `by` user units (0 = tip lands ON the dot)
+  function shorten(x1,y1,x2,y2,by){
+    const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy);
+    if(len<1e-4 || by<=0) return [x2,y2];
+    const k=Math.min(by,len*0.5)/len;
+    return [x2-dx*k, y2-dy*k];
+  }
   function targets(a,b){
     const counts={};
     for(let i=0;i<26;i++){const out=((a*i+b)%26+26)%26;counts[out]=(counts[out]||0)+1;}
@@ -611,34 +722,43 @@ function buildNumberLine(container, opts){
   const SMOOTH=0.28;   // per-frame ease toward the latest target (follows a held knob, no restart/stutter)
 
   function setCaption(){
-    const a=cur.a,b=cur.b,guardOn=guardCb.checked,inv=cur.invertible;
+    const a=cur.a,b=cur.b,inv=cur.invertible;
     formula.innerHTML='y = <span class="'+((!inv&&guardOn)?'nl-bad':'')+'">'+a+'</span>·x + '+b+'  (mod 26)';
     verdict.className="nl-verdict";
+    verdict.setAttribute("aria-checked", guardOn?"true":"false");
     if(!guardOn){verdict.classList.add("nl-off");verdict.textContent="guard off";}
     else if(inv) verdict.textContent="clean · reversible";
     else {verdict.classList.add("nl-collide");verdict.textContent="collisions · no inverse";}
   }
 
   function paint(){
-    const guardOn=guardCb.checked, m=cur, rows=m.rows;
+    const m=cur, rows=m.rows;
     gLapBands.textContent=""; gThreads.textContent=""; gFly.textContent=""; gResult.textContent="";
     for(let L=0;L<=m.maxLap;L++){
       const y=lapY(L);
-      gLapBands.appendChild(el("rect",{class:"nl-lapband",x:PADX-2,y:y-LAP_H/2+1,width:SPAN+4,height:LAP_H-2,rx:2}));
+      gLapBands.appendChild(el("rect",{class:"nl-lapband",x:GUTTER-2,y:y-LAP_H/2+1,width:SPAN+4,height:LAP_H-2,rx:2}));
       const last=(L===LAP_MAX-1 && m.trueMax>LAP_MAX-1);
-      const ll=el("text",{class:"nl-laplbl",x:PADX-3.5,y:y+2}); ll.textContent=last?("…+"+(m.trueMax*26)):("+"+(L*26));
+      const ll=el("text",{class:"nl-laplbl",x:GUTTER-4,y:y+2}); ll.textContent=last?("…+"+(m.trueMax*26)):("+"+(L*26));
       gLapBands.appendChild(ll);
     }
     const byOut={}; rows.forEach(r=>{(byOut[r.out]=byOut[r.out]||[]).push(r);});
     rows.forEach((r,i)=>{
       const d=disp[i]||{lx:r.lapX,ly:r.lapY,ox:r.outX}, dim=guardOn && r.clash;
-      gThreads.appendChild(el("line",{class:"nl-thread"+(dim?" nl-dim":""),x1:X(r.i),y1:Y_ORIG,x2:d.lx,y2:d.ly}));
-      gThreads.appendChild(el("line",{class:"nl-thread"+(dim?" nl-dim":""),x1:d.lx,y1:d.ly,x2:d.ox,y2:Y_RESULT}));
-      gFly.appendChild(el("circle",{class:"nl-dot"+(dim?" nl-dim":""),cx:d.lx,cy:d.ly,r:DOTR}));
+      // segment 1 (blue): input → lap dot. Tip stops at the lap dot's edge.
+      const a1=shorten(X(r.i),Y_ORIG,d.lx,d.ly,DOTR+0.8);
+      gThreads.appendChild(el("line",{class:"nl-thread"+(dim?" nl-dim":""),x1:X(r.i),y1:Y_ORIG,x2:a1[0],y2:a1[1],
+        "marker-end":"url(#"+(dim?"nlArrDim":"nlArrIn")+")"}));
+      // segment 2 (amber): lap dot → output. On a COLLISION the tip lands ON the output dot so the
+      // pile-up is visible without the guardrail having to say so; otherwise it stops just short.
+      const a2=shorten(d.lx,d.ly,d.ox,Y_RESULT, r.clash?0:(DOTR+2.2));
+      gThreads.appendChild(el("line",{class:"nl-thread2"+(dim?" nl-dim":""),x1:d.lx,y1:d.ly,x2:a2[0],y2:a2[1],
+        "marker-end":"url(#"+(dim?"nlArrDim":"nlArrLap")+")"}));
+      gFly.appendChild(el("circle",{class:"nl-fly"+(dim?" nl-dim":""),cx:d.lx,cy:d.ly,r:DOTR}));
     });
     Object.keys(byOut).forEach(k=>{
       const out=+k, grp=byOut[k], clash=grp.length>1, rx=X(out);
-      gResult.appendChild(el("circle",{class:"nl-rdot"+(guardOn&&clash?" nl-clash":""),cx:rx,cy:Y_RESULT,r:DOTR+0.5}));
+      // green/red are independent of the guardrail — the guardrail only adds the ×N rings + dimming
+      gResult.appendChild(el("circle",{class:"nl-rdot"+(clash?" nl-clash":""),cx:rx,cy:Y_RESULT,r:DOTR+0.5}));
       if(guardOn && clash){
         gResult.appendChild(el("circle",{class:"nl-stack",cx:rx,cy:Y_RESULT,r:DOTR+2.6}));
         const c=el("text",{class:"nl-rlabel",x:rx,y:Y_RESULT-5}); c.textContent="×"+grp.length; gResult.appendChild(c);
@@ -668,8 +788,13 @@ function buildNumberLine(container, opts){
     if(!raf) raf=requestAnimationFrame(loop);
   }
 
-  guardCb.addEventListener('change', ()=>{ if(cur){ setCaption(); paint(); } if(opts.onGuard) opts.onGuard(guardCb.checked); });
-  return { update, getGuard: ()=>guardCb.checked };
+  verdict.addEventListener('click', ()=>{
+    guardOn=!guardOn;
+    try{ localStorage.setItem(GKEY, guardOn?'1':'0'); }catch(e){}
+    if(cur){ setCaption(); paint(); }
+    if(opts.onGuard) opts.onGuard(guardOn);
+  });
+  return { update, getGuard: ()=>guardOn };
 }
 
 // ---- per-user secrets: every dial's answer is derived from the ctf-uid cookie, so each
@@ -753,9 +878,9 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
   const numlineEl = box.querySelector('.numline');
   let numline = null;
   if(type==='affine' && numlineEl){
-    const riddleHTML = 'Brute force is brutal here. The <b>stretch (×)</b> hides in a riddle — it is <b>'
+    const riddleHTML = 'The <b>stretch (×)</b> hides in a riddle — it is <b>'
       + (A_CLUES[keys[0]] || ('the number '+keys[0])) + '</b>. Land that, then nudge the <b>slide (+)</b> until the static reads a flag.';
-    numline = buildNumberLine(numlineEl, { riddle: riddleHTML, guard: true, onGuard: ()=>render(false) });
+    numline = buildNumberLine(numlineEl, { riddle: riddleHTML, guard: false, onGuard: ()=>render(false) });
   }
 
   function decode(){
@@ -791,7 +916,6 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
     det.classList.toggle('solved', locked);
     if(locked && !solvedOnce && window.fxSolved){
       solvedOnce = true; window.fxSolved(id);
-      if(box.dataset.bonus){ const bel=box.querySelector('.bonus'); if(bel){ bel.textContent='★ BONUS CODE  ·  '+box.dataset.bonus+'  ·  key it into Bonus Unlock ↓'; bel.classList.add('show'); } }
     }
   }
 
@@ -818,7 +942,6 @@ document.querySelectorAll('[data-puzzle]').forEach(box => {
   // restore a previously-captured puzzle on load (progress persists across reloads)
   if(storedSolved.has(id)){
     shifts = keys.slice();
-    if(box.dataset.bonus){ const bel=box.querySelector('.bonus'); if(bel){ bel.textContent='★ BONUS CODE  ·  '+box.dataset.bonus+'  ·  key it into Bonus Unlock ↓'; bel.classList.add('show'); } }
   }
   measure(); render(false);
   if(strip) requestAnimationFrame(()=>strip.classList.remove('nl-instant'));   // enable smooth sliding after first paint
