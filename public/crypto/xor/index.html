@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Same Key Both Ways — Crypto 101 · XOR</title>
+<title>this xor that — Crypto 101 · XOR</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -285,16 +285,20 @@
       <button id="fx-btn" class="theme-btn hdr-btn" type="button" aria-disabled="true" aria-label="Confetti locked" title="Confetti locked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-lock"/></svg></button>
       <button id="theme" class="theme-btn hdr-btn" type="button" aria-label="Switch theme" title="Switch theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-moon"/></svg></button>
     </div></div>
-    <h1>Same Key, <em>Both</em> Ways</h1>
-    <p>XOR is the atom of real crypto: a switch that flips a bit only when the key bit is on. Lock with
-       a key, unlock with the <em>same</em> key. And the crack: if you know a little of the message, you
-       can steal the key.</p>
+    <h1>this <em>xor</em> that</h1>
+    <p>Everything in a computer is ultimately encoded in bits (1s and 0s), which is a binary number
+       system where, instead of ones, tens, hundreds and thousands, it has 2<sup>0</sup> (1), 2<sup>1</sup> (2),
+       2<sup>2</sup> (4), 2<sup>3</sup> (8), and so on. So while 6 is <em>just</em> 6 in our base-10 counting
+       system, in binary 6 can be written as 0110, which means &ldquo;no 8, yes 4, yes 2, no 1&rdquo;.</p>
   </header>
 
-  <div class="note"><b>THE IDEA.</b> XOR (<span class="vs">⊕</span>) compares two bits and outputs
-    <b>1 only when they differ</b>. Do it with a key bit and you flip a bit or leave it &mdash; do it
-    <i>again</i> with the same key bit and it flips back. So <span class="vs">c = m ⊕ k</span> means
-    <b>m = c ⊕ k</b> (same key undoes it) <i>and</i> <b>k = c ⊕ m</b> (known message leaks the key).</div>
+  <div class="note"><b>&#8505;</b> Binary has an interesting property: you can combine binary strings using
+    simple logic to &ldquo;mix&rdquo; them, and as long as you know one of the original strings, they can be
+    unmixed. This is done through an <b>Exclusive Or</b> operation, where every bit of the two strings is
+    compared to each other. The rule is: <b>if two bits are the same, output <span class="vs">0</span>;
+    if different, output <span class="vs">1</span></b>.
+    This can be used to &ldquo;lock&rdquo; messages by repeating an XOR operation over and over, using a
+    little string repeatedly across a big string.</div>
 
   <!-- DEMO (unscored) -->
   <div class="card" id="demo">
@@ -603,7 +607,7 @@ function addCard({id,title,sub,intro,hint,build}){
 
 /* ================= C1 · BRUTE FORCE (single-byte) ================= */
 addCard({
-  id:'c1', title:'Brute Force', sub:'1-byte key, hidden',
+  id:'c1', title:'Brute Force', sub:'',
   intro:"One secret byte was XOR'd across the whole message. A single byte is only <b>256 possibilities</b> — so just try them <i>all</i> and find the one that reads as English. Nobody hands you the answer; you spot it.",
   hint:"Run all 256 and scroll — they're in key order (0x00→0xFF), nothing pre-marked. Stuck scrolling? Filter by a word you expect, like <code>flag</code>. You'll find <b>two</b> word-like rows: one <code>flag{…}</code> (lower-case) and a twin <code>FLAG[…]</code> (UPPER-case) — two keys <code>0x20</code> apart just flip letter <b>case</b>. A real flag is lower-case <code>flag{…}</code>; that's your key.",
   build(ctx){
@@ -652,7 +656,7 @@ addCard({
 
 /* ================= C2 · CRIB THE KEY (repeating, known plaintext) ================= */
 addCard({
-  id:'c2', title:'Crib the Key', sub:'repeating key, hidden',
+  id:'c2', title:'Crib the Key', sub:'',
   intro:"A longer key now — a whole word that <b>repeats</b>. No brute this time (256×256×… is too many). But you know a secret: every flag starts with <code>flag{</code>. And <b>scrambled ⊕ message = key</b>. So lay <code>flag{</code> over the start and the key falls out — watch it <i>repeat</i>.",
   hint:"The recovered row reads <code>c a t c a</code> — that's the word <b>cat</b> starting again. Type <code>cat</code> as the key and the whole message unscrambles. A known scrap of plaintext (a “crib”) hands you the key.",
   build(ctx){
@@ -697,7 +701,7 @@ addCard({
 
 /* ================= C3 · SAME KEY TWICE (keystream reuse — the boss) ================= */
 addCard({
-  id:'c3', title:'Same Key Twice', sub:'two messages, one key',
+  id:'c3', title:'Same Key Twice', sub:'',
   intro:"The big one. Two secret messages were scrambled with the <b>same key</b> — a lazy, fatal mistake. You don't get the key. But you don't need it: XOR the two scrambled messages together and the key <b>cancels</b>. What's left is <code>message1 ⊕ message2</code>. Then you <i>crib-drag</i> — slide a guessed word along until it reads — to peel both apart.",
   hint:"Combine them, then crib-drag. Type <code>flag{</code> at position 0: the other message reads <code>meet&nbsp;</code> — so message 2 starts “meet …”. Guess the rest of that sentence (<code>meet me by the docks!</code>) and drag it from position 0 — message 1 falls out, and that's your flag.",
   build(ctx){
@@ -755,7 +759,7 @@ addCard({
 // feedback that guides tuning, and it is the only feedback: no score() nudge here, per-knob or
 // otherwise, because a readability meter is just the auto-solver wearing three hats.
 addCard({
-  id:'c4', title:'Long Key, Many Keys', sub:'repeating key, 3 bytes',
+  id:'c4', title:'Long Key, Many Keys', sub:'',
   intro:"Last one — and the punchline of the whole module. No crib this time, and no key. You get told just one thing: the key is <b>3 bytes</b> long and it <b>repeats</b>. That means every 1st, 4th, 7th… character was locked by the <i>same single byte</i>, and so were the 2nd/5th/8th, and the 3rd/6th/9th. Three separate one-byte locks. Turn the three knobs until the whole sentence reads as English.",
   hint:"Work one knob at a time. Turn knob 1 until every third character becomes letters — <code>t·· ··n·</code> settles into <code>the</code> — then knob 2, then knob 3. The key is a real 3-letter word: <b>sun</b> (<code>0x73 0x75 0x6e</code>). And notice what you did: you never searched 16 million keys, you broke <b>three 256-option locks</b>, one at a time. The flag is in the sentence.",
   build(ctx){
