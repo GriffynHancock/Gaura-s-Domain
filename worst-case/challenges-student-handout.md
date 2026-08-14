@@ -139,12 +139,12 @@ iVBORw0KGgoAAAANSUhEUgAAAGQAAAAXCAIAAAByNn1sAAAFHUlEQVR4nO2Yb0hTXxjHz9289w5zDiz7
 
 ### 14. Read the Room
 
-Decode the block below as base64 first. What comes out is still not language — it's two
-more layers deep, and each layer tells you what kind of nonsense you're holding. Then
-read carefully: the flag-shaped things you see aren't all the real flag.
+Decode the block below as base64 first. What comes out *is* readable — a capture dump —
+except for one field, which is two more layers deep. Then read carefully: the flag-shaped
+things you can see aren't the real flag, and the real one doesn't look like a flag yet.
 
 ```
-XFwgSUs8ODc6RyBfNGRGIFxcCks3OEQwOD1BRz5pIEZAPTpFTD5DSUdcODozTgo4OktJR2xlZmVJZWBlZWZKZUdlRmZjYUhlaGZjZkgKOkdGbFRlZlRlSVRlRlRmYVRlZVRmSlRlR1RlRlRmX1RlZFRmSAo8SzNAPUtIaQpGQEtFTDpHS0gwRzZHOjMwQEM+RzBGQzo5OE4KXFwgRz5IID1GIElLPDg3OkcgXFwK
+LS0gY2FwdHVyZSAweDVmIC0tCmF1dGhfdG9rZW46IGZsb3Jne25pY2UtdHJ5fQp0cmFjZT02NzZjNjE2NjdiNmU2Zjc0MmQ2OTc0N2QKcmVmPSU2NyU2YyU2ZiU3MiU2NiU3YiU2ZSU2ZiU3MCU2NSU3ZApwYXlsb2FkOiBGQEtFTDpHS0gwRzZHOjMwQEM+RzBGQzo5OE4KLS0gZW5kIG9mIGNhcHR1cmUgLS0K
 ```
 
 ### 15. Two Faces
@@ -202,36 +202,40 @@ message2 (hex) = 3d3037246c282d61383c70213a356c212722313671
 These three need the actual files, not just text — put them on a USB stick or a laptop to
 pass around. They live in the full repo at `public/crypto/fnac/assets/`.
 
-### 19. Static
+### 19. Meta Parts
 
 Two files came off the same feed. Both look like dead air. Neither one is, quite.
-Attach `file-a.png` and `file-b.png` — dump the raw bytes of each and look past the end
-of the image data.
+Attach `night1-a.png` and `night1-b.png` — dump the raw bytes of each and look past the
+end of the image data.
 
-Files: `night1/file-a.png`, `night1/file-b.png`
+Files: `night1/night1-a.png`, `night1/night1-b.png`
 
-### 20. Raw Bit Weaving
+### 20. Bit Weaving
 
 Something got taken apart in here. Not cut in half — taken apart smaller than that. Two
 files came out. Neither one opens, neither one is anything. Put it back together.
 
-Every byte of the original gave four bits to each half: `file-a.bin` holds bits 6, 4, 2, 0
-of each source byte; `file-b.bin` holds bits 7, 5, 3, 1. Those four-bit groups are packed
-two per output byte, high nibble first, in source order. Interleave them back and the
-original file appears — and it is a picture. Then look past the end of the image data.
+Every byte of the original gave four bits to each half: `night2-a.bin` holds bits 6, 4, 2,
+0 of each source byte; `night2-b.bin` holds bits 7, 5, 3, 1. Those four-bit groups are
+packed two per output byte, high nibble first, in source order. Interleave them back and
+the original file appears — and it is a picture.
 
-Files: `night2/file-a.bin`, `night2/file-b.bin`
+Don't bother running `strings` on it. The flag is not in the bytes. Open the picture.
 
-### 21. Tung Tung Tung Sahur
+Files: `night2/night2-a.bin`, `night2/night2-b.bin`
+
+### 21. Triple T
 
 It came down the hall at 3am, three knocks at a time, and left this behind. Every byte of
 it has been walked over by the same short secret, again and again. Whatever's out there
-doesn't hide its name. It shouts it.
+doesn't hide its name. It shouts it, over and over.
 
-`message.txt` is not text — every byte was XOR'd against a repeating key. You know one
+`night3-a.txt` is not text — every byte was XOR'd against a repeating key. You know one
 thing about the plaintext for free — it starts with the same five characters every flag
 in this session starts with. XOR those against the first five bytes of the file and you
 have the first five characters of the key. Read them out loud and you'll know the rest.
 `hint-sahur.webp` is a picture of what left it.
 
-Files: `night3/message.txt`, `night3/hint-sahur.webp`
+Then actually read the message. The name is not the flag.
+
+Files: `night3/night3-a.txt`, `night3/hint-sahur.webp`

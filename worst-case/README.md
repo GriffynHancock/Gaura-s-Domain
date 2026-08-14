@@ -18,9 +18,11 @@ python3 launch_offline.py --port 9000                        # custom port (defa
 FNAC is left out of the embedded bundle by `tools/build_offline_launcher.py`. That
 exclusion was sized against FNAC's original ten cat photos (~7 MB — too large to trust as
 a single terminal/clipboard paste in an actual emergency); those photos are gone with the
-Night 3 rewrite and `public/crypto/fnac/` is now ~92 KB, so the exclusion is a stale
-decision rather than a constraint. Until the builder is changed, `--src` pulls FNAC in
-from any already-present full copy of this repo (a laptop, a USB stick, whatever's on hand).
+Night 3 rewrite and `public/crypto/fnac/` is now **~468 KB** (mostly the intro-creep audio,
+which the asset builder already trims to just the span the page plays). So the exclusion
+is a stale decision rather than a constraint. Until the builder is changed, `--src` pulls
+FNAC in from any already-present full copy of this repo (a laptop, a USB stick, whatever's
+on hand).
 
 **Regenerating it**: `launch_offline.py` is a generated file — never hand-edit it directly.
 Edit `tools/build_offline_launcher.py` and rerun `.venv/bin/python tools/build_offline_launcher.py`.

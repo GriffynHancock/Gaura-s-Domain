@@ -1,20 +1,21 @@
-name: Raw Bit Weaving
+name: Bit Weaving
 author: Crypto 101
 category: crypto
 description: |
   Something got taken apart in here. Not cut in half — taken apart smaller than that.
   Two files came out. Neither one opens, neither one is anything. Attach
-  `file-a.bin` and `file-b.bin`, dump the raw bytes of each, and put it back together.
+  `night2-a.bin` and `night2-b.bin`, dump the raw bytes of each, and put it back together.
 
-  Every byte of the original contributed four bits to each half: `file-a.bin` holds bit
-  6, 4, 2, 0 of each source byte, `file-b.bin` holds bits 7, 5, 3, 1. Those four-bit
+  Every byte of the original contributed four bits to each half: `night2-a.bin` holds bits
+  6, 4, 2, 0 of each source byte, `night2-b.bin` holds bits 7, 5, 3, 1. Those four-bit
   groups are packed two-per-output-byte, high nibble first, in source order. Interleave
-  them back and the original file appears — and it is a picture. Then look past the end
-  of the image data.
+  them back and the original file appears — and it is a picture.
+
+  Do not bother running `strings` on it. The flag is not in the bytes. Open the picture.
 
 files:
-  - ../../../../public/crypto/fnac/assets/night2/file-a.bin
-  - ../../../../public/crypto/fnac/assets/night2/file-b.bin
+  - ../../../../public/crypto/fnac/assets/night2/night2-a.bin
+  - ../../../../public/crypto/fnac/assets/night2/night2-b.bin
 
 attribution: Crypto 101
 type: dynamic
@@ -28,6 +29,6 @@ extra:
 flags:
 - type: static
   data: case_insensitive
-  content: flag{raw_bit_weaving}
+  content: flag{data_bender}
 
 version: '0.1'

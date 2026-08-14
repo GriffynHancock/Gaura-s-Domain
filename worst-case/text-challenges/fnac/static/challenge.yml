@@ -1,14 +1,14 @@
-name: Static
+name: Meta Parts
 author: Crypto 101
 category: crypto
 description: |
   Two files came off the same feed. Both look like dead air. Neither one is, quite.
-  Attach `file-a.png` and `file-b.png` — dump the raw bytes of each and look past the
+  Attach `night1-a.png` and `night1-b.png` — dump the raw bytes of each and look past the
   end of the image data.
 
 files:
-  - ../../../../public/crypto/fnac/assets/night1/file-a.png
-  - ../../../../public/crypto/fnac/assets/night1/file-b.png
+  - ../../../../public/crypto/fnac/assets/night1/night1-a.png
+  - ../../../../public/crypto/fnac/assets/night1/night1-b.png
 
 attribution: Crypto 101
 type: dynamic

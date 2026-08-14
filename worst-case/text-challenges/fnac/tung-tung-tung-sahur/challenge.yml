@@ -1,12 +1,12 @@
-name: Tung Tung Tung Sahur
+name: Triple T
 author: Crypto 101
 category: crypto
 description: |
   It came down the hall at 3am, three knocks at a time, and left this behind. Every
   byte of it has been walked over by the same short secret, again and again. Whatever's
-  out there doesn't hide its name. It shouts it.
+  out there doesn't hide its name. It shouts it, over and over.
 
-  Attach `message.txt`. It is not text — every byte was XOR'd against a repeating key.
+  Attach `night3-a.txt`. It is not text — every byte was XOR'd against a repeating key.
   You know one thing about the plaintext for free: it starts with `flag{`. XOR that
   against the first five bytes of the file and you have the first five characters of
   the key. Read them out loud and you'll know the rest.
@@ -14,19 +14,22 @@ description: |
   `hint-sahur.webp` is a picture of what left it.
 
   ```
-  message.txt (118 bytes, hex):
-  12 19 0f 00 5b 00 00 00 00 7f 00 00 00 00 7f 07
-  14 06 12 2d 07 14 06 12 52 09 55 2f 47 53 1c 14
-  1e 02 00 1a 0f 48 01 1a 11 55 06 06 4c 18 02 0f
-  1e 0c 54 11 1c 06 47 14 08 06 12 52 15 55 0c 06
-  54 5a 55 27 13 00 15 19 19 06 59 00 41 0b 1a 07
-  1a 01 1d 47 54 1b 55 1a 0f 52 11 10 40 47 64 1c
-  41 06 1a 06 54 17 0b 47 48 11 07 0b 47 46 1b 07
-  4e 01 4f 06 13 46
+  night3-a.txt (170 bytes, hex):
+  12 19 0f 00 5b 07 01 01 17 7f 07 16 1c 08 4c 1f
+  08 06 12 0f 54 55 27 13 00 17 1a 03 02 53 54 11
+  01 10 4e 53 15 00 10 52 1c 14 02 0b 00 15 01 4e
+  54 41 19 55 19 0e 54 1b 41 09 55 10 15 01 40 47
+  00 3d 01 4e 06 4c 03 14 17 14 00 10 0e 1d 1b 06
+  07 55 1a 08 00 00 1d 1c 02 45 5a 55 4e 37 55 07
+  41 11 1a 07 06 55 1e 0f 4f 1a 10 4e 03 4f 03 1b
+  40 47 00 3a 15 48 11 1d 11 06 4e 09 4f 00 55 06
+  0e 44 11 55 07 13 53 53 0f 09 18 17 5a 55 27 13
+  00 07 1d 01 12 54 07 55 07 13 0c 53 0e 1e 10 00
+  54 14 00 03 00 1b 03 0b 15 0e
   ```
 
 files:
-  - ../../../../public/crypto/fnac/assets/night3/message.txt
+  - ../../../../public/crypto/fnac/assets/night3/night3-a.txt
   - ../../../../public/crypto/fnac/assets/night3/hint-sahur.webp
 
 attribution: Crypto 101
@@ -41,6 +44,6 @@ extra:
 flags:
 - type: static
   data: case_insensitive
-  content: flag{tung_tung_tung_sahur}
+  content: flag{stop_scrolling}
 
 version: '0.1'

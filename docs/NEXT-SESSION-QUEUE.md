@@ -1,58 +1,30 @@
-# Next session queue — written 2026-08-15 ~00:10, end of a long session
+# Next session queue — written 2026-08-15, reconciled against the code at the end of that session
 
 Ordered by value. Everything here is specified enough to dispatch without re-deriving it.
 Context: `STATUS.md`, `CLAUDE.md`, `.superpowers/sdd/AGENT-WORKING-AGREEMENT.md` (standing rules
 for every agent dispatch), `docs/research/ctf-category-coverage.md` (what the real CTF contains).
 
+**The one thing to read first:** XOR's C4 is unbuilt while `public/crypto/xor/index.html` declares
+`FX_TOTAL = 4` against three cards, so XOR can never register complete — and FNAC's new gate needs
+Caesar + XOR + Encoding complete. **FNAC is therefore konami-only right now**, and a student who
+finishes everything buildable sees `XOR 3/4` on the locked screen forever. Item 5 fixes both.
+
 ---
 
-## 0. IMMEDIATE — affine y-scale should not be on by default
-**Small, do it first.** In `public/crypto/ceasar/index.html`'s `buildNumberLine()`:
+## 0 / 0b / 0c — ALL DONE, landed in `6a56018`. Nothing to do here.
 
-> "affine should still bottom out by default like it did before, the scaling behaviour should be a
-> toggle where that y1.8x button is right now."
-
-So: default view returns to the previous bottomed-out layout (output line at the bottom of the
-frame, no void above it). The y-scaling becomes a **toggle** occupying the slot where the `y 1.8×`
-button currently sits — off by default, on when you want to see the whole graph compressed.
-
-Not done in-session only because another agent held that file at the time.
-
-### 0b. Input row needs its own number line
-> "there should be an identical (but recoloured) number line for the blue dots (above them) in
-> affine."
-
-The **output** row has a full 0–25 number line — axis, a tick and label per integer, hollow shadow
-sockets showing the holes. The **input** row (the blue dots at `Y_ORIG`) has none: it is a bare
-axis with 26 dots and no labels, so a student cannot read *which* input a thread came from.
-
-Give the input row the same number line, recoloured to the input blue (`--nl-in`) — same axis,
-same per-integer ticks and labels, positioned **above** the blue dots so it doesn't collide with
-the threads dropping from them. It should read as the same object as the output line, which is
-exactly the lesson: the same 26 slots go in as come out, and the map either fills them all or
-doesn't. No shadow sockets on the input row — every input is always present; the holes are an
-output-only phenomenon and drawing empty sockets up there would imply otherwise.
-
-Do this in the same pass as item 0 (both are `buildNumberLine()` layout work).
-
-### 0c. Submit buttons are systematically too short — diagnosed, one-pass fix
-> "submit buttons are systematically too short btw"
-
-**Cause found: every submit button has `padding: 0 18px` — zero vertical padding.** Their height
-comes only from line-height, while the input sitting beside them has real vertical padding
-(`11px 13px` and similar), so the button is visibly shorter than its own field on every page.
-
-Same defect, four places:
-- `public/crypto/encoding/index.html:139` — `.submit .check{… padding:0 18px}`
-- `public/crypto/xor/index.html:225` — `.submit .check{… padding:0 18px}`
-- `public/crypto/ceasar/index.html:361` — `.ubar button{… padding:0 18px}`
-- `public/crypto/fnac/index.html` — `.flag-check`, inline `padding:0 16px`
-
-Fix in one pass so they stay consistent: give real vertical padding (or `align-self:stretch` /
-`min-height` matched to the adjacent input) so each button is exactly as tall as the field it sits
-next to. Also take them to a **≥44px** touch target while you are there — the copy buttons on the
-encoding page were bumped to 44×44 earlier for the same reason, so match that. Both themes, and
-check at 360px that nothing wraps.
+- **0. Affine y-scale off by default.** The pill is now a real toggle (`y auto` ⇄ `y N×`), and
+  auto is the default: `Hu = HU_FIT(lapCount)`, so the frame hugs the picture with a constant gap
+  below the last lap at every multiplier and no void. The old 160/240/400 preset cycle is gone.
+- **0b. Input row's own number line.** Landed with it: the input row gets the same axis, per-integer
+  ticks and labels as the output row, recoloured to `--nl-in` and drawn **upwards** (above the dots)
+  so it never collides with the threads. No shadow sockets, deliberately — every input is always
+  present, and empty sockets up there would imply the holes happen on both sides. `Y_ORIG` moved
+  14 → 17 to leave room.
+- **0c. Submit-button heights.** ⚠️ **The diagnosis in this file was half wrong** — worth knowing if
+  a similar bug turns up. `padding: 0 18px` was *not* the cause; `align-items: center` on `.submit`
+  was, and only on `encoding` and `xor`. Ceasar was already correct at 45/45. Fixed by deleting the
+  `align-items` rather than padding around it, plus a `min-height: 44px` wrap-floor on all four.
 
 ---
 
@@ -103,14 +75,23 @@ Rate and red-flash bounds pass; it is the **luminance excursion** bound that is 
 `CLAUDE.md` marks this as safety-critical and not to be weakened. **Fix the animation, not the
 bound.** This module gets projected to a room of teenagers. Do this before the event.
 
-The motion-blur work has since landed (`d91ff23`) and its **after** numbers were never measured —
-the agent died on a session limit before that run, and the author chose to skip it rather than
-spend four minutes. So the current state is: baseline breach 0.0778-0.0886 vs a 0.07 bound,
-blur delta **unknown**. The blur's own report argues it should *lower* peak excursion (it removes
-three single-frame luminance steps that were accumulation-wipe artefacts, and `plateau = w/(w+d)`
-conserves energy — same light over more pixels at lower peak alpha), but that is an argument, not
-a measurement. Run `verify_flash_safety.mjs` once before the event and fix the animation if it
-still breaches.
+**Status is better than it looks — read this before re-tuning anything.** The motion-blur work has
+since landed (`d91ff23`), and while the full `verify_flash_safety.mjs` after-run never completed
+(the agent hit a session limit; the "Flash-safety measured numbers" section of
+`.superpowers/sdd/caesar-fnac/task-motion-blur-report.md` is empty), that work **did** measure this
+exact failing case with a targeted probe, and the numbers are recorded in the page at the wipe:
+
+- pre-change page, slider 78, the 3×3 unit the suite asserts: **0.0778–0.0886** (bound 0.07) — FAIL
+- shipped build (fixed `SHA3_WIPE_ALPHA` + swept smear), same case: **0.046–0.049** — comfortably PASS
+
+The reason is `SHA3_WIPE_ALPHA`: a constant wipe has no deep-trail-to-opaque seam to step across.
+Note also that an intermediate configuration (opaque wipe + swept smear) measured **0–19
+flashes/sec against a bound of 3** — the fixed translucent wipe is a photosensitivity control that
+was reinstated *on measurement*, not a look. Do not delete it as vestigial.
+
+**So the action is verification, not repair.** Run `node tools/run_suite.mjs --all` once (~6.5 min)
+before the event. If it passes, close this item. If it still breaches, fix the animation, never the
+bound. Do not start re-tuning on the strength of the old failing number.
 
 ---
 
@@ -161,16 +142,23 @@ From `.superpowers/sdd/caesar-fnac/task-copy-audit-report.md` — all deliberate
 ## 8. Housekeeping
 - **`worst-case/launch_offline.py` is stale** — Tier-1 offline fallback for the day, embeds copies
   of the module pages, and all of them changed. Rebuild:
-  `.venv/bin/python tools/build_offline_launcher.py`. Its FNAC size exclusion (~7 MB rationale) no
-  longer holds — FNAC is ~92 KB now.
-- **FNAC docs are stale again** — `STATUS.md`'s FNAC section describes the pre-rework nights.
-- `fnac-assets/cats/` — ten source JPGs, unreferenced since the 10,000 Cats night was retired.
+  `.venv/bin/python tools/build_offline_launcher.py`. Its FNAC size exclusion was sized against a
+  ~7 MB rationale that no longer holds: FNAC is now ~468 KB (bigger than the ~92 KB some notes
+  quote, because of the intro-creep audio, but still nowhere near the exclusion's premise).
+- Caesar's `REWARDS` map still points at placeholder rickrolls — `flag{affine_ace}` opens a rickroll.
+- Caesar's static `.plate` ciphertexts for IV and VI still encode the retired `flag{Safe_Cracker}` /
+  `flag{affine_code}` plaintexts. Overwritten at mount, so harmless at runtime, wrong in view-source.
+- `fnac-assets/cats/` — ten source JPGs, unreferenced since the cat-photo night was retired.
   Author's call to delete.
-- Caesar's `REWARDS` map still points at placeholder rickrolls.
 - `verify_task4`'s π-persistence check is weaker than it reads — searches for *any* satisfying
   sample pair, so a revert-to-canonical after every π would pass it.
-- Deployed: `ctf.sandhi.com.au`, version `d1c2c1c0` = commit `e3795f6`. The hash page in production
-  predates the motion-blur work.
+- **Which version is deployed is unresolved.** Two figures have been reported for what is live on
+  `ctf.sandhi.com.au` — `0ecbf196` and `d1c2c1c0` (= commit `e3795f6`). The Cloudflare MCP is
+  read-only and errored when asked; check the dashboard. Either way the live hash page predates the
+  motion-blur work, and this branch (`feat/caesar-rewrite-fnac-nights`) is pushed but **not merged
+  to master**.
+- ~~FNAC docs stale~~ — `STATUS.md`'s FNAC section, `CLAUDE.md`, `README.md` and the `worst-case/`
+  mirrors were all brought in line at the end of the 2026-08-15 session.
 
 ## 9. Extension ideas — parked, assessed in `docs/ideas-backlog.md`
 Torus first (Z/26 × Z/26 already *is* challenge V's object; shows keyspace multiplying not adding).

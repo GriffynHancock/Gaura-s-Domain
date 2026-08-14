@@ -94,11 +94,13 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   no matching asset (e.g. a bare `/` redirect, which works either way since nothing there 404s into the worker).
 - **Module 2 (Encoding) lives at `public/crypto/encoding/` → served at `/crypto/encoding/`**.
   Module 1 (Caesar) is `public/crypto/ceasar/` → `/crypto/ceasar/`.
-- **Module 3 (Hashing, `public/crypto/hash/index.html`) has a 16-script test suite in `tools/`.**
-  Two are pure Node (`test_md5_trace`, `test_keccak_trace` — digest parity against Node's own
-  `crypto`); the rest are Playwright and need
+- **Module 3 (Hashing, `public/crypto/hash/index.html`) has a 15-script test suite in `tools/`**, driven by
+  `node tools/run_suite.mjs` (add `--all` for flash safety). Two are pure Node (`test_md5_trace`,
+  `test_keccak_trace` — digest parity against Node's own `crypto`); the rest are Playwright and need
   `HASH_MODULE_URL="http://localhost:<port>/public/crypto/hash/"`. See STATUS.md for the full list.
   Run the ones your change can plausibly break — not the whole suite reflexively.
+  FNAC has its own two scripts **outside** that runner (`verify_fnac_module.mjs`,
+  `verify_fnac_flash_safety.mjs`, driven by `FNAC_MODULE_URL`) — `run_suite.mjs` will not run them for you.
   Three things in that file are **not** ordinary code and must not be quietly weakened:
   - **`verify_flash_safety.mjs` and the photosensitivity governor.** The SHA-3 animation measures its
     own real flash pace and clamps luminance excursion under WCAG 2.3.1's 3-flashes-per-second bound.
@@ -112,28 +114,60 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   - **The FIPS 202 sweep axes** (θ +x plane, χ −x per-row races, ρ along z per-lane, π x-y swirl,
     ι point at lane (0,0)). These are pinned by tests because getting one wrong teaches false
     structure. Note χ is +x, NOT y — a Keccak row is *indexed by* y but *runs along* x.
-  - **π's non-interpenetration guarantee.** The painter's-algorithm depth sort is only correct
-    because no two boxes ever co-locate mid-transit. Changing π's motion means re-proving minimum
-    separation across all 24 π compositions, not eyeballing it — a pure radial path provably
-    collides, and an earlier shelf scheme had a latent exact-collision from an unlucky quantum.
+  - **π's non-co-location guarantee.** State the depth-sort invariant precisely, because the loose
+    version is wrong and will get "simplified" into a real bug: what the painter's algorithm needs
+    is that **wherever two drawn footprints overlap, draw order agrees with occlusion** — *not*
+    that footprints are disjoint. They never were: at lattice pitch 1.0 with 0.66 cubes there are
+    already ~2200 overlapping pairs per frame under any off-square camera, which is precisely the
+    situation a painter's algorithm exists to resolve. π's measured 0.055-world-unit minimum
+    separation (`tools/verify_pi_pacing.mjs`) is the claim that no two boxes are ever exactly
+    **co-located**, which is what makes the depth key a strict order rather than a tie. That is
+    still load-bearing: changing π's motion means re-proving minimum separation across all 24 π
+    compositions, not eyeballing it — a pure radial path provably collides, and an earlier shelf
+    scheme had a latent exact-collision from an unlucky quantum. The swept motion-blur smear does
+    not touch it (a smear changes what is painted, never where a box is).
+  - **`SHA3_WIPE_ALPHA` is a photosensitivity control, not a look, and not the motion blur.**
+    The motion blur is the per-object swept-silhouette smear; this is a separate fixed translucent
+    full-canvas wipe applied while the controller runs, and it bounds how much a small patch of
+    screen can change in one frame. It was deleted once as vestigial and **reinstated on
+    measurement**: with an opaque wipe and the smear, the flash suite's fine probe measured
+    **0–19 flashes/sec against a bound of 3**, and 0.094–0.103 excursion. Even with *no* smear an
+    opaque wipe measures 0.087–0.090 — the animation's own motion already sits near WCAG's 0.10
+    transition threshold, and the wipe is what holds it down. Tuning the smear cannot substitute.
+    The measured table is in the page at the wipe. Don't remove it as redundant.
   The file is annotated throughout with `[EXACT]` / `[FAIRLY ACCURATE]` / `[ANALOGY]` tags marking
   which visuals are the real algorithm and which are teaching aids. Keep those honest when editing.
 - **`public/crypto/encoding/assets.js` is GENERATED** by `tools/build_base64_assets.py` — edit the script, not the
   output. Run builders with `.venv/bin/python`. Confetti sprites: `tools/build_confetti.py` reads the repo-root
   `confetti/` drop folder → `public/crypto/encoding/confetti/*.png` + `manifest.js`.
 - **`public/crypto/fnac/assets/**` is GENERATED** by `tools/build_fnac_assets.py` (+ `tools/fnac_png.py`).
-  Two traps: (a) its `_clean()` **deletes** any file in a night's folder that the night no longer ships, so
-  running it is destructive to anything else living there; (b) Night 2's puzzle *is* the bit-split convention,
-  and the JS weave tool inside `public/crypto/fnac/index.html` must stay the **exact inverse** of
-  `fnac_png.bit_split` — file-a = bits 6,4,2,0 of each source byte, file-b = bits 7,5,3,1, packed one nibble
-  per source byte, MSB-first, in source order. Change one side and the page silently reassembles garbage, with
-  no error anywhere. The builder also asserts an even-length source (odd lengths zero-pad the last nibble and
-  lose the original length) and that `flag{` leaks into neither half.
-- **Encoding challenge IX must stay `base64 → rot47 → atbash`, in that order.** With atbash outermost instead,
-  the natural two-layer guess `base64 → rot47` computes `rot47(atbash(rot47(plain)))`; lowercase `a`–`o` rot47
-  into characters atbash leaves untouched, so ~58% of the alphabet survives the *wrong* order and any English
-  payload produces a near-readable fake flag. That is structural — regenerating the blob does not fix it.
-  `tools/build_base64_assets.py` asserts the wrong order does not solve; don't relax that assert.
+  Three traps: (a) its `_clean()` **deletes** any file in a night's folder that the night no longer ships, so
+  running it is destructive to anything else living there; (b) **Night 2's flag exists only as pixels** —
+  `flag{data_bender}` is painted into the trollface's corner, and the builder asserts it is absent as a byte
+  string from the source *and* from both halves, along with any bare `flag{`. So `strings`/`grep` on the
+  correctly-woven file finds only the hexadecimal-etymology easter egg. If you ever "fix" this by appending
+  the flag after `IEND`, you have deleted the puzzle; (c) the bit-split convention is Night 2's whole puzzle,
+  and `bit_split`/`bit_weave` must stay exact inverses — half-a = bits 6,4,2,0 of each source byte, half-b =
+  bits 7,5,3,1, packed one nibble per source byte, MSB-first, in source order, with an **even-length source**
+  (odd lengths zero-pad the last nibble and lose the original length). The page no longer ships a WEAVE tool
+  to keep in sync — the helper widgets were all removed and FNAC now assumes a commandline — so the only
+  guard is the builder's own round-trip assert.
+- **FNAC's gate deliberately ignores the old `ctf-fnac-unlocked` cookie.** That cookie meant "Encoding is
+  done", which under the current rule (Caesar **and** XOR **and** Encoding) is one third of the requirement,
+  so honouring it would grandfather people straight past two modules. It is not a bug and is not to be
+  "restored". The konami bypass rides on its own cookie name (`ctf-fnac-bypass`) precisely so that ignoring
+  the old one and keeping a permanent bypass can both hold. Completion is asked of the confetti engine
+  (`fxModuleComplete`), the only thing that knows another module's puzzle count — which also means **a wrong
+  `FX_TOTAL` on any beginner module silently locks FNAC** (XOR ships `FX_TOTAL=4` with three cards today,
+  and that is exactly why FNAC is konami-only right now).
+- **Encoding challenge IX must stay `base64 → rot47 → atbash`, in that order, and stay layered PER REGION.**
+  Only the payload field is enciphered; the surrounding capture dump is plain, so base64 alone yields a
+  readable dump rather than soup — that is what gives the student something to aim at. On the order: with
+  atbash outermost, the natural two-layer guess `base64 → rot47` computes `rot47(atbash(rot47(plain)))`;
+  lowercase `a`–`o` rot47 into characters atbash leaves untouched, so ~58% of the alphabet survives the
+  *wrong* order and any English payload produces a near-readable fake flag. That is structural —
+  regenerating the blob does not fix it. `tools/build_base64_assets.py` asserts the wrong order does not
+  solve, and that no earlier layer contains `flag{...}` or even a bare `flag`; don't relax those asserts.
 - **Caesar affine clues (`A_CLUES` in `public/crypto/ceasar/index.html`): no clue may name another surviving
   multiplier.** A stuck student types the number they can see. This is why 9 is "squares on a noughts-and-
   crosses grid" (not "three rows of three" — 3 is a live key) and why "a cat's lives" is banned (seven lives in
@@ -149,7 +183,11 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   A page sets `window.FX_MODULE` (per-user signature seed) and `window.FX_TOTAL` (puzzle count),
   then calls `window.fxSolved(id)` per capture. The rain fires once **only when all puzzles in
   the module are solved** — module-completion reward, to make students tutor each other. Each
-  user's effect is cookie-seeded (`ctf-uid`), unique per person and per module.
+  user's effect is cookie-seeded (`ctf-uid`), unique per person and per module. A page with **no** puzzles
+  sets `window.FX_NO_PUZZLES` (the hash module does) rather than leaving `FX_TOTAL` at 0 — "complete" must be
+  declared, never inferred from a zero. The engine also mirrors completion into a shared
+  `localStorage['ctf-complete:v1']` index and exposes `fxModuleComplete(id)` / `fxModuleProgress(id)`, which
+  is how one page reads another's state; that index is what FNAC's gate is built on.
 - **Repo IS under git now** (initialised 2026-06-25). Commit before large edits.
 
 ## Status

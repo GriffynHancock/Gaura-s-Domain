@@ -13,8 +13,14 @@ Spine: **recognise → identify → decode/crack → submit.**
 | 2 | Encoding is not encryption | ✅ **live** | `ctf.sandhi.com.au/crypto/encoding` |
 | 3 | Hashing | ✅ **live** | `ctf.sandhi.com.au/crypto/hash` |
 | 4 | XOR | 🚧 **in progress** (demo+C1–C3 done, C4 left, not deployed) | `public/crypto/xor/` → `/crypto/xor/` |
-| ★ | **Five Nights at Crypto's** (bonus, gated behind Module 2) | ✅ **live** (nights 1–3 real, 4–7 placeholders) | `ctf.sandhi.com.au/crypto/fnac` |
+| ★ | **Five Nights at Crypto's** (bonus, gated behind Caesar + XOR + Encoding) | ✅ **live** (nights 1–3 real, 4–7 placeholders) | `ctf.sandhi.com.au/crypto/fnac` |
 | — | Live Kali demo (CyberChef + archive crack) | ⬜ presenter prep | n/a |
+
+> ⚠️ **The one blocking fact.** XOR's C4 is unbuilt, but `public/crypto/xor/index.html` already declares
+> `FX_TOTAL = 4` against three `addCard` calls, so **XOR can never register as complete**. FNAC's new gate
+> requires Caesar + XOR + Encoding all complete, so **FNAC is currently reachable only by the konami bypass**,
+> and a student who finishes everything buildable sees `XOR 3/4` on the locked screen forever (the locked
+> markup prints `${p.n}/${p.t}` straight from `fxModuleProgress`). Building C4 clears both at once.
 
 ## Module 3 — Hashing (live, `/crypto/hash`)
 
@@ -63,8 +69,38 @@ motion slows, freezes and reverses like a filmed wheel — geometry aliases earl
 default slider is the peak), colour later, and the divergence is deliberate. A one-line on-page note
 says outright that the reversal is a shutter illusion and SHA-3 never runs backwards.
 A **photosensitivity governor** measures real flash pace and clamps luminance excursion under
-WCAG 2.3.1's 3 flashes/second — worst constructible case measures 0 flashes/sec. It honours
-`prefers-reduced-motion`. **This is safety-critical for a room of teenagers: do not weaken it.**
+WCAG 2.3.1's 3 flashes/second. Rate and red-flash bounds pass everywhere (0 flashes/sec); the
+**luminance-excursion bound does not** — see the open item below. It honours `prefers-reduced-motion`.
+**This is safety-critical for a room of teenagers: do not weaken it.**
+
+**Motion blur — a per-object swept silhouette** (replaced the old accumulation wipe). Each box's smear is the
+convex hull of its 8 projected corners now and a shutter ago, gradient-filled with the trapezoid coverage a
+real shutter integrates, drawn inline in the existing painter's order immediately before the box itself.
+Strength comes from **measured per-corner screen displacement**, so it scales with speed by construction —
+which is what the old alpha wipe could not do, being frame-counted rather than time-counted. It measures
+*apparent* motion (displacement is taken after projection, downstream of `sha3AliasWarp`), so at the aliasing
+peak where the lattice appears to freeze the smear collapses with it: a strobe is a short shutter, and the two
+effects agree about what is moving instead of fighting. Invalidation rule: **no previous frame, no smear** —
+the stored corners are valid only while the controller is running, and are dropped by a stop, reset, resize,
+theme change or camera drag. `SHA3_BLUR_ALPHA_FAST/_SLOW/_GOV`, the tail, the attack filter and `sha3.wipeA`
+were **deleted**, not retuned. Cost: +1.1 to +1.3 ms on a 1.3 ms scene.
+
+**`SHA3_WIPE_ALPHA` is a photosensitivity control, not a look.** While the controller runs, the canvas gets a
+fixed translucent full-canvas wipe. It is not the motion blur (the swept smear is); it is a one-line temporal
+low-pass bounding how much a small patch of screen can change in one frame, and it was **reinstated on
+measurement** after being deleted along with the old speed-keyed blur. The numbers, at slider 100 on the flash
+suite's 6×6 probe (93×60px patches, four times finer than WCAG's own unit):
+
+| config | biggest single-frame excursion | flashes/s (bound 3) |
+|---|---|---|
+| old speed-keyed wipe, alpha 0.20–0.24 | 0.082–0.083 | 0 |
+| opaque wipe, **no smear at all** | 0.087–0.090 | 0 |
+| opaque wipe + swept smear | 0.094–0.103 | **0–19 (straddles)** |
+| fixed 0.30 wipe + swept smear (shipped) | 0.086 | 0 |
+
+i.e. the animation's own per-frame motion already sits near WCAG's 0.10 transition threshold at that
+granularity and the wipe was silently holding it down. Deleting it as "vestigial now the smear exists"
+measurably reintroduces a breach, and tuning the smear cannot fix it.
 
 **Step-through** (tick box + STEP / AGAIN under the speed slider): SHA-3 steps one phase, MD5 one
 trace event. SHA-3's AGAIN snapshots and restores state, because its phases mutate permanently
@@ -97,8 +133,25 @@ The two `test_*` are pure Node (digest parity + trace schema). The rest are Play
 served page: `HASH_MODULE_URL="http://localhost:<port>/public/crypto/hash/"`. **Read the serving
 gotcha in `CLAUDE.md` first** — testing a stale checkout has produced a convincing *fake* failure
 more than once. `verify_flash_safety` is slow (~4 min) and is the one that must never be relaxed.
+`tools/assert_page_build.mjs` is the shared guard every Playwright script calls first: it asserts the served
+page is the build the test was written against, so a server rooted in the wrong checkout fails loudly instead
+of producing a plausible wrong answer.
+Two further scripts sit **outside** `run_suite.mjs` and cover FNAC, not hashing —
+`verify_fnac_module.mjs` and `verify_fnac_flash_safety.mjs`, both driven by `FNAC_MODULE_URL`.
 
 ### Known gaps / deliberately parked
+- ⚠️ **The photosensitivity governor's luminance-excursion bound is FAILING, and has been for a while.**
+  `verify_flash_safety.mjs` reports `slider 78, 4 rate-blocks … biggest excursion 0.0778` (the coordinator
+  measured 0.0886 on the same untouched page, so ~0.01 of run-to-run variance) against a **0.07** bound.
+  Pre-existing; not caused by the blur work. Rate and red-flash assertions pass with 0 flashes counted.
+  **Fix the animation, not the bound.**
+  What is *not* known: a full `verify_flash_safety.mjs` run has never completed against the shipped
+  blur+fixed-wipe build — the agent hit a session limit and the report's "Flash-safety measured numbers"
+  section is empty. But the blur work *did* take a targeted measurement of exactly the failing case, recorded
+  in the page: at the 3×3 unit the suite actually asserts, **slider 78 now measures 0.046–0.049**, because a
+  constant wipe has no deep-trail-to-opaque seam to step across. So the likely state is "already fixed",
+  and the honest state is "unverified". Run the suite once before the event and believe the run, not this
+  paragraph.
 - **Lane-grouping drift**: after round 0, a box's on-screen slot follows its own accumulated π-orbit
   while its *value* is applied by canonical index, so θ's plane-shake and χ's row-highlight can group
   boxes that aren't the true mathematical row/column. Tagged `[ANALOGY]` at those sites rather than
@@ -150,7 +203,16 @@ hunting a signal that reads `flag{`. Dial instrument(s) + alphabet slide-rule + 
   themed tokens including `--read-tick`; an `explainer` box covers modular arithmetic and injectivity.
   Owns the **riddle** (cryptically encodes this user's `a`) and the **Guardrail**, now folded into the verdict
   pill, colour-changing, **off by default but remembered** (`caesar-guardrail`) — off = hard mode, no collision
-  warning.
+  warning. The **input row has the same number line as the output row**, recoloured to `--nl-in` and drawn
+  *upwards* (ticks and labels above the dots) so it never collides with the threads — and deliberately with
+  **no** shadow sockets, because every input is always present and empty sockets up there would imply the
+  holes happen on both sides. That symmetry is the lesson: the same 26 slots go in as come out, and the map
+  either fills them all or doesn't.
+  The SVG sits in an **expandable window** (native CSS `resize` grabber, no extra chrome) with two modes.
+  Default is `y auto`: `Hu = HU_FIT(lapCount)`, so the frame hugs the picture — constant gap below the last
+  lap at every multiplier, no void. The footer pill toggles to a fixed window (`y N×`, `HU_FIXED` = 1× the lap
+  zone) which the grabber then writes to; the mode is **not** persisted, by design. The pill exists because a
+  CSS resize corner is close to unusable on a phone and this room is phone-native.
 - **Slide rule:** fluid percentage tape (1 alphabet window, 3-alphabet strip), CSS-transition slide, **seamless
   0↔25 wrap** (`setTape` repositions across identical copies invisibly).
 - **Bonus unlock:** VI's flag **is** the reward code. Nothing is printed on solve any more — the student keys
@@ -165,7 +227,8 @@ student's move to make; type-the-flag SUBMIT; solved-tick; dark mode; resizable 
 Ramp: I base64 · II base64→image · III hex · IV url · V image-hides-text (sting) · VI base64→hex ·
 VII base64→rot47→hex (3-layer) · **VIII Two Faces** (one blob: `hex`→flag PNG, `base64`→painted trollface —
 a real dual-image polyglot) · IX red-herring (`florg{}`/`glaf{}`/`glorf{}` decoys).
-**Only VIII has a hint box** — VI, VII and IX had theirs removed on purpose.
+**No puzzle has a hint box any more** — VI–IX were unhinted deliberately and VIII's (the last one) was
+removed by the author too. There is no `hint` field and no `.cyber` box left in the page.
 - **V's sting** (real cha-ching SFX, `chaching.mp3`) now fires only on the exact intended move:
   `pipeline === ['base64']` **and** the preview showing IMAGE. Any other route to the flag is silent.
 - **VIII** gained a URL-encoded tail pad (`?q=%4e%60.ref=…`). Its blob used to end in a long run of `/` right
@@ -173,57 +236,119 @@ a real dual-image polyglot) · IX red-herring (`florg{}`/`glaf{}`/`glorf{}` deco
   passes through both decoders, so `url_pad()` pins three invariants (pad-char residue `R % 4 == 0`, `R <= 192`
   so the base64 face still lands on a 48×48 grid, and a hex tail of exactly `Rh//2` bytes). Current: `R=176`,
   74 bytes after the PNG's `IEND`. It also baits `url` as a third wrong answer.
-- **IX is three layers: `base64 → rot47 → atbash`.** ⚠ **Do not reorder these back.** The first shipped version
-  was `base64 → atbash → rot47`, and that order has a *structural* near-miss: the natural two-layer guess
-  `base64 → rot47` then computes `rot47(atbash(rot47(plain)))`, and lowercase `a`–`o` rot47 to `2`–`@`, which
-  atbash leaves untouched — so the second rot47 returns them exactly. ~58% of the alphabet is invariant under
-  the wrong order for **any** English payload, meaning the wrong guess yields a near-readable fake flag. No
-  amount of regenerating the blob fixes it; it is a property of the two ciphers, not of this plaintext. With
-  rot47 outermost the same wrong guess stops cleanly at `atbash(plain)`, which points *at* the atbash tile.
-  The builder asserts `base64 → atbash → rot47` does **not** solve, so the check proves the order.
+- **IX is three layers, `base64 → rot47 → atbash`, layered PER-REGION rather than per-document** — that is the
+  whole design. The blob is `base64(dump)` where the dump is **plain readable text** except for one field whose
+  value is `rot47(atbash(flag))`. Three beats, each asserted by the builder:
+  1. **base64 alone** → a readable capture dump. The `payload:` signpost and the three decoys are legible;
+     only the payload *value* is visibly punctuation soup. (Before this, base64 alone produced whole-document
+     soup, which reads as "wrong turn" and gives the student nothing to aim at.)
+  2. **base64 → rot47** → rot47 is an involution, so the payload resolves to `atbash(flag)` =
+     `uozt{ivzw_vevib_ormv_urihg}`: mirrored English in `flag{}` shape, i.e. a convincing *fourth decoy* that
+     nonetheless points **at** the remaining atbash tile. That is the bamboozle — the correct next step looks
+     like a dead end. (The surrounding dump is rot47 soup by now; expected, since the page applies each method
+     to the whole blob and the student's eye is on the payload.) `\n` is outside rot47's `[33,126]` range, so
+     the dump keeps its line breaks at every layer.
+  3. **base64 → rot47 → atbash** → `flag{read_every_line_first}`, and **exactly one** `FLAG_RE` match.
+  ⚠ **Do not reorder these back.** The mirror `base64 → atbash → rot47` shipped once and was reverted by
+  author decision, for two reasons. Under the old whole-document layering it had a *structural* near-miss: the
+  natural two-layer guess `base64 → rot47` computes `rot47(atbash(rot47(plain)))`, and lowercase `a`–`o` rot47
+  to `2`–`@`, which atbash leaves untouched — so the second rot47 returns them exactly. ~58% of the alphabet is
+  invariant under the wrong order for **any** English payload, so the wrong guess yields a near-readable fake
+  flag; no amount of regenerating the blob fixes it, it is a property of the two ciphers. Per-region layering
+  narrows where that can bite, but it is still pinned shut: the builder asserts that no earlier layer contains
+  `flag{...}` **or even a bare `flag`**, and that `base64 → atbash → rot47` does *not* solve — so the checks
+  prove the intended order rather than passing by luck. The order is also what *makes* beat 2: rot47-inside
+  lands the payload on `atbash(flag)`; the mirror lands it on `rot47(flag)`, symbol soup that reads as a wrong
+  turn rather than as a decoy.
 Assets: `tools/build_base64_assets.py` (Pillow) → `public/crypto/encoding/assets.js`.
 Solve-paths/authoring guide: `docs/superpowers/module2-solve-paths.md` (current — reflects all of the above).
-Clearing every puzzle here sets the `ctf-fnac-unlocked` cookie and reveals the FNAC banner link.
+Clearing every puzzle here reveals the FNAC banner link. It no longer writes a `ctf-fnac-unlocked` cookie —
+that cookie is gone, and FNAC's gate now asks the confetti engine for all three beginner modules instead.
 
 ## Bonus — Five Nights at Crypto's (live, `/crypto/fnac`)
-File-forensics bonus module, deployed. **Gated:** the page renders only if the `ctf-fnac-unlocked` cookie is
-set, which Module 2 sets on full completion (also set on load if Module 2 is already complete from a past
-session — that was a real bug). A konami code unlocks it the same way. Seven stages; **nights 1–3 are real,
-4–7 are placeholders** (`ready:false`, dimmed). `FX_TOTAL = 7`, so module-completion confetti cannot fire until
-the placeholders become real. Each night ships an on-page tool standing in for a Kali utility.
-- **Night 1 · Static** — two noise PNGs, flag halves appended after `IEND`. Tool: RAW BYTES (stands in for
-  `xxd`). Flag `flag{tune_into_the_static}`.
-- **Night 2 · Raw Bit Weaving** — a rage-face PNG (flag appended after `IEND`) split **at the bit level** into
-  `file-a.bin` / `file-b.bin`, neither of which opens or contains `flag{`. Tools: RAW BYTES + WEAVE.
-  Flag `flag{raw_bit_weaving}`, at offset `0x0dd6` of the 3588-byte reassembled file.
-  **The split convention is the whole puzzle, and the in-page JS weave tool must stay the exact inverse of
-  `fnac_png.bit_split`:** bits within a source byte are numbered 7 (MSB)…0 (LSB); **file-a takes the even bits
-  in the order 6, 4, 2, 0**, **file-b the odd bits 7, 5, 3, 1**; each source byte thus contributes one nibble to
-  each half; nibbles are packed **MSB-first in source order** (source byte 0 → high nibble of output byte 0,
-  source byte 1 → low nibble of output byte 0, …); each half is `ceil(len/2)` bytes. An odd-length source
-  zero-pads the final low nibble and loses its own length, so `build_fnac_assets.py` asserts an **even-length
-  source** (tuned via `pad_after`) to keep the weave an exact inverse.
-- **Night 3 · Tung Tung Tung Sahur** — `message.txt`, 118 bytes of repeating-key XOR, key `tung tung tung sahur`
+File-forensics bonus module, deployed. Seven stages; **nights 1–3 are real, 4–7 are placeholders**
+(`ready:false`, dimmed). `FX_TOTAL = 7`, so module-completion confetti cannot fire until the placeholders
+become real.
+
+**No helper widgets any more.** The RAW BYTES / WEAVE / XOR BENCH tools were all deleted: this module now
+assumes a commandline (`xxd`, `python`, CyberChef), so a night is **prose + files + a flag box** and nothing
+else. That is a deliberate difficulty step, not an omission — the pitch is that by FNAC they should be
+reaching for tools rather than being handed one.
+
+**The gate is no longer a cookie.** It asks the shared confetti engine (`window.fxModuleComplete`), the only
+thing that knows each module's puzzle count, and opens only when **Caesar, XOR and Encoding are all
+complete**. The old `ctf-fnac-unlocked` cookie is deliberately **not** honoured — it meant "Encoding is done",
+now one third of the requirement, so reading it would grandfather people past Caesar and XOR; stale copies are
+inert. The konami bypass therefore rides on its own cookie name (`ctf-fnac-bypass`) that no old browser can
+already be carrying. The locked screen lists all three with ✓ / `n/t` progress, and each unfinished module is a
+link whose click also **repairs** that module's entry in the engine's cross-module index — which is how someone
+who finished a module before the gate existed gets counted. See the ⚠️ at the top: XOR cannot currently be
+completed, so in practice the gate is konami-only.
+
+- **Night 1 · Meta Parts** — `night1-a.png` / `night1-b.png`, two noise PNGs with flag halves appended after
+  `IEND`. Flag `flag{tune_into_the_static}` (unchanged from the old "Static" night; only the title and
+  filenames moved).
+- **Night 2 · Bit Weaving** — `night2-a.bin` / `night2-b.bin`, 2725 bytes each. Weave them and you get a
+  trollface PNG followed (past `IEND`) by an etymology-of-"hexadecimal" easter egg. **The flag is in the
+  PICTURE, not in the bytes**: `flag{data_bender}` is *painted into the bottom-left corner pixels* by the
+  builder, which asserts it is absent as a byte string from the source and from both halves, and that
+  `flag{` never appears either. `strings`/`grep` on the reassembled file therefore finds the easter egg and
+  nothing else — you have to open the image. Flag `flag{data_bender}`.
+  **The split convention is the whole puzzle** (`fnac_png.bit_split` / `bit_weave`): bits within a source byte
+  are numbered 7 (MSB)…0 (LSB); **half a takes the even bits in the order 6, 4, 2, 0**, **half b the odd bits
+  7, 5, 3, 1**; each source byte contributes one nibble to each half; nibbles are packed **MSB-first in source
+  order** (source byte 0 → high nibble of output byte 0, source byte 1 → low nibble of output byte 0, …); each
+  half is `ceil(len/2)` bytes. An odd-length source zero-pads the final low nibble and loses its own length,
+  so the builder pads to an **even-length source** and asserts `bit_weave(bit_split(x)) == x`.
+- **Night 3 · Triple T** — `night3-a.txt`, 170 bytes of repeating-key XOR, key `tung tung tung sahur`
   (20 bytes). The plaintext starts with the flag, so a `flag{` crib at offset 0 recovers `tung ` and the
   vendored hint image (`hint-sahur.webp`, 31 KB, downloaded not hotlinked) supplies the rest of the name.
-  Tool: XOR BENCH (stands in for `xortool`/CyberChef). Flag `flag{tung_tung_tung_sahur}`.
-  The ciphertext is asserted 7-bit and CR/LF-free so it survives a text-mode transfer; it *does* contain nine
-  NUL bytes (the flag repeats the key's own words) which transfer verbatim.
-Assets: `tools/build_fnac_assets.py` + `tools/fnac_png.py` → `public/crypto/fnac/assets/**` (~60 KB total).
-The builder is idempotent and its `_clean()` **deletes** any file a night no longer ships. Source images live in
-the repo-root `fnac-assets/`; `fnac-assets/cats/` (10 JPGs) is now unreferenced — left on disk pending a call.
+  Flag `flag{stop_scrolling}`. The ciphertext is fetched by the page as an `arrayBuffer` and latin-1 decoded,
+  never `.text()`, so the block you read on screen is byte-for-byte the file you downloaded. It is asserted
+  7-bit and CR/LF-free so it survives a text-mode transfer *and* so the on-page block renders no line break
+  the file does not have; the double-spaces in the plaintext are load-bearing phase shifts that dodge the
+  (character, key-phase) pairs which would XOR to CR/LF or to ≥ `0x80`. NULs are unavoidable (the flag repeats
+  the key's own words) and transfer verbatim.
+
+**Intro scare sequence.** Fires at most once per person, on a 1-in-5 roll per visit, on the first *tap*
+(a tap grants audio autoplay permission; a scroll does not). Flicker → dark hold → eyes → lights-on, with
+trimmed audio (`flicker` / `scare` / `lights-on`). Typing **`scary`** arms the next click as a guaranteed
+scare — and typing in a flag field never arms it, because someone entering a flag is not asking for a jump
+scare. Photosensitivity: the page background is already `#000000`, so the excursion is inherently tiny, but it
+is measured anyway by `tools/verify_fnac_flash_safety.mjs`. Every flicker cycle is **750 ms** (2.67
+transitions/sec under this repo's conservative every-opposing-transition-counts convention); the first cut used
+400 ms and *measured* 6/sec — the measurement set the number. Every held state is ≥ 330 ms so a ~30 Hz sampler
+cannot miss an extreme. `prefers-reduced-motion` skips the flicker entirely.
+
+Assets: `tools/build_fnac_assets.py` + `tools/fnac_png.py` → `public/crypto/fnac/assets/**`. The directory is
+now ~468 KB, nearly all of it the three creep audio files — which the builder **trims with ffmpeg stream-copy**
+(no re-encode, `-map_metadata -1 -fflags +bitexact` so re-runs are byte-identical) to exactly the span the page
+actually plays, because everything past the JS hard-stop was being uploaded and pulled down by every student's
+phone to be discarded. The builder is idempotent and its `_clean()` **deletes** any file a night no longer
+ships. Source media live in the repo-root `fnac-assets/`; `fnac-assets/cats/` (10 JPGs) is unreferenced since
+the Night 3 rewrite — left on disk pending a call.
+Tests: `tools/verify_fnac_module.mjs` (end-to-end, real pointer/keystrokes, real autoplay policy) and
+`tools/verify_fnac_flash_safety.mjs`. **Neither is in `run_suite.mjs`** — run them by hand with
+`FNAC_MODULE_URL="http://localhost:<port>/public/crypto/fnac/"`.
 Text fallbacks: `worst-case/text-challenges/fnac/{static,raw-bit-weaving,tung-tung-tung-sahur}/`.
 
 ## Shared — victory confetti engine (`public/crypto/confetti/`)
 `engine.js` + `manifest.js` + 20 meme sprites (incl. generated suss-imposter), built by `tools/build_confetti.py`.
 Each user gets ONE signature effect per module (cookie-seeded, unique per person + per module). Confetti is the
 **module-completion reward** — fires only once EVERY puzzle in the module is solved (drives tutoring). Progress
-**persists** in `localStorage` (`ctf-solved:v2:<module>`); a two-step **RESET MODULE** control clears a module's
-progress, and a replay control re-fires the effect once the module is complete.
-⚠ **In flight:** those two controls are being migrated into a shared icon button row in the page header
-(reset / confetti lock→star / theme, inline Lucide-style SVG, bottom reset rows deleted, engine gaining a
-completion API instead of injecting its own REPLAY button). FNAC already has the new row; the other pages are
-mid-migration. Re-check this paragraph against the pages once that lands.
+**persists** in `localStorage` (`ctf-solved:v2:<module>`).
+
+**Shared header button row — landed on all five pages** (`ceasar`, `encoding`, `hash`, `xor`, `fnac`): three
+inline-SVG icon buttons in the kicker (reset module progress / replay confetti, locked→gold star once the
+module is complete / theme), replacing the old bottom reset rows and the REPLAY button the engine used to
+inject. The engine now exposes a **completion API** the pages drive instead: `fxIsComplete()`, `fxReplay()`,
+`fxSolvedSet()`, `fxReset()`, plus an `FX_NO_PUZZLES` flag for pages with no puzzles at all (the hash module
+sets it, so "complete" is declared rather than inferred from `FX_TOTAL === 0`).
+
+**Cross-module completion index.** The engine also mirrors each module's completion into a shared
+`localStorage['ctf-complete:v1']` index and exposes `fxModuleComplete(id)` / `fxModuleProgress(id)` — the
+`{c,n,t}` a *different* page can read. This is what FNAC's gate is built on, and it is the only place that
+knows any module's puzzle count.
 
 ## Module 4 · XOR — IN PROGRESS (`public/crypto/xor/index.html`)
 **Full handoff + remaining work: `docs/2026-06-26-module4-xor-spec.md` (v2) — read it before touching this.**
@@ -246,6 +371,11 @@ Rebuilt from a v1 that was "demos in costume". Frame: *the keystream is the weak
   Content node-verified (see spec): plain `the long key is really many tiny keys flag{stacked}`, key `sun` (len 3,
   given), flag `flag{stacked}`. Embodies the lesson: a long key = 3 single-byte knobs.
 
+⚠ **C4's absence is now load-bearing, not just a gap.** `FX_TOTAL=4` against three `addCard` calls means XOR
+can never report complete, and FNAC's gate requires XOR complete — so building C4 is what unblocks FNAC for
+anyone without the konami code. Do not "fix" this by dropping `FX_TOTAL` to 3; that would declare a
+three-quarters module finished and quietly retire the last challenge.
+
 **Engine wiring:** `FX_MODULE='xor'`, `FX_TOTAL=4`, `fxSolved(id)` per capture; engine bakes store key
 `ctf-solved:v2:xor`. Card framework = `addCard({id,title,sub,intro,hint,build})`; `build(ctx)` wires bespoke body
 into `ctx.work` and **returns the flag string**. IDs `c1`–`c4` in `const VALID`; stale ids are pruned on load
@@ -257,6 +387,12 @@ into `ctx.work` and **returns the flag string**. IDs `c1`–`c4` in `const VALID
 - Verify UI with **real pointer clicks** (Chrome MCP / Playwright), not synthetic events. Precompute heavy assets
   in Python (`.venv/bin/python` — global python is broken).
 - Repo **is** under git now (init 2026-06-25). Commit before large edits.
+- **Deploy state.** Production is `ctf.sandhi.com.au`. All of this session's work lives on
+  `feat/caesar-rewrite-fnac-nights`, **pushed to GitHub but not merged to master** — so `master` and
+  `origin/master` are both a long way behind what this file describes. Two different worker versions have been
+  reported for what is live (`0ecbf196` and `d1c2c1c0` = commit `e3795f6`); the Cloudflare MCP is read-only and
+  errored when asked, so **check the Cloudflare dashboard before assuming which is deployed.** Either way the
+  live hash page predates the motion-blur work.
 
 ## Open / todo
 
@@ -271,15 +407,19 @@ into `ctx.work` and **returns the flag string**. IDs `c1`–`c4` in `const VALID
 
 **Housekeeping owed after the current branch**
 - [ ] **Regenerate `worst-case/launch_offline.py`** (`.venv/bin/python tools/build_offline_launcher.py`) — it
-      embeds copies of the module pages and is stale for every page rewritten on this branch. Run it once the
-      shared header row has landed on all pages, not before.
+      embeds copies of the module pages and is stale for **every** page on this branch. The shared header row
+      has now landed everywhere, so the blocker on this is gone: run it.
 - [ ] **Refresh or placeholder the static `.plate` ciphertexts** for Caesar IV and VI — they still encode the
-      retired plaintexts. Cosmetic (overwritten at mount) but wrong in view-source.
-- [ ] The offline launcher still excludes FNAC on a size rationale that no longer holds (~92 KB now, not 7 MB).
+      retired `flag{Safe_Cracker}` / `flag{affine_code}` plaintexts (`zfua{Muzy_Wluweyl}`,
+      `hlim{ihhwvc_saxc}`). Cosmetic (overwritten at mount by `encodeFor`) but wrong in view-source.
+- [ ] The offline launcher still excludes FNAC on a ~7 MB size rationale that no longer holds. FNAC is now
+      ~468 KB — bigger than the ~92 KB figure some older notes quote, because of the creep audio, but still
+      two orders of magnitude under the number the exclusion was sized against.
 
 **Next build work**
-- [ ] **Module 4 XOR: build C4** — the last challenge. Spec'd + content node-verified in
-      `docs/2026-06-26-module4-xor-spec.md`. Then user playtest → deploy. XOR is still undeployed.
+- [ ] ⚠️ **Module 4 XOR: build C4** — the last challenge, and now **blocking FNAC** (see the note at the top).
+      Spec'd + content node-verified in `docs/2026-06-26-module4-xor-spec.md`. Then user playtest → deploy.
+      XOR is still undeployed.
 - [ ] **Desktop micro-themes for the Hashing page** — designed and researched, NOT built. Skin the
       MD5 panel as Windows 95 and the SHA-3 panel as Windows 7, framed by a fake Proxmox top bar, so
       "old and busted vs modern" lands without a word. Full specs incl. exact colours, bevel
@@ -294,6 +434,9 @@ into `ctx.work` and **returns the flag string**. IDs `c1`–`c4` in `const VALID
       what's decided and what isn't. Don't restart the design from scratch.
 
 **Hashing module — known gaps** (detail in the Module 3 section above)
+- [ ] ⚠️ **Run `node tools/run_suite.mjs --all` once before the event.** The luminance-excursion bound was
+      failing (0.0778–0.0886 vs 0.07) on the pre-blur page; a targeted probe on the shipped build reads
+      0.046–0.049 on that exact case, but no full run has confirmed it. Believe the run.
 - [ ] Lane-grouping drift after round 0 (currently tagged `[ANALOGY]` rather than claimed accurate).
 - [ ] Surface the absorb-padding lesson — the lone bright cube is `0x80` and nothing says so.
 - [ ] Optional: rename `keccak256WithTrace` (it computes SHA3-256, not pre-standard Keccak-256).
