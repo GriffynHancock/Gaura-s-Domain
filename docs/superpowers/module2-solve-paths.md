@@ -18,9 +18,9 @@ Tiles (order shuffled per card, per page load): `base64 · hex · url · rot13 �
 | base64 | `A-Z a-z 0-9 + /`, length %4, trailing `=` | real |
 | hex | only `0-9 a-f`, even length | real |
 | url | `%` followed by two hex digits | real (puzzle IV), distractor after |
-| rot47 | printable-ASCII gibberish, no `=`, includes punctuation | real (puzzle VII) |
+| rot47 | printable-ASCII gibberish, no `=`, includes punctuation | real (puzzles VII, IX) |
 | rot13 | looks like English-ish letters, shifted | **pure distractor** |
-| atbash | letters mirrored | **pure distractor** |
+| atbash | letters mirrored | real (puzzle IX) |
 
 Teaching arc: I–IV introduce one method each with an **unambiguous** string (the blob
 screams its method). V–IX mix layers and start baiting with decoys.
@@ -37,7 +37,7 @@ screams its method). V–IX mix layers and start baiting with decoys.
 | VI | Order Matters | `base64` → `hex` | `flag{peel_the_layers}` |
 | VII | Three Deep | `base64` → `rot47` → `hex` | `flag{three_layers_deep}` |
 | VIII | Two Faces | `hex` → flag / `base64` → troll | `flag{two_faces}` |
-| IX | Read the Room | `base64`→`atbash`, ignore decoys | `flag{read_every_line_first}` |
+| IX | Read the Room | `base64` → `atbash` → `rot47`, ignore decoys | `flag{read_every_line_first}` |
 
 ---
 
@@ -70,7 +70,9 @@ screams its method). V–IX mix layers and start baiting with decoys.
 - **Blob:** base64 of an "imposter" PNG **plus** `----[ flag{...} ]----` appended after
   the PNG's `IEND`. The image still renders; the flag rides in the trailing bytes.
 - **Tell:** IMAGE shows a sprite, but TEXT view (or scrolling the bytes) reveals the flag.
-- **Sting:** an audio sting fires when a real image is detected in the pipeline.
+- **Sting:** `chaching.mp3` fires on this card only, and only for the exact intended move —
+  pipeline exactly `['base64']` **and** the preview set to IMAGE. Any other pipeline, or the
+  TEXT view, stays silent. Once per page load; autoplay refusal falls back to a synth sting.
 - **Red herrings:** the sprite itself is the misdirection — students fixate on the
   picture and miss the appended text.
 - **Future salt:** append a fake `flag{decoy}` *before* `IEND` in a tEXt chunk, real one after.
@@ -89,14 +91,16 @@ screams its method). V–IX mix layers and start baiting with decoys.
 - **Red herrings:** after base64 the middle layer *looks* like it might be its own cipher;
   rot13/atbash on it produce plausible-but-wrong letters. rot47 is the only one that lands.
 - **CyberChef Magic stalls here:** ROT47 isn't in Magic's default search, so auto-solve
-  fails — this is the puzzle where students learn to peel by hand. The hint says so.
+  fails — this is the puzzle where students learn to peel by hand. VII's hint box was
+  removed, so nothing on the page says so any more; they have to find it.
 - **Future salt:** this is the natural home for a "looks-like-base64-again" middle layer —
   pick a flag whose hex, after rot47, contains `+`/`/`-ish chars to bait a second base64.
 
 ### VIII — Two Faces · dual-image polyglot (2nd-last)
 - **Blob:** a hex dump of the flag PNG with **decoy letters** (`[G-Zg-z+/]`) wedged in.
-- **`hex` path:** strips every non-hex char → reconstructs the flag PNG **byte-exact** →
-  IMAGE shows `flag{two_faces}`.
+- **`hex` path:** strips every non-hex char → reconstructs the flag PNG as an exact **prefix**
+  → IMAGE shows `flag{two_faces}`. (Exact *prefix*, not byte-exact: the URL-pad tail below
+  contributes 74 bytes after the PNG's `IEND`, which every PNG decoder ignores.)
 - **`base64` path:** keeps every char → IMAGE view paints the bytes as raw RGB. Each
   base64 4-char group = one pixel. Top rows = the real trollface (2-tone: white background +
   darkest reachable decoy colour for the line art); a thin bottom strip = the hex data as
@@ -109,21 +113,45 @@ screams its method). V–IX mix layers and start baiting with decoys.
   downscales + thresholds it; decoy chars can't reach pure black, so `darkest_decoy_quad()`
   picks the darkest line colour available (`quad_to_rgb()` shows what a quad paints). The flag
   path is independent and always exact.
+- **The URL-encoded tail (`url_pad()`):** the blob used to end in a long run of `/`, right
+  after the flag-PNG hex, so scrolling the raw string to the bottom shouted "hex". A
+  deterministic `?ref=%3a%2f…` pad is appended to disguise the tail. It is **not** free —
+  it passes through both decoders, so the builder pins three invariants:
+  - `R % 4 == 0`, where `R` = pad chars surviving `[^A-Za-z0-9+/]`. The blob is a multiple
+    of 4 chars; `R ≡ 1 (mod 4)` makes JS append three `=`, **`atob` throws**, `METHODS.base64`
+    returns an empty array, and the trollface silently vanishes with no error anywhere.
+  - `R <= 192`, so `px = 2304 + R/4 <= 2352` and `Math.round(sqrt(px))` still lands on 48.
+    At 193+ every row shears diagonally. (The builder mirrors JS's half-up rounding with
+    `floor(sqrt(px)+0.5)` — Python's `round()` is banker's rounding and would disagree.)
+  - the hex-path output starts with the flag PNG and is exactly `Rh//2` bytes longer,
+    `Rh` = pad chars in `[0-9a-fA-F]`. Those bytes land after `IEND`.
+  Current pad: `R=176` (px 2304→2348, one extra partial row of static), hex tail +74 B.
 - **Red herrings:** the whole puzzle *is* the red herring — the "obvious" base64 gives a
-  joke image, the less-obvious hex gives the flag.
+  joke image, the less-obvious hex gives the flag. The tail now baits `url` as well.
 
-### IX — Read the Room · `base64` → `atbash`, mind the decoys
-- **Blob:** `base64` of a short "capture" dump containing, in order, an **unlabelled**:
+### IX — Read the Room · `base64` → `atbash` → `rot47`, mind the decoys
+- **Blob:** `base64(atbash(rot47(plain)))` — **three** layers. Both `atbash` and `rot47` are
+  byte-wise involutions, so the builder encodes with the same pair in mirror order and the
+  student's click order (`base64`, `atbash`, `rot47`) peels it. `\n` (0x0a) is outside
+  rot47's `[33,126]` range and rides through untouched, so the dump keeps its line breaks.
+- **Order matters:** atbash and rot47 do **not** commute. The builder asserts that
+  `base64 → rot47 → atbash` does *not* recover the flag, so the check proves the intended
+  order instead of passing by luck. It also asserts no intermediate layer contains a
+  readable `flag{` — the preview highlights every `flag{...}`, which would leak the answer.
+- **The fully-decoded dump** contains, in order, an **unlabelled**:
   1. `auth_token: florg{nice-try}` — flag-shaped but NOT the `flag{...}` format,
   2. a hex-looking `trace=676c61667b6e6f742d69747d` (decodes to `glaf{not-it}` — another
      format decoy, not `flag{no}`),
   3. a url-looking `ref=%67%6c%6f%72%66%7b%6e%6f%70%65%7d` (url-decodes to `glorf{nope}`),
-  4. the real payload under `payload:` — `uozt{ivzw_vevib_orxo_uroto}`-shaped text that is
-     itself **Atbash-shifted**, decoding to `flag{read_every_line_first}`.
-- **Tell:** one base64 layer surfaces everything, but the real payload needs one more
-  step (Atbash) — the trap is *reading carefully AND finishing the decode*, not just
-  spotting the right line. Nothing in the text labels the decoys — earlier versions did,
-  which gave the game away.
+  4. the real payload under `payload:` — `flag{read_every_line_first}`.
+- **Tell:** base64 (ends in `=`) surfaces punctuation soup rather than text — the giveaway
+  that more layers remain. Then it's a two-step guess with no hint (IX's hint box was
+  removed deliberately): the letter-mirror, then the printable-ASCII rotation. Nothing in
+  the text labels the decoys — earlier versions did, which gave the game away.
+- **History:** IX used to be `base64 → atbash` with the payload line pre-Atbashed inside an
+  otherwise-plain dump. `rot47` was added as a third layer "to throw them off"; the payload
+  is now plain inside the dump and the whole dump travels through all three layers, so the
+  decoys read as decoys at the *end* rather than in the middle.
 - **Why florg, not a fake `flag{...}`:** a second real-format `flag{...}` is unfair (no way
   to disambiguate) and the preview highlights every `flag{...}`. `florg{...}` teaches the
   **format** instead — only `flag{...}` highlights, so a careful student isn't misled, and a
@@ -144,6 +172,7 @@ screams its method). V–IX mix layers and start baiting with decoys.
    `assets` + `flags`, and add a row to the `checks` list (or an image assert).
 2. Bake red herrings into the **plaintext**, not the blob, so they survive encoding.
 3. Run `.venv/bin/python tools/build_base64_assets.py` — it must print `ok` for your row.
-4. Add a `PUZZLES` entry in `public/crypto/base64/index.html` (`blob`, `answer`, `view`,
-   optional `sting`/`cyber`/`hint`).
+4. Add a `PUZZLES` entry in `public/crypto/encoding/index.html` (`id`, `title`, `blob`,
+   `answer`, optional `sting`/`hint`). There is no `view` field — every card starts on the
+   TEXT preview and flipping to IMAGE is the student's move.
 5. Verify in a real browser with pointer clicks (tiles shuffle, so click by label).

@@ -13,7 +13,7 @@ byte-for-byte; if you change one, change the other.
 See docs/superpowers/module2-solve-paths.md for the per-puzzle solve paths and where
 red herrings live in each encoded string.
 """
-import base64, io, json, os, re
+import base64, io, json, math, os, random, re
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -173,6 +173,51 @@ def darkest_decoy_quad():
 WHITE_QUAD = "////"                          # -> (255,255,255)
 DARK_QUAD = darkest_decoy_quad()
 
+# ---- the URL-encoded-looking tail -------------------------------------------
+# Problem this solves: the raw blob's visible tail used to be a long run of '/'
+# right after the flag-PNG hex, so a student who scrolled to the bottom could
+# read "hex" straight off the string. We append a pad of plausible %XX junk.
+#
+# The pad is NOT free — it passes through both decoders, so it is constrained:
+#   R  = pad chars surviving  [^A-Za-z0-9+/]   (what `base64` keeps)
+#   Rh = pad chars in         [0-9a-fA-F]      (what `hex` keeps),  Rh <= R
+#   * R % 4 == 0 is MANDATORY. The blob is 9216 chars (a multiple of 4); an
+#     R of 1 mod 4 makes the JS decoder append three '=' and atob() THROWS,
+#     METHODS.base64 returns an empty array and the trollface silently vanishes.
+#   * R <= 192. The canvas picks W = Math.round(sqrt(px)); px = 2304 + R/4 and
+#     round(sqrt(px)) must stay 48 or every row shears diagonally. px <= 2352.
+#   * Rh//2 extra bytes land after the flag PNG's IEND on the hex path. PNG
+#     decoders ignore trailing bytes, so the flag face still renders; the
+#     builder asserts the PNG is an exact PREFIX of the hex-path output.
+PAD_SEED = 20260814            # deterministic: same pad every build
+PAD_WORDS = ["ref", "sid", "next", "src", "cb", "q", "utm", "rid"]
+
+
+def _b64_residue(s):
+    return len(re.sub(r"[^A-Za-z0-9+/]", "", s))
+
+
+def _hex_residue(s):
+    return len(re.sub(r"[^0-9a-fA-F]", "", s))
+
+
+def url_pad(limit=176):
+    """A deterministic '?ref=%3a%2f...' tail: reads as URL encoding, decodes safely."""
+    rnd = random.Random(PAD_SEED)
+    out = ["?"]
+    while True:
+        seg = (rnd.choice(PAD_WORDS) + "="
+               + "".join("%%%02x" % rnd.randrange(0x20, 0x7f) for _ in range(rnd.randint(2, 5)))
+               + rnd.choice(["&", "&", "&", "-", "."]))
+        if _b64_residue("".join(out) + seg) > limit:
+            break
+        out.append(seg)
+    pad = "".join(out).rstrip("&-.")
+    while _b64_residue(pad) % 4:                     # force R % 4 == 0
+        pad += "%2e" if (4 - _b64_residue(pad) % 4) >= 2 else "e"
+    assert _b64_residue(pad) % 4 == 0 and _b64_residue(pad) <= 192, _b64_residue(pad)
+    return pad
+
 def troll_mask(W, rows):
     """Downscale the real trollface to W x rows and return a per-pixel bool: True=line."""
     src = Image.open(TROLL_SRC).convert("RGBA")
@@ -205,10 +250,21 @@ def build_two_faces(flag_text):
     S = "".join(chars)
     assert len(S) == total * 4
 
+    # hide the hex tell: append URL-encoded-looking junk (see url_pad above)
+    pad = url_pad()
+    R, Rh = _b64_residue(pad), _hex_residue(pad)
+    S += pad
+
     # ---- verify both faces ----
-    assert m_hex(S.encode("latin1")) == flag_png, "Two Faces: hex path != flag PNG"
+    hex_out = m_hex(S.encode("latin1"))
+    assert hex_out.startswith(flag_png), "Two Faces: hex path != flag PNG"
+    assert len(hex_out) - len(flag_png) == Rh // 2, "Two Faces: unexpected hex tail length"
     painted = m_base64(S.encode("latin1"))
-    assert len(painted) == total * 3, "Two Faces: base64 path wrong length"
+    px = len(painted) // 3
+    assert len(painted) == (total * 4 + R) // 4 * 3, "Two Faces: base64 path wrong length"
+    # mirror JS Math.round (half-up), NOT Python's banker's rounding
+    assert math.floor(math.sqrt(px) + 0.5) == W, "Two Faces: pad shifted the canvas width"
+    print(f"  ok  8 pad: R={R} (px {total}->{px}), hex tail +{Rh // 2}B after IEND")
 
     # write a builder preview of the troll for a human/vision eyeball check
     os.makedirs(OUTDIR, exist_ok=True)
@@ -263,23 +319,30 @@ def main():
     two_faces, tf_flag = build_two_faces("flag{two_faces}")
     flags["two_faces"] = tf_flag
 
-    # 9 — final: base64 reveals a dump full of UNLABELLED decoys, but the real flag in
-    # the payload is still Atbash-scrambled, so the pipeline is base64 -> atbash. The
-    # decoys (florg/glaf/glorf) look flag-ish but are clearly not 'flag' — and they sit
-    # in the plain layer, so they read fine after base64 and only the payload needs the
-    # mirror. Nothing labels them; that's the puzzle.
+    # 9 — final: THREE layers, base64 -> atbash -> rot47, over a capture dump full of
+    # UNLABELLED decoys. Both atbash and rot47 are byte-wise involutions, so encoding
+    # is the same pair applied in the mirror order: blob = base64(atbash(rot47(plain))).
+    # '\n' (0x0a) is outside rot47's [33,126] range and passes through untouched.
+    # ORDER MATTERS — atbash and rot47 do not commute; base64>rot47>atbash is asserted
+    # NOT to solve, so the checks prove the intended order rather than passing by luck.
+    # The decoys (florg/glaf/glorf) look flag-ish but are clearly not 'flag'; nothing
+    # labels them, and only a real flag{...} highlights in the preview. That's the puzzle.
     i_flag = "flag{read_every_line_first}"
-    i_payload = "uozt{ivzw_vevib_ormv_urihg}"          # == atbash(i_flag)
-    assert m_atbash(i_payload.encode()).decode() == i_flag
     i_plain = ("-- capture 0x5f --\n"
                "auth_token: florg{nice-try}\n"
                "trace=" + b"glaf{not-it}".hex() + "\n"
                "ref=" + "".join("%%%02x" % b for b in b"glorf{nope}") + "\n"
                "payload:\n"
-               + i_payload + "\n"
+               + i_flag + "\n"
                "-- end of capture --\n")
-    i_b64 = base64.b64encode(i_plain.encode()).decode()
+    i_mid = m_atbash(m_rot47(i_plain.encode("latin1")))
+    i_b64 = base64.b64encode(i_mid).decode()
     flags["i"] = i_flag
+    # no intermediate layer may leak a readable flag{...} (the preview highlights them)
+    assert b"flag{" not in i_b64.encode() and b"flag{" not in i_mid
+    assert b"flag{" not in m_atbash(i_mid), "9: flag readable one layer early"
+    assert i_flag not in run_pipeline(i_b64, ["base64", "rot47", "atbash"]).decode("latin1", "replace"), \
+        "9: wrong-order pipeline also solves — order no longer matters"
 
     # ---- assert every correct pipeline reproduces its flag ----
     checks = [
@@ -288,7 +351,7 @@ def main():
         ("4 url",           f_url, ["url"],                    f_flag),
         ("6 base64>hex",    d_b64, ["base64", "hex"],          d_flag),
         ("7 base64>rot47>hex", g_b64, ["base64", "rot47", "hex"], g_flag),
-        ("9 base64>atbash", i_b64, ["base64", "atbash"],        None),   # flag is substring
+        ("9 base64>atbash>rot47", i_b64, ["base64", "atbash", "rot47"], None),  # flag is substring
     ]
     for name, blob, pipe, expect in checks:
         out = run_pipeline(blob, pipe).decode("latin1", "replace")
@@ -299,7 +362,9 @@ def main():
     # image puzzles: pipeline yields a PNG/marker
     assert m_base64(b_png.encode()).startswith(b"\x89PNG"), "2: not a PNG"
     assert c_flag.encode() in m_base64(c_b64.encode()), "5: flag not in bytes"
-    assert m_hex(two_faces.encode("latin1")) == png_bytes(flag_bitmap("flag{two_faces}").convert("1")), "8 hex face"
+    # startswith, not ==: the URL-pad tail contributes a few bytes after IEND (see url_pad)
+    assert m_hex(two_faces.encode("latin1")).startswith(
+        png_bytes(flag_bitmap("flag{two_faces}").convert("1"))), "8 hex face"
 
     assets = {
         "a_b64": a_b64, "b_png": b_png, "c_b64": c_b64, "d_b64": d_b64,

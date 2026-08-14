@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hidden in Plain Sight — Crypto 101 · Encoding</title>
+<title>Encoding is not Encryption — Crypto 101 · Encoding</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -37,6 +37,9 @@
   [data-theme="dark"] .theme-btn{background:linear-gradient(#322d1d,#211e14)}
   h1{font-family:var(--disp); font-weight:900; font-size:clamp(2.1rem,6.5vw,3.3rem); line-height:.96; margin:0; letter-spacing:-.02em}
   h1 em{font-style:italic; font-weight:400; color:var(--accent)}
+  /* masthead signal word — colour only; must NOT inherit h1 em's 400 weight/italic */
+  h1 .hl{color:var(--accent)}
+  h1 s{text-decoration:line-through; text-decoration-thickness:.055em}
   header p{font-family:var(--disp); font-size:1.02rem; line-height:1.5; opacity:.82; margin:12px 0 0; max-width:56ch}
 
   .note{font-family:var(--mono); font-size:.78rem; line-height:1.6; color:var(--ink); background:var(--panel2);
@@ -89,14 +92,20 @@
   .mini{font-family:var(--mono); font-size:.7rem; letter-spacing:.1em; cursor:pointer; color:var(--dim);
     background:none; border:1px solid var(--edge); border-radius:5px; padding:5px 9px}
 
-  .pv-head{display:flex; align-items:center; gap:10px; margin:20px 0 8px}
-  .pv-head .lab{margin:0}
+  .pv-head, .blob-head{display:flex; align-items:center; gap:10px; margin:20px 0 8px}
+  .pv-head .lab, .blob-head .lab{margin:0}
+  .blob-head .icon-btn{margin-left:auto}
+  /* both copy buttons share one class -> identical hit-size; stroke is currentColor so
+     the glyph follows the theme's ink in light AND dark */
+  .icon-btn{display:inline-flex; align-items:center; justify-content:center; padding:5px 8px; color:var(--dim)}
+  .icon-btn:hover{color:var(--ink)}
+  .icon-btn svg{display:block}
   .pv-tools{margin-left:auto; display:flex; gap:8px; align-items:center}
   .seg{display:inline-flex; border:1px solid var(--edge); border-radius:7px; overflow:hidden}
   .seg button{font-family:var(--mono); font-size:.7rem; letter-spacing:.1em; cursor:pointer; border:none;
     padding:6px 12px; background:transparent; color:var(--dim)}
   .seg button.on{background:var(--accent); color:#fff}
-  .preview{min-height:110px; height:150px; background:#070b10; border:1px solid #000; border-radius:7px; padding:14px;
+  .preview{min-height:140px; height:190px; background:#070b10; border:1px solid #000; border-radius:7px; padding:14px;
     box-shadow:0 0 0 1px var(--edge), 0 3px 10px #0004 inset; display:flex; align-items:center; justify-content:center;
     overflow:auto; resize:vertical}
   .preview .txt{font-family:var(--mono); font-size:.82rem; line-height:1.5; color:#9fb0a8; white-space:pre-wrap;
@@ -116,9 +125,10 @@
 
   .cyber{font-family:var(--mono); font-size:.76rem; line-height:1.6; color:var(--ink); opacity:.9;
     background:var(--panel2); border:1px solid var(--edge); border-radius:6px; padding:11px 13px; margin-top:18px}
-  .cyber a{color:var(--accent)} .cyber .mini{margin-left:6px}
   .hide{display:none}
 
+  /* .reset-row/.reset-btn are unused right now — the bottom RESET MODULE button was removed.
+     Kept because the follow-up task rebuilds a shared reset/confetti/theme header row. */
   footer{text-align:center; font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; color:var(--dim); margin-top:42px; text-transform:uppercase}
   .reset-row{display:flex; justify-content:center; margin:48px 0 36px}
   .reset-btn{font-family:var(--mono); font-size:.66rem; letter-spacing:.16em; cursor:pointer; color:var(--dim);
@@ -131,29 +141,34 @@
 <div class="wrap">
   <header>
     <div class="kicker"><span>Crypto 101 · Module 02 · Encoding</span><button id="theme" class="theme-btn">DARK</button></div>
-    <h1>Hidden in <em>Plain</em> Sight</h1>
-    <p>Encoding isn't a lock, it's a costume. The same bytes can be worn as text, as an image, as base64.
-       Nothing here is secret; you just have to recognise the disguise and take it off.</p>
+    <h1><span class="hl">Encoding</span> is not <s>encryption</s></h1>
+    <p>Encoding is used every day to move information around by changing its form while preserving its
+       contents. It's about changing the <em>form</em> of the information, not about actually making it
+       secret &mdash; though it is used to hide malicious information from automated detection. Learning to
+       recognise the difference between encoding methods is very important in cybersecurity.</p>
   </header>
 
-  <div class="note"><b>THE IDEA.</b> <span class="vs">Encoding</span> (base64, hex, ROT) is reversible and needs
-    <b>no key</b> &mdash; anyone can undo it. That's different from <span class="vs">encryption</span>, which needs a key
-    to read. Attackers still <i>stack</i> encodings to dodge antivirus and slow analysts down; every layer is
-    visible on purpose. Your job: <b>recognise &rarr; pick the method &rarr; decode &rarr; read the flag.</b></div>
+  <div class="note"><b>&#8505;</b> The most common forms of encoding are <b>base64</b>, <b>hexadecimal</b>
+    and <b>URL</b> encoding. Encoding methods turn information from one standard into another, and each
+    standard has a fixed set of characters available to it. <b>Base64</b> can be recognised because it uses
+    uppercase letters, lowercase letters and numbers together &mdash; like <span class="vs">dGhpcw==</span>,
+    which is the word &ldquo;this&rdquo;. <b>Hexadecimal</b> only uses the numbers <span class="vs">0&ndash;9</span>
+    and the letters <span class="vs">a&ndash;f</span>, and is usually lowercase. <b>URL encoding</b> uses lots
+    of <span class="vs">%</span> signs paired with two-digit numbers to stand in for symbols and spaces.</div>
 
   <footer>ctf.sandhi.com.au · crypto · encoding</footer>
-
-  <div class="reset-row"><button id="reset-mod" class="reset-btn">RESET MODULE</button></div>
 </div>
 
 <template id="mod">
   <details class="card">
     <summary><span class="idx"></span><span class="ttl"></span><span class="done">captured</span><span class="sub"></span></summary>
     <div class="body">
-      <div class="lab">Intercepted blob</div>
+      <div class="blob-head"><span class="lab">Encoded string</span>
+        <button class="mini icon-btn copy-blob" type="button"></button>
+      </div>
       <div class="blob"></div>
 
-      <div class="lab">Decode as &mdash; click methods to build the pipeline (empty = raw, untouched)</div>
+      <div class="lab">Decoding scheme &mdash; click to stack decoding methods</div>
       <div class="tiles">
         <span class="tile" data-m="base64">Base64</span>
         <span class="tile" data-m="hex">Hex</span>
@@ -167,7 +182,7 @@
 
       <div class="pv-head"><span class="lab">Preview</span>
         <span class="pv-tools">
-          <button class="mini copy">COPY</button>
+          <button class="mini icon-btn copy" type="button"></button>
           <span class="seg"><button data-v="text">TEXT</button><button data-v="image">IMAGE</button></span>
         </span>
       </div>
@@ -234,25 +249,44 @@ function synthSting(){
   }catch(e){}
 }
 function sting(){
-  if(stung) return; stung=true;
+  if(stung) return; stung=true;   // once per page load — never retriggers on re-render
   // play the cha-ching SFX; fall back to the synth sting if the file can't play
   try{ stingAudio.currentTime=0; const p=stingAudio.play(); if(p&&p.catch) p.catch(synthSting); }
   catch(e){ synthSting(); }
 }
 
+// Clipboard + check glyphs: Lucide (https://lucide.dev), ISC licence — ISC License,
+// Copyright (c) for portions of Lucide are held by Cothema 2020. Path data inlined
+// deliberately: this page makes no external requests and pulls in no icon font.
+const SVG_OPEN='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" '
+  +'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">';
+const ICON_CLIPBOARD=SVG_OPEN+'<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>'
+  +'<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>';
+const ICON_CHECK=SVG_OPEN+'<path d="M20 6 9 17l-5-5"/></svg>';
+// icon-only button: the accessible name lives in aria-label/title, and flips with the icon
+function wireCopy(btn, label, getText){
+  let t=null;
+  const rest=()=>{ btn.innerHTML=ICON_CLIPBOARD; btn.setAttribute('aria-label',label); btn.title=label; };
+  rest();
+  btn.onclick=()=>{
+    try{ const pr=navigator.clipboard&&navigator.clipboard.writeText(getText()); if(pr&&pr.catch) pr.catch(()=>{}); }catch(e){}
+    btn.innerHTML=ICON_CHECK; btn.setAttribute('aria-label','copied'); btn.title='copied';
+    clearTimeout(t); t=setTimeout(rest,900);
+  };
+}
+
 const TWOFACE_HINT = 'One blob, <b>two pictures</b> — both real, both precomputed. Decode as <b>hex</b> for one face; then decode as <b>base64</b> and flip the preview to <b>IMAGE</b> for the other. The string is a hex dump with junk letters wedged in: hex throws the letters away, base64 keeps them.';
-const THREE_HINT = 'Three layers: <b>base64 → rot47 → hex</b>. CyberChef\'s <b>Magic</b> usually stalls here — ROT47 isn\'t in its default search — so you peel by hand. base64 first (ends in <b>=</b>), then ROT47 turns the punctuation soup back into <b>0-9 a-f</b>, then hex.';
-const FINAL_HINT = 'base64 first — then <b>read</b>. The flag-shaped things you can read (<b>florg{…}</b>, <b>glaf{…}</b>) are bait; a real flag is exactly <b>flag{…}</b>. The true payload is still scrambled: it\'s a letter-<b>mirror</b> (try <b>Atbash</b>) away from plain.';
+// every card starts on the TEXT preview; the TEXT/IMAGE toggle is the student's move to make
 const PUZZLES = [
-  {id:'I',   title:'Decode the Signal', sub:'base64',           blob:A.a_b64,     answer:A.flags.a, view:'text'},
-  {id:'II',  title:'Picture This',      sub:'base64 to image',  blob:A.b_png,     answer:A.flags.b, view:'image'},
-  {id:'III', title:'Sixteen',           sub:'hex',              blob:A.e_hex,     answer:A.flags.e, view:'text'},
-  {id:'IV',  title:'Percent Sign',      sub:'url-encoded',      blob:A.f_url,     answer:A.flags.f, view:'text'},
-  {id:'V',   title:'Among the Bytes',   sub:'image hides text', blob:A.c_b64,     answer:A.flags.c, view:'image', sting:true},
-  {id:'VI',  title:'Order Matters',     sub:'two layers',       blob:A.d_b64,     answer:A.flags.d, view:'text', cyber:true},
-  {id:'VII', title:'Three Deep',        sub:'three layers',     blob:A.g_b64,     answer:A.flags.g, view:'text', hint:THREE_HINT},
-  {id:'VIII',title:'Two Faces',         sub:'one blob, two pictures', blob:A.two_faces, answer:A.flags.two_faces, view:'image', hint:TWOFACE_HINT},
-  {id:'IX',  title:'Read the Room',     sub:'mind the decoys',  blob:A.i_b64,     answer:A.flags.i, view:'text', hint:FINAL_HINT},
+  {id:'I',   title:'Decode the Signal', blob:A.a_b64,     answer:A.flags.a},
+  {id:'II',  title:'Picture This',      blob:A.b_png,     answer:A.flags.b},
+  {id:'III', title:'Sixteen',           blob:A.e_hex,     answer:A.flags.e},
+  {id:'IV',  title:'Percent Sign',      blob:A.f_url,     answer:A.flags.f},
+  {id:'V',   title:'Among the Bytes',   blob:A.c_b64,     answer:A.flags.c, sting:true},
+  {id:'VI',  title:'Order Matters',     blob:A.d_b64,     answer:A.flags.d},
+  {id:'VII', title:'Three Deep',        blob:A.g_b64,     answer:A.flags.g},
+  {id:'VIII',title:'Two Faces',         blob:A.two_faces, answer:A.flags.two_faces, hint:TWOFACE_HINT},
+  {id:'IX',  title:'Read the Room',     blob:A.i_b64,     answer:A.flags.i},
 ];
 
 window.FX_TOTAL = PUZZLES.length;   // confetti fires only once every puzzle is solved
@@ -265,7 +299,7 @@ PUZZLES.forEach((p,i)=>{
   if(i===0) node.open = true;
   node.querySelector('.idx').textContent = p.id;
   node.querySelector('.ttl').textContent = p.title;
-  node.querySelector('.sub').textContent = p.sub;
+  // .sub stays EMPTY on purpose — it still carries the ▸/▾ disclosure arrow via CSS
   node.querySelector('.blob').textContent = p.blob;
 
   const pipeEl = node.querySelector('.pipe');
@@ -273,7 +307,7 @@ PUZZLES.forEach((p,i)=>{
   const seg = node.querySelectorAll('.seg button');
   const verdict = node.querySelector('.verdict');
   let pipeline = [];
-  let view = p.view;
+  let view = 'text';
   let lastBytes = toBytes(p.blob);
   let imgURL = null;
 
@@ -283,8 +317,13 @@ PUZZLES.forEach((p,i)=>{
     let bytes = toBytes(p.blob);
     for(const m of pipeline){ try{ bytes = METHODS[m](bytes); }catch(e){ bytes = new Uint8Array(0); } }
     lastBytes = bytes;
-    if(p.sting && isImage(bytes) && pipeline.length) sting();
+    maybeSting();
     drawPreview();
+  }
+  // challenge V only: the sting is the reward for the exact intended move — base64 alone,
+  // previewed as an IMAGE. Any other pipeline, or the TEXT view, stays silent.
+  function maybeSting(){
+    if(p.sting && view==='image' && pipeline.length===1 && pipeline[0]==='base64') sting();
   }
   function drawPreview(){
     if(imgURL){ URL.revokeObjectURL(imgURL); imgURL=null; }
@@ -306,7 +345,7 @@ PUZZLES.forEach((p,i)=>{
   }
   function renderPipe(){
     pipeEl.innerHTML='';
-    if(!pipeline.length){ const ph=document.createElement('span'); ph.className='ph'; ph.textContent='empty — raw bytes, untouched'; pipeEl.appendChild(ph); return; }
+    if(!pipeline.length){ const ph=document.createElement('span'); ph.className='ph'; ph.textContent='no decoding'; pipeEl.appendChild(ph); return; }
     pipeline.forEach((m,idx)=>{
       if(idx){ const a=document.createElement('span'); a.className='arrow'; a.textContent='→'; pipeEl.appendChild(a); }
       const c=document.createElement('span'); c.className='chip';
@@ -324,8 +363,9 @@ PUZZLES.forEach((p,i)=>{
 
   node.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{ pipeline.push(t.dataset.m); renderPipe(); applyPipeline(); });
   node.querySelector('.clear').onclick=()=>{ pipeline=[]; renderPipe(); applyPipeline(); };
-  seg.forEach(b=>b.onclick=()=>{ view=b.dataset.v; drawPreview(); });
-  node.querySelector('.copy').onclick=()=>{ if(navigator.clipboard) navigator.clipboard.writeText(curText()); const b=node.querySelector('.copy'); b.textContent='COPIED'; setTimeout(()=>b.textContent='COPY',900); };
+  seg.forEach(b=>b.onclick=()=>{ view=b.dataset.v; maybeSting(); drawPreview(); });
+  wireCopy(node.querySelector('.copy-blob'), 'Copy encoded string', ()=>p.blob);
+  wireCopy(node.querySelector('.copy'),      'Copy decoded preview', ()=>curText());
 
   const input=node.querySelector('.submit input');
   function capture(){ node.classList.add('solved'); verdict.className='verdict ok'; verdict.textContent='correct — flag captured'; if(window.fxSolved) window.fxSolved(p.id); checkFnacUnlock(); }
@@ -336,13 +376,10 @@ PUZZLES.forEach((p,i)=>{
   }
   node.querySelector('.check').onclick=check; input.addEventListener('keydown',e=>{ if(e.key==='Enter') check(); });
 
+  // VIII is the only card with a hint box now (VI/VII/IX deliberately have none)
   if(p.hint){
     const cy=node.querySelector('.cyber'); cy.classList.remove('hide');
     cy.innerHTML = p.hint;
-  } else if(p.cyber){
-    const cy=node.querySelector('.cyber'); cy.classList.remove('hide');
-    cy.innerHTML = 'Stacked layers. Spot the tells: base64 uses <b>A-Z a-z 0-9 + /</b> and often ends in <b>=</b>; hex is only <b>0-9 a-f</b>; ROT47 leaves printable gibberish. Wrong order &rarr; nonsense. Real CTFers let <a href="https://gchq.github.io/CyberChef/" target="_blank" rel="noopener">CyberChef</a> auto-peel it &mdash; <button class="mini copy2">COPY BLOB</button>';
-    cy.querySelector('.copy2').onclick=()=>{ if(navigator.clipboard) navigator.clipboard.writeText(p.blob); cy.querySelector('.copy2').textContent='COPIED'; };
   }
 
   renderPipe(); applyPipeline();
@@ -366,16 +403,6 @@ function checkFnacUnlock(){
 }
 checkFnacUnlock();
 
-// two-step reset: clears this module's solved progress, then reloads
-(function(){
-  const btn=document.getElementById('reset-mod'); if(!btn) return;
-  let armed=false, t;
-  btn.addEventListener('click', ()=>{
-    if(!armed){ armed=true; btn.classList.add('armed'); btn.textContent='CONFIRM — ERASE PROGRESS?';
-      t=setTimeout(()=>{ armed=false; btn.classList.remove('armed'); btn.textContent='RESET MODULE'; }, 3500); }
-    else { clearTimeout(t); if(window.fxReset) window.fxReset(); try{ localStorage.removeItem('ctf-solved:v2:encoding'); }catch(e){} location.reload(); }
-  });
-})();
 </script>
 
 <script src="../confetti/manifest.js"></script>
