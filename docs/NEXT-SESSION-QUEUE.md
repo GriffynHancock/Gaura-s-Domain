@@ -103,8 +103,14 @@ Rate and red-flash bounds pass; it is the **luminance excursion** bound that is 
 `CLAUDE.md` marks this as safety-critical and not to be weakened. **Fix the animation, not the
 bound.** This module gets projected to a room of teenagers. Do this before the event.
 
-The motion-blur work in flight may move this number in either direction — check its report first
-(`.superpowers/sdd/caesar-fnac/task-motion-blur-report.md`).
+The motion-blur work has since landed (`d91ff23`) and its **after** numbers were never measured —
+the agent died on a session limit before that run, and the author chose to skip it rather than
+spend four minutes. So the current state is: baseline breach 0.0778-0.0886 vs a 0.07 bound,
+blur delta **unknown**. The blur's own report argues it should *lower* peak excursion (it removes
+three single-frame luminance steps that were accumulation-wipe artefacts, and `plateau = w/(w+d)`
+conserves energy — same light over more pixels at lower peak alpha), but that is an argument, not
+a measurement. Run `verify_flash_safety.mjs` once before the event and fix the animation if it
+still breaches.
 
 ---
 
