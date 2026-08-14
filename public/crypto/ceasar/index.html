@@ -16,6 +16,9 @@
     /* body text ON the dark readout ground. Deliberately near-identical in both themes:
        --read-bg is near-black in BOTH, so this does NOT invert. Never substitute --ink. */
     --read-fg:#ddd0b0;
+    /* --read-dim (~2.6:1 on --read-bg) is FURNITURE ONLY — axes, ticks, dashed bands.
+       Anything a student has to READ needs this instead: ~5.8:1 on --read-bg in both themes. */
+    --read-tick:#9c9372;
     /* number-line palette. NOTE: --read-bg is near-black in BOTH themes, so these are
        always read against a dark ground — they are tuned for contrast there, not on --bone. */
     --nl-in:#5aa9e6;      /* input space (top row) */
@@ -30,7 +33,7 @@
     --bone:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
     --ink:#ece3cd; --dim:#9a8f72; --line:#403a28;
     --signal:#e0593d; --brass:#c79338; --lamp:#62ab77;
-    --read-bg:#14120c; --read-fg:#ddd0b0;
+    --read-bg:#14120c; --read-fg:#ddd0b0; --read-tick:#9c9372;
     --nl-in:#6ab6ee; --nl-ok:#5cc985; --nl-bad:#e86a4c;
   }
   *{box-sizing:border-box}
@@ -269,10 +272,13 @@
   .nl-riddle b{color:var(--read-on)}
   .nl-cap{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;flex-wrap:wrap}
   .nl-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-  .nl-guard{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.56rem;letter-spacing:.12em;
-    text-transform:uppercase;color:var(--read-dim);cursor:pointer;user-select:none}
-  .nl-guard input{accent-color:var(--read-on);cursor:pointer;margin:0}
-  .nl-guard:hover{color:#c9bb96}
+  /* the explainer control: must read as an obvious, comfortably tappable control, not 9px furniture */
+  .nl-guard{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:.64rem;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--read-fg);cursor:pointer;user-select:none;
+    min-height:34px;padding:6px 9px;margin:-6px -9px;border-radius:5px}
+  .nl-guard input{accent-color:var(--read-on);cursor:pointer;margin:0;width:15px;height:15px}
+  .nl-guard:hover{color:var(--read-on);background:#ffffff0f}
+  .nl-guard:focus-within{outline:2px solid var(--read-on);outline-offset:1px}
   .nl-formula{font-size:clamp(.72rem,2.6vw,.9rem);font-weight:700;color:var(--read-on);letter-spacing:.03em;
     text-shadow:0 0 12px #f0bb4d55}
   .nl-formula .nl-bad{color:var(--nl-bad);text-shadow:none}
@@ -289,7 +295,8 @@
   /* the output line is drawn as a dashed silhouette so unfilled sockets read as HOLES */
   .nl-axis.nl-result{stroke:var(--read-dim);stroke-dasharray:2.5 2.5;opacity:.9}
   .nl-tick{stroke:var(--read-dim);stroke-width:.7}
-  .nl-tlabel{fill:var(--read-dim);font-family:var(--mono);font-size:6px;text-anchor:middle}
+  /* the 26 output labels ARE the lesson (which sockets are empty) — never --read-dim here */
+  .nl-tlabel{fill:var(--read-tick);font-family:var(--mono);font-size:6px;text-anchor:middle}
   .nl-band{fill:#f0bb4d0e;stroke:#f0bb4d26;stroke-width:1}
   .nl-lapband{fill:none;stroke:var(--read-dim);stroke-width:.6;stroke-dasharray:2 2;opacity:.55}
   .nl-rowlbl{fill:var(--read-dim);font-family:var(--mono);font-size:6px;letter-spacing:.1em;text-transform:uppercase}
@@ -837,11 +844,15 @@ const A_CLUES={
   // NOT "a cat's lives" (the original suggestion): the idiom is SEVEN lives in Italian, Spanish,
   // Greek, German, Turkish, Portuguese and Arabic, and 7 is also a multiplier in this list — so
   // that clue is ambiguous between two live keys for a big slice of any real classroom.
-  9:'three rows of three, on a noughts-and-crosses grid',
+  // Also NOT "three rows of three": a clue must not SAY a number that is itself a live multiplier,
+  // because a stuck student types the number they can see. 3 is in this list.
+  9:'squares on a noughts-and-crosses grid',
   11:'players on a soccer team',
   15:'minutes in a quarter of an hour',
   21:'the spots on a die, all six faces added up',
-  25:'five rows of five'
+  // "five rows of five" / "a 5 by 5 grid" both SAY five, and 5 is a live multiplier. "a quarter of
+  // one hundred" names only 4 and 100, neither of which is a valid key, and avoids US coinage.
+  25:'a quarter of one hundred'
 };
 
 let storedSolved = new Set(); try{ storedSolved = new Set(JSON.parse(localStorage.getItem('ctf-solved:v2:caesar') || '[]')); }catch(e){}
@@ -985,7 +996,7 @@ const REWARDS = {
     const match=Object.keys(REWARDS).find(k=>k.toLowerCase()===v);
     if(match){ const u=get(); if(!u.includes(match)){ u.push(match); save(u); } ver.className='uverdict ok';
       ver.textContent='unlocked: '+REWARDS[match].label+' — see below'; renderWall(); }
-    else if(v){ ver.className='uverdict no'; ver.textContent='not a bonus code — solve a starred capture'; }
+    else if(v){ ver.className='uverdict no'; ver.textContent='not a reward code — capture a flag and key it in exactly'; }
   }
   document.getElementById('ubtn').addEventListener('click', unlock);
   inp.addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
