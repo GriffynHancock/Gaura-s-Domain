@@ -53,7 +53,7 @@ function ctfUid(){
   document.cookie='ctf-uid='+v+';path=/;max-age=31536000;samesite=lax'; return v;
 }
 const fnv=s=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; };
-const UID=ctfUid();
+ctfUid(); // ensures the shared ctf-uid cookie exists before the confetti engine seeds off it
 window.FX_TOTAL = 7; // matches STAGES.length — confetti fires once all 7 nights are real+solved
 
 function unlocked(){ return document.cookie.match(/(?:^|; )ctf-fnac-unlocked=1(?:;|$)/); }
@@ -93,8 +93,8 @@ function seededRotation(id){ return (fnv('rot:'+id) % 500) / 100 - 2.5; } // -2.
 
 const STAGES = [
   {id:'night1', title:'Night 1 · Static', ready:true},
-  {id:'night2', title:"Night 2 · It's In The Metadata", ready:true},
-  {id:'night3', title:'Night 3 · 10,000 Cats', ready:true},
+  {id:'night2', title:'Night 2 · Raw Bit Weaving', ready:true},
+  {id:'night3', title:'Night 3 · Tung Tung Tung Sahur', ready:true},
   {id:'night4', title:'Night 4', ready:false},
   {id:'night5', title:'Night 5', ready:false},
   {id:'nightmare', title:'Nightmare', ready:false},
@@ -137,13 +137,16 @@ function readFileAsBytes(file){
   });
 }
 
-function bytesToHexDump(bytes, bytesPerRow=16){
+// strictAscii also dots out CR/LF so rows stay aligned when the data is binary.
+// Night 1's viewers keep the original (newline-passing) behaviour untouched.
+function bytesToHexDump(bytes, bytesPerRow=16, strictAscii=false){
   let out = '';
   for(let row=0; row*bytesPerRow < bytes.length; row++){
     const start = row*bytesPerRow;
     const chunk = bytes.slice(start, start+bytesPerRow);
     const hex = Array.from(chunk).map(b=>b.toString(16).padStart(2,'0')).join(' ').padEnd(bytesPerRow*3-1,' ');
-    const ascii = printable(toStr(chunk));
+    const raw = toStr(chunk);
+    const ascii = strictAscii ? raw.replace(/[^\x20-\x7E]/g,'·') : printable(raw);
     out += start.toString(16).padStart(6,'0') + '  ' + hex + '  ' + ascii + '\n';
   }
   return out;
@@ -176,6 +179,9 @@ function mountRawBytesViewer(container, onBytes){
 }
 
 // ---- Metadata Viewer widget (Task 7) ----
+// RESERVED: not mounted by any current night. Kept deliberately — the design spec
+// (docs/superpowers/specs/2026-08-11-five-nights-at-cryptos-design.md) lists the exiftool
+// stand-in as shared tooling for the unbuilt Nights 4+, alongside the bit-plane viewer below.
 function parsePngTextChunks(bytes){
   const out = {};
   const sig = [0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A];
@@ -226,6 +232,8 @@ function mountMetadataViewer(container){
 }
 
 // ---- Bit-Plane / LSB Viewer widget (Task 8) ----
+// RESERVED: not mounted by any current night (see the note on the metadata viewer above) —
+// the zsteg stand-in is spec'd shared tooling held for the unbuilt Nights 4+.
 function extractLsbMessage(imageData, maxLen=4096){
   const d = imageData.data; // RGBA, one pixel = 4 bytes, R channel is index 0 of each pixel
   const bit = i => d[i*4] & 1;
@@ -276,6 +284,162 @@ function mountBitPlaneViewer(container){
   zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
   zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
   zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); handle(e.dataTransfer.files[0]); });
+}
+
+// ---- shared drop-target wiring: click-to-choose + drag-and-drop, one hidden input each ----
+function wireDropTarget(zone, onFile){
+  const input = document.createElement('input');
+  input.type = 'file'; input.style.display = 'none';
+  input.className = zone.dataset.inputClass || '';
+  zone.parentNode.insertBefore(input, zone.nextSibling);
+  zone.addEventListener('click', ()=>input.click());
+  input.addEventListener('change', ()=>{ if(input.files[0]) onFile(input.files[0]); });
+  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
+  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over');
+    if(e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]); });
+  return input;
+}
+
+// ---- Night 2: bit-weave tool ----
+// Inverse of tools/fnac_png.py bit_split(). Bits in a source byte are numbered 7 (MSB)..0 (LSB).
+// Half A holds the even-indexed bits in the order 6,4,2,0; half B the odd-indexed bits 7,5,3,1.
+// One source byte = one nibble in each half; source byte 0 is the HIGH nibble of output byte 0,
+// source byte 1 the LOW nibble of output byte 0, and so on.
+function weaveHalves(a, b){
+  if(a.length !== b.length) throw new Error('length mismatch');
+  const out = new Uint8Array(a.length * 2);
+  for(let i=0;i<out.length;i++){
+    const idx = i >> 1;
+    const nibA = (i % 2 === 0) ? (a[idx] >> 4) & 15 : a[idx] & 15;
+    const nibB = (i % 2 === 0) ? (b[idx] >> 4) & 15 : b[idx] & 15;
+    let byte = 0;
+    [6,4,2,0].forEach((bit,pos)=>{ byte |= ((nibA >> (3-pos)) & 1) << bit; });
+    [7,5,3,1].forEach((bit,pos)=>{ byte |= ((nibB >> (3-pos)) & 1) << bit; });
+    out[i] = byte;
+  }
+  return out;
+}
+
+const PNG_SIG_JS = [0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A];
+const looksLikePng = b => b.length > 8 && PNG_SIG_JS.every((v,i)=>b[i]===v);
+
+function mountWeaveTool(container){
+  container.innerHTML = `
+    <div style="display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+      <div><div class="dropzone zone-a">drop <b>file-a.bin</b> here — or click</div></div>
+      <div><div class="dropzone zone-b">drop <b>file-b.bin</b> here — or click</div></div>
+    </div>
+    <div class="weave-msg" style="font-family:var(--mono);font-size:.74rem;color:var(--dim);margin-top:8px"></div>
+    <img class="weave-img" alt="" style="display:none;max-width:240px;width:100%;margin-top:10px;border:1px solid var(--edge);border-radius:6px;background:#fff">
+    <div class="hexdump weave-dump" style="display:none;margin-top:8px"></div>`;
+  const msg = container.querySelector('.weave-msg');
+  const img = container.querySelector('.weave-img');
+  const dump = container.querySelector('.weave-dump');
+  const zoneA = container.querySelector('.zone-a');
+  const zoneB = container.querySelector('.zone-b');
+  zoneA.dataset.inputClass = 'weave-in-a';
+  zoneB.dataset.inputClass = 'weave-in-b';
+  let bytesA = null, bytesB = null, url = null;
+
+  function say(text, warn){
+    msg.textContent = text;
+    msg.style.color = warn ? 'var(--accent)' : 'var(--dim)';
+  }
+
+  function attempt(){
+    if(!bytesA || !bytesB){ say('waiting for both halves.'); return; }
+    let woven;
+    try{ woven = weaveHalves(bytesA, bytesB); }
+    catch(e){
+      say(`those two files aren't the same size (${bytesA.length} vs ${bytesB.length}) — the halves should match.`, true);
+      img.style.display='none'; dump.style.display='none';
+      return;
+    }
+    dump.style.display = 'block';
+    dump.textContent = bytesToHexDump(woven, 16, true);
+    if(url){ URL.revokeObjectURL(url); url = null; }
+    if(!looksLikePng(woven)){
+      img.style.display = 'none';
+      let swapped = false;
+      try{ swapped = looksLikePng(weaveHalves(bytesB, bytesA)); }catch(e){}
+      say(swapped ? "that came out without a PNG header — but it does if you swap A and B. Try the other way round."
+                  : "that came out without a PNG header, so it isn't an image yet. Check you dropped the right two files.", true);
+      return;
+    }
+    url = URL.createObjectURL(new Blob([woven], {type:'image/png'}));
+    img.onerror = ()=>{ img.style.display='none'; say("the bytes weave together, but nothing will render them.", true); };
+    img.onload = ()=>{ img.style.display='block'; };
+    img.src = url;
+    say(`${woven.length} bytes woven back together. Read the dump to the end.`);
+  }
+
+  async function take(which, file){
+    try{
+      const bytes = await readFileAsBytes(file);
+      if(which === 'a') bytesA = bytes; else bytesB = bytes;
+      (which === 'a' ? zoneA : zoneB).textContent = `${file.name} — ${bytes.length} bytes`;
+      attempt();
+    }catch(e){ say("couldn't read that file.", true); }
+  }
+  wireDropTarget(zoneA, f=>take('a', f));
+  wireDropTarget(zoneB, f=>take('b', f));
+}
+
+// ---- Night 3: repeating-key XOR / crib tool ----
+function xorRepeating(bytes, key){
+  const out = new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i++) out[i] = bytes[i] ^ key[i % key.length];
+  return out;
+}
+const hexOf = b => Array.from(b).map(v=>v.toString(16).padStart(2,'0')).join(' ');
+// derived key bytes are student-controlled — a crib byte can XOR to '<' and eat the rest of the line
+const escHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function mountXorTool(container, cipherUrl){
+  container.innerHTML = `
+    <div class="hexdump xor-cipher" style="max-height:150px">loading the message…</div>
+    <label style="display:block;font-family:var(--mono);font-size:.7rem;color:var(--dim);margin-top:12px">CRIB — text you think the message starts with</label>
+    <input class="xor-crib" placeholder="flag{" style="width:100%;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:9px;margin-top:5px">
+    <div class="xor-crib-out" style="font-family:var(--mono);font-size:.76rem;color:var(--ink);margin-top:6px"></div>
+    <label style="display:block;font-family:var(--mono);font-size:.7rem;color:var(--dim);margin-top:12px">KEY — repeated over the whole message</label>
+    <input class="xor-key" placeholder="type a key…" style="width:100%;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:9px;margin-top:5px">
+    <div class="hexdump xor-plain" style="white-space:pre-wrap;margin-top:6px;max-height:200px">—</div>`;
+  const cipherBox = container.querySelector('.xor-cipher');
+  const cribIn = container.querySelector('.xor-crib');
+  const cribOut = container.querySelector('.xor-crib-out');
+  const keyIn = container.querySelector('.xor-key');
+  const plainBox = container.querySelector('.xor-plain');
+  let cipher = null;
+
+  function renderCrib(){
+    const crib = toBytes(cribIn.value);
+    if(!cipher || !crib.length){ cribOut.textContent = ''; return; }
+    if(crib.length > cipher.length){ cribOut.textContent = "that crib is longer than the message."; return; }
+    const keyBytes = xorRepeating(crib, cipher.slice(0, crib.length));
+    cribOut.innerHTML = `key bytes implied at offset 0: <b style="color:var(--gold)">[${escHtml(printable(toStr(keyBytes)))}]</b>` +
+      `<span style="color:var(--dim)"> &nbsp;hex ${hexOf(keyBytes)} &nbsp;(${keyBytes.length} bytes — mind the spaces)</span>`;
+  }
+  function renderPlain(){
+    const key = toBytes(keyIn.value);
+    if(!cipher){ plainBox.textContent = 'no message loaded.'; return; }
+    if(!key.length){ plainBox.textContent = '—'; return; }
+    plainBox.textContent = printable(toStr(xorRepeating(cipher, key)));
+  }
+  function setCipher(bytes){
+    cipher = bytes;
+    cipherBox.textContent = bytesToHexDump(cipher, 16, true);
+    renderCrib(); renderPlain();
+  }
+
+  cribIn.addEventListener('input', renderCrib);
+  keyIn.addEventListener('input', renderPlain);
+  // arrayBuffer, never .text() — the ciphertext contains NULs and other non-UTF-8 bytes
+  fetch(cipherUrl).then(r=>{
+    if(!r.ok) throw new Error(r.status);
+    return r.arrayBuffer();
+  }).then(buf=>setCipher(new Uint8Array(buf)))
+    .catch(()=>{ cipherBox.textContent = "couldn't load the message — download it and read it yourself."; });
 }
 
 // ---- shared flag-check helper (Task 9), used by every night ----
@@ -331,15 +495,17 @@ function buildNight1(bodyEl){
 function buildNight2(bodyEl){
   bodyEl.innerHTML = `
     <p style="font-family:var(--mono);font-size:.82rem;color:var(--dim)">
-      Four more files. Same static. You already know how to read the bytes — try it, see what you get.
+      Something got taken apart in here. Not cut in half — taken apart smaller than that.
+      Two files came out. Neither one opens, neither one is anything. Put it back together.
     </p>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;margin:10px 0">
-      ${[1,2,3,4].map(i=>`<div><img src="assets/night2/file-${i}.png" style="width:80px;height:80px;image-rendering:pixelated;border:1px solid var(--edge);border-radius:4px;display:block"><a href="assets/night2/file-${i}.png" download style="color:var(--gold);font-family:var(--mono);font-size:.7rem">↓ file-${i}.png</a></div>`).join('')}
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin:12px 0">
+      <a href="assets/night2/file-a.bin" download style="color:var(--gold);font-family:var(--mono);font-size:.78rem;border:1px solid var(--edge);border-radius:6px;padding:10px 14px;text-decoration:none">↓ file-a.bin</a>
+      <a href="assets/night2/file-b.bin" download style="color:var(--gold);font-family:var(--mono);font-size:.78rem;border:1px solid var(--edge);border-radius:6px;padding:10px 14px;text-decoration:none">↓ file-b.bin</a>
     </div>
-    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">RAW BYTES (the old way)</div>
+    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">RAW BYTES (stands in for xxd — look at what you were given)</div>
     <div class="tool-raw"></div>
-    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">METADATA (try this instead)</div>
-    <div class="tool-meta"></div>
+    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">WEAVE — drop both halves in</div>
+    <div class="tool-weave"></div>
     <div class="submit" style="display:flex;gap:9px;margin-top:16px">
       <input class="flag-input" placeholder="flag{...}" style="flex:1;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:10px">
       <button class="flag-check" style="font-family:var(--mono);font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:0 16px">SUBMIT</button>
@@ -347,27 +513,32 @@ function buildNight2(bodyEl){
     <div class="verdict" style="font-family:var(--mono);font-size:.76rem;margin-top:8px"></div>
   `;
   mountRawBytesViewer(bodyEl.querySelector('.tool-raw'));
-  mountMetadataViewer(bodyEl.querySelector('.tool-meta'));
-  wireFlagCheck(bodyEl, 'night2', 'flag{its_in_the_metadata}');
+  mountWeaveTool(bodyEl.querySelector('.tool-weave'));
+  wireFlagCheck(bodyEl, 'night2', 'flag{raw_bit_weaving}');
 }
 
 // ---- Night 3 wiring (Task 11) ----
 function buildNight3(bodyEl){
-  const variant = fnv(UID + ':fnac:night3') % 10;
   bodyEl.innerHTML = `
     <p style="font-family:var(--mono);font-size:.82rem;color:var(--dim)">
-      Somebody's been feeding a stray. The photo's ordinary. That's the point.
+      It came down the hall at 3am, three knocks at a time, and left this behind.
+      Every byte of it has been walked over by the same short secret, again and again.
+      Whatever's out there doesn't hide its name. It shouts it.
     </p>
-    <div style="margin:10px 0"><img src="assets/night3/cat-${variant}.png" style="max-width:280px;width:100%;border:1px solid var(--edge);border-radius:6px;display:block"><a href="assets/night3/cat-${variant}.png" download style="color:var(--gold);font-family:var(--mono);font-size:.7rem">↓ cat-${variant}.png</a></div>
-    <div class="tool-bp" style="margin-top:10px"></div>
+    <div style="margin:12px 0"><img src="assets/night3/hint-sahur.webp" alt="" style="max-width:220px;width:100%;border:1px solid var(--edge);border-radius:6px;display:block"></div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin:12px 0">
+      <a href="assets/night3/message.txt" download style="color:var(--gold);font-family:var(--mono);font-size:.78rem;border:1px solid var(--edge);border-radius:6px;padding:10px 14px;text-decoration:none">↓ message.txt</a>
+    </div>
+    <div class="lab" style="font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;color:var(--dim);margin-top:14px">XOR BENCH (stands in for xortool / CyberChef)</div>
+    <div class="tool-xor" style="margin-top:8px"></div>
     <div class="submit" style="display:flex;gap:9px;margin-top:16px">
       <input class="flag-input" placeholder="flag{...}" style="flex:1;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:10px">
       <button class="flag-check" style="font-family:var(--mono);font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:0 16px">SUBMIT</button>
     </div>
     <div class="verdict" style="font-family:var(--mono);font-size:.76rem;margin-top:8px"></div>
   `;
-  mountBitPlaneViewer(bodyEl.querySelector('.tool-bp'));
-  wireFlagCheck(bodyEl, 'night3', 'flag{ten_thousand_cats}');
+  mountXorTool(bodyEl.querySelector('.tool-xor'), 'assets/night3/message.txt');
+  wireFlagCheck(bodyEl, 'night3', 'flag{tung_tung_tung_sahur}');
 }
 
 // ---- gate check (runs last, once everything above is defined) ----

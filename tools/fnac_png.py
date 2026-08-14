@@ -79,6 +79,64 @@ def read_text_chunks(png_bytes: bytes) -> dict:
     return out
 
 
+def bit_split(data: bytes) -> tuple:
+    """Splits a file at the bit level into two halves (Night 2, "Raw Bit Weaving").
+
+    Bits within a source byte are numbered 7 (MSB) .. 0 (LSB).
+      half A collects the EVEN-indexed bits of each byte, in the order 6, 4, 2, 0
+      half B collects the ODD-indexed  bits of each byte, in the order 7, 5, 3, 1
+
+    Each source byte therefore contributes exactly one nibble (4 bits) to each
+    half. Nibbles are packed MSB-first, in source order: source byte 0 becomes
+    the HIGH nibble of output byte 0, source byte 1 the LOW nibble of output
+    byte 0, source byte 2 the high nibble of output byte 1, and so on. Each half
+    is therefore ceil(len/2) bytes. If the source length is odd the final output
+    byte's LOW nibble is zero-padded (and the original length cannot be recovered
+    from the halves alone — build_fnac_assets.py asserts an even-length source so
+    the weave is an exact inverse).
+    """
+    a_bits, b_bits = [], []
+    for byte in data:
+        for bit in (6, 4, 2, 0):
+            a_bits.append((byte >> bit) & 1)
+        for bit in (7, 5, 3, 1):
+            b_bits.append((byte >> bit) & 1)
+
+    def pack(bits):
+        # bits are already in emit order; pack 8 at a time, MSB-first.
+        if len(bits) % 8:
+            bits = bits + [0] * (8 - len(bits) % 8)
+        return bytes(int(''.join(str(x) for x in bits[i:i + 8]), 2)
+                     for i in range(0, len(bits), 8))
+
+    return pack(a_bits), pack(b_bits)
+
+
+def bit_weave(half_a: bytes, half_b: bytes) -> bytes:
+    """Exact inverse of bit_split. Returns 2 * len(half_a) bytes; if the original
+    source had an odd length, the caller must drop the final (zero-padded) byte."""
+    if len(half_a) != len(half_b):
+        raise ValueError(f'halves differ in length: {len(half_a)} vs {len(half_b)}')
+    out = bytearray()
+    for i in range(len(half_a) * 2):
+        nib_a = (half_a[i // 2] >> 4) & 0xF if i % 2 == 0 else half_a[i // 2] & 0xF
+        nib_b = (half_b[i // 2] >> 4) & 0xF if i % 2 == 0 else half_b[i // 2] & 0xF
+        byte = 0
+        for pos, bit in enumerate((6, 4, 2, 0)):
+            byte |= ((nib_a >> (3 - pos)) & 1) << bit
+        for pos, bit in enumerate((7, 5, 3, 1)):
+            byte |= ((nib_b >> (3 - pos)) & 1) << bit
+        out.append(byte)
+    return bytes(out)
+
+
+def xor_repeating(data: bytes, key: bytes) -> bytes:
+    """Repeating-key XOR (Night 3). Its own inverse."""
+    if not key:
+        raise ValueError('empty key')
+    return bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
+
+
 def embed_lsb_message(img: Image.Image, message: bytes) -> Image.Image:
     """Hides a length-prefixed message in the LSB of the red channel,
     one bit per pixel, row-major. Green/blue channels are untouched —
