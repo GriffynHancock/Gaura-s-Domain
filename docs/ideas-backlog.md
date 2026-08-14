@@ -86,3 +86,51 @@ Open questions for the research agent(s):
 
 Worth splitting into more than one research pass — the QR polyglot feasibility and the
 tamper-resistant-win-condition design are fairly independent problems.
+
+## Encryption 101 extensions — "vaguely related games after the lesson" (2026-08-14)
+
+Author's brainstorm, with an assessment. **Not scheduled. Do not build without a design pass.**
+
+### A. Torus — build this one first
+`Z/26 × Z/26` **is** a discrete torus, and Caesar challenge V (two dials, odd letters / even
+letters) is already a point on it. This isn't a metaphor being stretched onto the maths; it's the
+correct object for the cipher that's already shipped.
+
+What it teaches honestly:
+- **Keyspace geometry.** One dial = 26 points on a circle. Two dials = 676 on a torus. Key length
+  *multiplies*, it doesn't add — and that's the real reason long keys matter, made visible.
+- **Why brute force gets hard**: you search a surface, not a line.
+- **No false gradient.** A torus has no downhill. Contrast the spiral idea below.
+- The natural close: "now imagine 16 dials — a 16-torus, which you cannot draw." The
+  undrawability *is* the lesson.
+
+Cheapest of the four, most honest, and it upgrades existing content rather than adding a new
+concept.
+
+### B. Complex plane — really the Hill cipher, and that's a feature
+Two dials, real and imaginary. Complex multiplication = rotation + scale. On a finite set this is
+Gaussian integers mod n, `Z[i]/(n)`; multiplying by `a+bi` is invertible iff the norm `a²+b²` is
+coprime to n — so the existing guardrail lesson generalises exactly, with a richer condition.
+
+The payoff: complex multiply *is* the 2×2 matrix `[[a,−b],[b,a]]`, so this is a special case of the
+**Hill cipher** — matrix multiply mod 26, a real classical cipher and a real CTF category. Letters
+pair into (x,y) points; the dials rotate and scale the whole lattice; you hunt the transform that
+makes text readable. It's the genuine conceptual step from 1D substitution toward block ciphers.
+
+### C. Big text, dial 1–100, chunks unlock on different combinations
+Fun, but it has a bug as specified: **on a 26-letter alphabet a dial of 1–100 is 1–26 repeated
+four times**, silently. Two ways out, and the second is better teaching:
+1. Use a bigger alphabet — ROT47's 94 printable ASCII chars make 1–94 meaningful (and mod 94 =
+   2×47 gives far more valid multipliers than mod 26).
+2. Keep the dial at 100 and **show the collapse**: the readout says "key 73 = key 21". They
+   discover that keyspace ≠ dial range themselves.
+
+The chunks-unlock-separately mechanic is worth keeping either way — a multi-keyed document is a
+real thing, and partial decryption is a real CTF experience.
+
+### D. Complex exponent / spiral — drop it
+A spiral that "lines up" as you slide implies a continuous approach to the answer: a gradient you
+can follow. `CLAUDE.md`'s teaching rule names this exact failure (the downhill-flow search-space
+visual). Modular arithmetic is not smooth — 25 and 1 are adjacent on the ring and far apart on the
+number line — so this visual would teach the opposite of the truth. Beautiful, dishonest.
+(Complex sine has the same objection.)
