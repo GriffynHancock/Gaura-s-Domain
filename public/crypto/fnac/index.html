@@ -76,22 +76,52 @@
   /* --- intro creep overlay ---
      Every flicker step is set from JS as an inline style; nothing here animates the flicker,
      because CSS transitions are paused in a backgrounded automation tab and the measured
-     flicker must be the one a student actually sees. The only CSS animation is the slow
-     eye-glow pulse (~0.36Hz), which is nowhere near flash-relevant. */
+     flicker must be the one a student actually sees. Two CSS animations run, both far below
+     anything flash-relevant: the slow eye-glow pulse (2.8s, ~0.36Hz) and the failing-light
+     flicker (3.1s cycle carrying exactly 3 dips, ~0.97 light/dark cycles per second, each dip
+     held ~200ms so it is above the flash verifier's 180ms sampling guard rather than aliased
+     under it). The two periods deliberately do not divide each other, so the combined motion
+     does not visibly repeat inside the 7.8s the eyes are on screen. */
   #creep{position:fixed; inset:0; z-index:9999; background:#000; opacity:0; display:none;
     align-items:center; justify-content:center; overflow:hidden}
   #creep.on{display:flex}
-  #creep-eyes{position:relative; opacity:0; max-width:min(92vw,660px); max-height:82vh; line-height:0}
+  /* small and far away in the dark, NOT filling the frame — the distance is the scare. ~5x down
+     from the old min(92vw,660px): 132px on a desktop or a projector, with an 84px floor so it
+     does not vanish on a 360px phone. Square asset, so width alone bounds it. */
+  #creep-eyes{position:relative; opacity:0; width:clamp(84px,20vw,132px); line-height:0}
   #creep-eyes img{display:block; width:100%; height:auto; mix-blend-mode:screen}
   /* the pulse: a bloom sitting ON the two bright eyes, in screen blend. Not a brightness or
-     opacity ramp of the whole picture — the dark 95% of the frame never moves. */
-  #creep-glow{position:absolute; inset:0; mix-blend-mode:screen; pointer-events:none; opacity:.45;
+     opacity ramp of the whole picture — the dark 95% of the frame never moves. Opacities are a
+     quarter of the original bloom; the 5x size cut already shrank its footprint by the same
+     factor, so the two multiply. */
+  #creep-glow{position:absolute; inset:0; mix-blend-mode:screen; pointer-events:none; opacity:.12;
     background:
       radial-gradient(circle at 34.5% 31%, rgba(255,236,205,.42) 0%, rgba(255,190,110,.16) 34%, rgba(0,0,0,0) 62%),
       radial-gradient(circle at 64.5% 31%, rgba(255,236,205,.42) 0%, rgba(255,190,110,.16) 34%, rgba(0,0,0,0) 62%)}
   #creep-eyes.breathe #creep-glow{animation:creep-breathe 2.8s ease-in-out infinite}
-  @keyframes creep-breathe{ 0%,100%{opacity:.30; transform:scale(1)} 50%{opacity:.95; transform:scale(1.12)} }
-  @media(prefers-reduced-motion:reduce){ #creep-eyes.breathe #creep-glow{animation:none; opacity:.62} }
+  @keyframes creep-breathe{ 0%,100%{opacity:.08; transform:scale(1)} 50%{opacity:.24; transform:scale(1.12)} }
+  /* Failing light on top of the breath. Deliberately NOT a sine and NOT evenly spaced: the three
+     dips sit at 7.5% / 31% / 66% of the cycle at three different depths, so it reads as a bad
+     contact rather than an animation. It rides the `flick` class, which — unlike `breathe` — is
+     NOT removed at the restore boundary: snapping brightness back to 1 at the exact instant the
+     600ms fade starts would be an upward luminance step. The flicker dies out with the fade, and
+     creepFinish() drops the class. Filter (not opacity) so it never fights the inline opacity JS
+     drives the flicker-in and the fade with. */
+  #creep-eyes.flick{animation:creep-flicker 3.1s linear infinite}
+  @keyframes creep-flicker{
+    0%,7%{filter:brightness(1)}      7.5%{filter:brightness(.72)}
+    13.5%{filter:brightness(.80)}    14%{filter:brightness(1)}
+    30.5%{filter:brightness(1)}      31%{filter:brightness(.68)}
+    37.5%{filter:brightness(.74)}    38%{filter:brightness(1)}
+    65.5%{filter:brightness(1)}      66%{filter:brightness(.82)}
+    72%{filter:brightness(.76)}      72.5%{filter:brightness(1)}
+    100%{filter:brightness(1)}
+  }
+  /* reduced motion suppresses BOTH — a flicker is the exact thing this query exists to stop */
+  @media(prefers-reduced-motion:reduce){
+    #creep-eyes.breathe #creep-glow{animation:none; opacity:.16}
+    #creep-eyes.flick{animation:none; filter:none}
+  }
 
   /* deliberately near-invisible: it is a way back in for whoever wants one, not a feature. */
   /* in the page flow, not fixed: it belongs at the very bottom of the document, past everything,
@@ -436,7 +466,7 @@ function creepStart(){
   const el = creepBuild();
   creepState.el = el;
   const eyes = el.querySelector('#creep-eyes');
-  eyes.classList.remove('breathe');
+  eyes.classList.remove('breathe','flick');
   eyes.style.opacity = '0';
   el.classList.add('on');
   el.style.transition = 'none';
@@ -480,7 +510,7 @@ function creepStart(){
     if(reduced){
       eyes.style.transition = `opacity ${CREEP.FADE}ms linear`;
       eyes.style.opacity = '.92';
-      eyes.classList.add('breathe');
+      eyes.classList.add('breathe','flick');
     }
   });
   if(!reduced){
@@ -492,7 +522,7 @@ function creepStart(){
       creepAt(t, ()=>{ eyes.style.opacity = '0'; });
       t += CREEP.FLICKER_ON;
     }
-    creepAt(t, ()=>{ eyes.style.opacity = '.92'; eyes.classList.add('breathe'); });
+    creepAt(t, ()=>{ eyes.style.opacity = '.92'; eyes.classList.add('breathe','flick'); });
   }
   // hard cut, no fade: playback is stopped here at exactly CREEP.EYES. The shipped scare.mp3 is
   // trimmed by tools/build_fnac_assets.py to 7.93s — a hair past this cut, never short of it, so
@@ -516,7 +546,7 @@ function creepFinish(how){
   const el = creepState.el;
   if(el){
     const eyes = el.querySelector('#creep-eyes');
-    if(eyes){ eyes.classList.remove('breathe'); eyes.style.transition='none'; eyes.style.opacity='0'; }
+    if(eyes){ eyes.classList.remove('breathe','flick'); eyes.style.filter=''; eyes.style.transition='none'; eyes.style.opacity='0'; }
     el.classList.remove('on');
     el.style.transition = 'none';
     el.style.opacity = '0';
