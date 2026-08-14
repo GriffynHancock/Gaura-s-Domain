@@ -136,43 +136,72 @@ screams its method). V–IX mix layers and start baiting with decoys.
   Current pad: `R=176` (px 2304→2348, one extra partial row of static), hex tail +74 B.
 - **Red herrings:** the whole puzzle *is* the red herring — the "obvious" base64 gives a
   joke image, the less-obvious hex gives the flag. The tail now baits `url` as well.
+- **No hint box.** VIII used to carry a `.cyber` hint spelling out both faces; the author
+  removed it, so **no puzzle in this module has a hint any more**. The `hint` field, the
+  `if(p.hint)` branch, the `.cyber`/`.hide` CSS and the template's hint `<div>` are all gone
+  from `index.html` — don't reintroduce a `hint` key expecting it to render.
 
 ### IX — Read the Room · `base64` → `rot47` → `atbash`, mind the decoys
-- **Blob:** `base64(rot47(atbash(plain)))` — **three** layers. Both `atbash` and `rot47` are
-  byte-wise involutions, so the builder encodes with the same pair in mirror order and the
-  student's click order (`base64`, `rot47`, `atbash`) peels it. `\n` (0x0a) is outside
-  rot47's `[33,126]` range and rides through untouched, so the dump keeps its line breaks.
-- **Why rot47 outermost — do not swap these back.** The first shipped version was
+- **Blob:** `base64(dump)`, where `dump` is a **plain readable** capture dump whose one
+  `payload:` field carries `rot47(atbash(flag))`. The layering is **per-region, not
+  per-document** — that is the whole design (see the three beats below). Both `atbash` and
+  `rot47` are byte-wise involutions, so the value is built with the same pair in mirror
+  order and the student's click order (`base64`, `rot47`, `atbash`) peels it. `\n` (0x0a)
+  is outside rot47's `[33,126]` range and rides through untouched, so the dump keeps its
+  line breaks at every layer.
+- **The three beats (the designed experience — don't flatten this again):**
+  1. **`base64`** → a *readable* dump. The decoys and the `payload:` signpost are legible;
+     the payload value is visible punctuation soup (`F@KEL:GKH0G6G:30@C>G0FC:98N`).
+  2. **`base64 → rot47`** → the payload resolves to `uozt{ivzw_vevib_ormv_urihg}` — mirrored
+     gibberish in `flag{}` shape, i.e. it reads as **yet another decoy**. This is the
+     bamboozle: the correct next step looks like a dead end. (The surrounding dump is rot47
+     soup by now — the page's pipeline applies each method to the whole blob. Expected and
+     fine; the student's eye is on the payload.)
+  3. **`base64 → rot47 → atbash`** → the flag, and the page's only `FLAG_RE` highlight.
+  A previous rebuild ran rot47+atbash over the **whole document**, which killed beat 1
+  (nothing readable after base64, no decoys, no signpost) and with it the puzzle.
+- **Why rot47 inside atbash — do not swap these back.** The first shipped version was
   `base64(atbash(rot47(plain)))` (student order base64 → atbash → rot47) and it had a
   structural near-miss. The natural two-layer guess `base64 → rot47` computed
   `rot47(atbash(rot47(plain)))`; lowercase `a`–`o` rot47 to `2`–`@`, which atbash leaves
   untouched, so the second rot47 returns them **exactly**. ~58% of the alphabet is invariant
   under the wrong order, so *any* English payload leaks a near-readable `flag~…|` there —
   a property of the ciphers, not of this plaintext, so regenerating the blob cannot fix it.
-  With rot47 outermost the same wrong guess stops at `atbash(plain)`:
-  `uozt{ivzw_vevib_ormv_urihg}` — cleanly mirrored letters that point *at* the atbash tile,
-  with no legible near-flag and nothing for the preview to highlight.
+  Per-region layering narrows where that could bite, but the bare-`flag` assert still pins
+  it shut. The order is now also **what makes beat 2**: rot47-inside lands the payload on
+  `atbash(flag)` = `uozt{ivzw_vevib_ormv_urihg}` — mirrored English that reads as a decoy
+  while quietly pointing *at* the atbash tile. The mirror order would land it on
+  `rot47(flag)`: symbol soup, which reads as "wrong turn" rather than as a fourth decoy.
 - **Order still matters:** atbash and rot47 do **not** commute. The builder asserts that
   `base64 → atbash → rot47` does *not* recover the flag, so the check proves the intended
-  order instead of passing by luck. It also asserts that neither the blob nor either
-  intermediate layer contains a readable `flag{` (the preview highlights every `flag{...}`)
-  **or even a bare `flag`** — that second assert is what pins the near-miss shut.
+  order instead of passing by luck. It also asserts, one assert per beat: beat 1 equals the
+  plain dump and contains `payload: ` + `florg{nice-try}`; beat 2 contains the atbash mirror;
+  beat 3 yields **exactly one** `FLAG_RE` match; neither the blob nor either intermediate
+  layer contains a readable `flag{` (the preview highlights every `flag{...}`) **or even a
+  bare `flag`** — that last assert is what pins the near-miss shut; and no decoy matches
+  `FLAG_RE`.
 - **The fully-decoded dump** contains, in order, an **unlabelled**:
   1. `auth_token: florg{nice-try}` — flag-shaped but NOT the `flag{...}` format,
   2. a hex-looking `trace=676c61667b6e6f742d69747d` (decodes to `glaf{not-it}` — another
      format decoy, not `flag{no}`),
   3. a url-looking `ref=%67%6c%6f%72%66%7b%6e%6f%70%65%7d` (url-decodes to `glorf{nope}`),
-  4. the real payload under `payload:` — `flag{read_every_line_first}`.
-- **Tell:** base64 (ends in `=`) surfaces punctuation soup rather than text — the giveaway
-  that more layers remain. rot47 is the readable next step, and it lands on obviously
-  mirrored English (`uozt{…}`), which is atbash's own tell. IX has no hint box on purpose;
-  the layer *ordering* is what teaches here, not a hint. Nothing in the text labels the
-  decoys — earlier versions did, which gave the game away.
+  4. the real payload on the `payload:` line — `flag{read_every_line_first}` (readable only
+     at beat 3; at beat 1 that line reads `payload: F@KEL:GKH0G6G:30@C>G0FC:98N`).
+- **Tell:** the blob is mixed-case alnum with `+`/`/` and **no `=` padding** — the dump is 174
+  bytes, a multiple of 3, so nothing is left over to pad. (Checked, not assumed. This is the
+  module's one unpadded base64 blob, which is a fair test of the page's own `.note`: base64 is
+  "often (not always) padded". Puzzle I carries the textbook `==` tell.) Decoding it surfaces a
+  readable dump with exactly **one** field of punctuation soup — the giveaway that a layer
+  remains, and that it remains *only there*. rot47 is the readable next step, and it lands on
+  obviously mirrored English (`uozt{…}`), which is atbash's own tell. IX has no hint box on
+  purpose; the layer *ordering* is what teaches here, not a hint. Nothing in the text labels
+  the decoys — earlier versions did, which gave the game away.
 - **History:** IX was originally `base64 → atbash`, with the payload line pre-Atbashed inside
-  an otherwise-plain dump. `rot47` was added as a third layer "to throw them off"; the payload
-  is now plain inside the dump and the whole dump travels through all three layers, so the
-  decoys read as decoys at the *end* rather than in the middle. The first three-layer build
-  put atbash outermost and was reordered by user decision for the near-miss reason above.
+  an otherwise-plain dump. `rot47` was added as a third layer "to throw them off". A rebuild
+  then ran **the whole dump** through all three layers — which reordered cleanly but flattened
+  the experience, because nothing was readable after `base64`. The current build returns to
+  per-region layering (plain dump, scrambled payload value) while keeping the rot47-inside
+  order, which was fixed by user decision for the near-miss reason above.
 - **Why florg, not a fake `flag{...}`:** a second real-format `flag{...}` is unfair (no way
   to disambiguate) and the preview highlights every `flag{...}`. `florg{...}` teaches the
   **format** instead — only `flag{...}` highlights, so a careful student isn't misled, and a
@@ -194,6 +223,7 @@ screams its method). V–IX mix layers and start baiting with decoys.
 2. Bake red herrings into the **plaintext**, not the blob, so they survive encoding.
 3. Run `.venv/bin/python tools/build_base64_assets.py` — it must print `ok` for your row.
 4. Add a `PUZZLES` entry in `public/crypto/encoding/index.html` (`id`, `title`, `blob`,
-   `answer`, optional `sting`/`hint`). There is no `view` field — every card starts on the
+   `answer`, optional `sting`). There is no `hint` field any more (no puzzle has a hint box)
+   and no `view` field — every card starts on the
    TEXT preview and flipping to IMAGE is the student's move.
 5. Verify in a real browser with pointer clicks (tiles shuffle, so click by label).

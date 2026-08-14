@@ -141,9 +141,8 @@
   .verdict{font-family:var(--mono); font-size:.76rem; margin-top:9px; min-height:1.1em; color:var(--dim)}
   .verdict.ok{color:var(--ok)} .verdict.no{color:var(--accent)}
 
-  .cyber{font-family:var(--mono); font-size:.76rem; line-height:1.6; color:var(--ink); opacity:.9;
-    background:var(--panel2); border:1px solid var(--edge); border-radius:6px; padding:11px 13px; margin-top:18px}
-  .hide{display:none}
+  /* (no `.cyber` hint-box rule: no puzzle has a hint any more — VIII's was the last, and
+     the author removed it. `.hide` went with it; nothing else used either class.) */
 
   /* (the bottom RESET MODULE row is gone for good — reset now lives in the header button row) */
   footer{text-align:center; font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; color:var(--dim); margin-top:42px; text-transform:uppercase}
@@ -223,7 +222,6 @@
         <input placeholder="type the flag you found, e.g. flag{...}" aria-label="flag"><button class="check">SUBMIT</button>
       </div>
       <div class="verdict"></div>
-      <div class="cyber hide"></div>
     </div>
   </details>
 </template>
@@ -377,7 +375,8 @@ function wireCopy(btn, label, getText){
   };
 }
 
-const TWOFACE_HINT = 'One blob, <b>two pictures</b> — both real, both precomputed. Decode as <b>hex</b> and flip the preview to <b>IMAGE</b> for one face; then CLEAR it, decode as <b>base64</b> and flip to <b>IMAGE</b> for the other. The string is a hex dump with junk letters wedged in: hex throws the letters away, base64 keeps them.';
+// No puzzle carries a hint box: VI–IX are deliberately unhinted, and VIII's hint was
+// removed by the author too. There is no `hint` field and no `.cyber` box any more.
 // every card starts on the TEXT preview; the TEXT/IMAGE toggle is the student's move to make
 const PUZZLES = [
   {id:'I',   title:'Decode the Signal', blob:A.a_b64,     answer:A.flags.a},
@@ -387,7 +386,7 @@ const PUZZLES = [
   {id:'V',   title:'Among the Bytes',   blob:A.c_b64,     answer:A.flags.c, sting:true},
   {id:'VI',  title:'Order Matters',     blob:A.d_b64,     answer:A.flags.d},
   {id:'VII', title:'Three Deep',        blob:A.g_b64,     answer:A.flags.g},
-  {id:'VIII',title:'Two Faces',         blob:A.two_faces, answer:A.flags.two_faces, hint:TWOFACE_HINT},
+  {id:'VIII',title:'Two Faces',         blob:A.two_faces, answer:A.flags.two_faces},
   {id:'IX',  title:'Read the Room',     blob:A.i_b64,     answer:A.flags.i},
 ];
 
@@ -477,12 +476,6 @@ PUZZLES.forEach((p,i)=>{
     else if(v){ verdict.className='verdict no'; verdict.textContent='not it — keep decoding'; }
   }
   node.querySelector('.check').onclick=check; input.addEventListener('keydown',e=>{ if(e.key==='Enter') check(); });
-
-  // VIII is the only card with a hint box now (VI/VII/IX deliberately have none)
-  if(p.hint){
-    const cy=node.querySelector('.cyber'); cy.classList.remove('hide');
-    cy.innerHTML = p.hint;
-  }
 
   renderPipe(); applyPipeline();
 
