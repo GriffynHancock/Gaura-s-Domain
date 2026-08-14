@@ -110,14 +110,48 @@
   //   window.fxIsComplete()  -> boolean, safe to call any time after this script has run
   //   document 'fx:state'    -> fired at init, on the completing solve, and on reset;
   //                             detail:{complete}. Pages register the listener BEFORE this
-  //                             script (it is the last script on every page), so the init
-  //                             dispatch always reaches them.
+  //                             script, so the init dispatch always reaches them. This is the
+  //                             last script on every page BUT FNAC, which deliberately calls
+  //                             its gate in a one-liner AFTER it — the gate asks this engine
+  //                             about the other modules (see the completion index below), so
+  //                             it cannot run any earlier.
   window.fxIsComplete = isComplete;
   window.fxReplay = ()=> spawn(EFFECTS[myIndex]);
-  const emitState = ()=>{ try{ document.dispatchEvent(new CustomEvent('fx:state',{detail:{complete:isComplete()}})); }catch(e){} };
+
+  // ---- cross-module completion index ----
+  // FNAC is gated on Caesar + XOR + Encoding all being complete, so one page has to ask about
+  // modules it is not. It cannot derive that from the solved store alone: "complete" means
+  // solved.size >= FX_TOTAL, and FX_TOTAL is set per page (caesar's is a DOM query at load), so
+  // nothing outside a module's own page knows its total. Copying the totals into the reader would
+  // be a real second source of truth that silently rots when a module gains a puzzle.
+  // Instead the ONLY writer of an entry is the engine instance running on that module's own page,
+  // and it writes a plain MIRROR of isComplete() on every state change — never an accumulated
+  // "unlocked" flag that could outlive the progress behind it. Readers use `c`; `n`/`t` are for
+  // display ("xor 3/4") and debugging only.
+  // Known limit, by design: a module has no entry until its page has been loaded once since this
+  // shipped. A student who finished Encoding earlier reads as incomplete until they open it again,
+  // which the gate screen's links make a single click.
+  const INDEX = 'ctf-complete:v1';
+  const readIndex = ()=>{ try{ return JSON.parse(localStorage.getItem(INDEX) || '{}') || {}; }catch(e){ return {}; } };
+  const writeIndex = ()=>{
+    try{
+      const ix = readIndex();
+      ix[MODULE] = { c: isComplete(), n: solved.size, t: window.FX_TOTAL || 0 };
+      localStorage.setItem(INDEX, JSON.stringify(ix));
+    }catch(e){}
+  };
+  //   window.fxModuleComplete('xor')      -> boolean (the live answer for THIS page's module)
+  //   window.fxModuleProgress('xor')      -> {c,n,t} | null, for showing what is still missing
+  window.fxModuleComplete = id => id === MODULE ? isComplete() : !!(readIndex()[id] || {}).c;
+  window.fxModuleProgress = id => id === MODULE
+    ? { c: isComplete(), n: solved.size, t: window.FX_TOTAL || 0 }
+    : (readIndex()[id] || null);
+
+  const emitState = ()=>{ writeIndex(); try{ document.dispatchEvent(new CustomEvent('fx:state',{detail:{complete:isComplete()}})); }catch(e){} };
 
   window.fxSolved = (id)=>{
     if(!solved.has(id)){ solved.add(id); try{ localStorage.setItem(STORE, JSON.stringify([...solved])); }catch(e){} }
+    writeIndex();   // every solve, not just the completing one — keeps the n/t another page shows honest
     const total = window.FX_TOTAL || 0;
     if(total && solved.size >= total && !celebrated){ celebrated = true; spawn(EFFECTS[myIndex]); emitState(); }
   };

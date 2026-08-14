@@ -2825,8 +2825,10 @@ const SHA3_POS_TAU_SCALE = 0.8;     // the position follower's time constant, as
 // the 0.0113 the vertical-shelf scheme managed — and the 9..13 neighbourhood is a flat plateau at
 // that value, so it is not a lucky cell.
 const SHA3_LIFT_FLOOR_GAIN = 11;
-const SHA3_BLUR_TAIL_MS = 260;      // how long a motion-blur trail takes to dissolve back to crisp
-const SHA3_BLUR_ATTACK_TAU = 80;    // ...and the time constant for DEEPENING one (see the wipe filter)
+// (The motion-blur tail/attack constants that used to live here are gone with the accumulation
+//  wipe they existed to manage — see THE SWEPT-SILHOUETTE SMEAR below. A per-object smear cannot
+//  outlive motion, because it is built from this frame's measured displacement and nothing else,
+//  so there is no accumulated image to dissolve and nothing to ramp.)
 
 //  TWO MEASUREMENTS, NOT ONE, because two different questions are being asked and one number
 //  cannot answer both honestly:
@@ -3056,36 +3058,102 @@ function sha3SolveCaps() {
   sha3Gov.apply(sha3Gov.held);
 }
 
-// ---- motion blur vs speed ----
-// The blur is the OPPOSITE pairing to the gain above, on the same input. Canvas 2D "motion blur"
-// here is just an incomplete wipe: instead of clearing the frame, sha3Render lays down a
-// TRANSLUCENT background rectangle, so previous frames bleed through as a trail. LOWER alpha =
-// less of the old frame erased per frame = LONGER trail = more blur.
+// ============================================================================================
+//  THE SWEPT-SILHOUETTE SMEAR — motion blur derived from measured per-box displacement
+// ============================================================================================
 //
-// It scales with speed for two reasons. The obvious one is physical: a fast phase moves further
-// between frames, so a longer trail is the honest picture of it. The second is that it does the
-// same job as the brightness gain from the other direction — smearing consecutive frames into
-// each other softens the hard edges that make rapid flashing read as a strobe. Fast playback
-// should look like motion, not like a stutter.
+//  WHAT THIS REPLACED, AND WHY IT HAD TO BE REPLACED RATHER THAN RETUNED. The old blur was an
+//  accumulation wipe: instead of clearing the frame, sha3Render laid down a TRANSLUCENT background
+//  so previous frames bled through, with the alpha lerped between hand-tuned anchors keyed off the
+//  phase duration (SHA3_BLUR_ALPHA_FAST/_SLOW/_GOV) and ramped in and out by a tail and an attack
+//  filter. Three things were wrong with it and only the third is a tuning question:
 //
-// Keyed off the phase's own effective duration (not the slider) for the same reason the gain is:
-// the escalation shortens phases too. Same anchors, so the two curves stay in step.
-const SHA3_BLUR_ALPHA_FAST = 0.20;  // shortest phases: a long trail (~5 frames of history)
-const SHA3_BLUR_ALPHA_SLOW = 0.42;  // longest phases: barely a smear
-const SHA3_BLUR_ALPHA_GOV  = 0.10;  // ...and once the MEASURED rate trips the governor: ~10 frames
-function sha3BlurAlpha(durMs) {
-  if (!(durMs > 0)) return SHA3_BLUR_ALPHA_FAST;   // REAL TIME: as fast as it gets
-  const t = (durMs - SHA3_FLASH_FAST_MS) / (SHA3_FLASH_SLOW_MS - SHA3_FLASH_FAST_MS);
-  return SHA3_BLUR_ALPHA_FAST + (SHA3_BLUR_ALPHA_SLOW - SHA3_BLUR_ALPHA_FAST) * Math.max(0, Math.min(1, t));
+//   1. AN ALPHA WIPE IS FRAME-COUNTED; A SHUTTER IS TIME-COUNTED. An exponential wipe keeps the
+//      last N frames with geometric weights, N ~ 1/alpha, and N is a CONSTANT. Speeding the
+//      animation up therefore does not lengthen the smear — it gives you the same N stamps spaced
+//      further apart, which past ~3-4px of inter-frame displacement the eye resolves individually
+//      as stuttered echoes. A real shutter integrates over an interval, so its smear length is
+//      velocity x exposure and grows LINEARLY with speed. That is the whole complaint: the old
+//      mechanism could not scale with speed, at any tuning.
+//   2. IT WAS INVISIBLE, because accumulation only shows in pixels a box has VACATED, and only pi
+//      moves geometry. theta/rho/chi/iota change colour in place, so the previous frame's ghost
+//      was covered by this frame's opaque box and all the wipe did there was soften the crisp
+//      FIPS 202 colour wavefront — i.e. blunt the teaching payload.
+//   3. It was driven by a GLOBAL scalar, so a stationary box got the same treatment as one
+//      crossing the lattice. Physical blur is per-object.
+//
+//  WHAT IT IS NOW. For each box that actually moved, ONE extra convex polygon is drawn immediately
+//  before that box, in the same back-to-front pass: the convex hull of its 8 projected corners now
+//  UNION the same 8 corners displaced back along their own measured per-corner motion by the
+//  shutter fraction. That hull is the box's swept silhouette over the exposure. It is filled with a
+//  linear gradient along the direction of travel that ramps from transparent at the trailing tip to
+//  a plateau across the body — the exact trapezoid coverage a shutter integrates, see below.
+//
+//  WHY THIS SCALES BY CONSTRUCTION. Its length IS the displacement. Not a proxy for it: the actual
+//  screen-pixel distance the box's corners moved between the frame just drawn and this one. So it
+//  is automatically right at every slider setting, automatically right under juice escalation
+//  (which shortens phases without touching the slider), automatically right in REAL TIME, and
+//  automatically right on a slow device, where a 33ms frame doubles the displacement and doubles
+//  the smear — which is exactly what a camera does. There is no curve to saturate and no anchor
+//  constant to retune, which is why SHA3_BLUR_ALPHA_FAST/_SLOW/_GOV, sha3BlurAlpha,
+//  sha3BlurAlphaNow, SHA3_BLUR_TAIL_MS, SHA3_BLUR_ATTACK_TAU and sha3.wipeA were DELETED rather
+//  than retuned. The wipe is opaque again, always.
+//
+//  ...AND IT IS AUTOMATICALLY ZERO ON STATIC GEOMETRY, so theta/chi/rho/iota keep crisp colour
+//  wavefronts with no gate, no phase-type test and no special case. Using all 8 CORNERS rather than
+//  the centre is what makes rho's axial spin smear too: rotation is corner displacement even when
+//  the centre does not move.
+//
+//  [ANALOGY] tag: the streak is a real swept silhouette with a real coverage ramp, but it is filled
+//  with one flat shade rather than the per-face Lambert shading (a blurred object genuinely loses
+//  that detail), and the crisp box on top is drawn at the plateau alpha rather than at zero, so the
+//  head of the streak carries slightly more light than a physically exact shutter would. See the
+//  note at SHA3_SMEAR_SHADE.
+//
+// Fraction of the frame interval the shutter is open. 0.5 is a physical 180-degree shutter, the
+// film-camera default. This is the ONLY strength knob, and it is a dimensionless exposure, not a
+// hand-tuned appearance value: everything else follows from measured displacement.
+const SHA3_SHUTTER_ANGLE = 0.30;
+// Hard cap on how far a smear may extend, IN MULTIPLES OF THE BOX'S OWN SCREEN WIDTH along the
+// direction of travel. Two jobs: it bounds the cost (a hull can never grow without limit), and it
+// bounds how far a translucent hull can reach across the lattice, which is the term the painter's
+// -algorithm footprint argument is stated in — see THE FOOTPRINT ARGUMENT at the depth sort.
+const SHA3_SMEAR_MAX_W = 2.0;
+// ...and an absolute backstop in CSS px, for the degenerate case (a resize or a camera jump that
+// slipped past the invalidation below) where a single frame's displacement is enormous.
+const SHA3_SMEAR_MAX_PX = 96;
+// Below this many pixels of swept length there is no polygon at all: the box is drawn crisply.
+// Sub-pixel smears cost time and change nothing.
+const SHA3_SMEAR_MIN_PX = 0.75;
+// The flat shade the streak body is filled at, standing in for the mean of the box's visible-face
+// Lambert shades (0.52 + 0.48*lambert, so the visible range is ~0.52..1.0). Approximated rather
+// than computed because the streak is drawn BEFORE the face loop that would compute it, and a
+// blurred object loses per-face shading anyway.
+const SHA3_SMEAR_SHADE = 0.82;
+function rgbaCss(c, mul, a) {
+  const m = mul === undefined ? 1 : mul;
+  const cl = v => Math.max(0, Math.min(255, Math.round(v * m)));
+  return `rgba(${cl(c[0])},${cl(c[1])},${cl(c[2])},${a.toFixed(3)})`;
 }
-// The blur the frame is actually drawn with: the duration-based value above, deepened by however
-// far the MEASURED governor has tripped. Lower alpha = less of the old frame erased = longer
-// trail, so `min` is "whichever asks for more blur wins". This is the third thing the same
-// measurement drives (gain, smoothing, blur), which is deliberate — they are three views of one
-// decision, and keying them to one input is what stops them from disagreeing.
-function sha3BlurAlphaNow(durMs) {
-  const s = sha3Pace.share();
-  return Math.min(sha3BlurAlpha(durMs), SHA3_BLUR_ALPHA_SLOW + (SHA3_BLUR_ALPHA_GOV - SHA3_BLUR_ALPHA_SLOW) * s);
+// Monotone-chain convex hull, in place on a flat [x0,y0,x1,y1,...] array. 16 points per moving box
+// x 200 boxes is ~3200 points a frame; this is microseconds and never the cost that matters.
+function sha3Hull(pts, n) {
+  const idx = [];
+  for (let i = 0; i < n; i++) idx.push(i);
+  idx.sort((a, b) => (pts[a * 2] - pts[b * 2]) || (pts[a * 2 + 1] - pts[b * 2 + 1]));
+  const cross = (o, a, b) => (pts[a * 2] - pts[o * 2]) * (pts[b * 2 + 1] - pts[o * 2 + 1])
+                           - (pts[a * 2 + 1] - pts[o * 2 + 1]) * (pts[b * 2] - pts[o * 2]);
+  const out = [];
+  for (let pass = 0; pass < 2; pass++) {
+    const start = out.length;
+    const seq = pass === 0 ? idx : idx.slice().reverse();
+    for (const i of seq) {
+      while (out.length - start >= 2 && cross(out[out.length - 2], out[out.length - 1], i) <= 0) out.pop();
+      out.push(i);
+    }
+    out.pop();
+  }
+  return out;
 }
 
 // Raised cosine: 1 at the crest, easing to 0 at +/- width. Smooth at both ends, so a cube fades in
@@ -3551,22 +3619,36 @@ function flashMeterElemColor(el) {
 function sha3Render(opts) {
   const ctx = sha3.ctx;
   if (!ctx) return;
-  const blur = opts && opts.blur;
   sha3ResizeCanvas();
   const { w, h, dpr } = sha3;
   const P = sha3.palette;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  // Motion blur, essentially free in Canvas 2D: instead of wiping the frame, lay down a
-  // TRANSLUCENT background so the previous frames bleed through as a trail. Used only while
-  // something is genuinely in fast transit, so the lattice at rest stays crisp.
-  //
-  // `opts.blur` is now the ALPHA to wipe with (see sha3BlurAlpha), not a boolean: smaller = more
-  // blur. 0 / absent / a bare sha3Render() means an opaque wipe, i.e. no blur at all — which is
-  // what guarantees a drag, an idle repaint and sha3Stop's final frame are always crisp.
+  // THE WIPE IS OPAQUE, ALWAYS. It used to be translucent while something was moving, so previous
+  // frames bled through as an accumulation trail; motion blur is now a per-object swept silhouette
+  // drawn inline in the depth sort (see THE SWEPT-SILHOUETTE SMEAR), which accumulates nothing. No
+  // trail can outlive motion because no trail is stored: every frame starts from a clean ground.
   ctx.globalAlpha = 1;
-  ctx.fillStyle = blur ? `rgba(${P.panel2.map(v=>Math.round(v)).join(',')},${blur.toFixed(3)})` : rgbCss(P.panel2);
+  ctx.fillStyle = rgbCss(P.panel2);
   ctx.fillRect(0, 0, w, h);
+
+  // ---- smear state: the previous frame's projected corners, and whether they may be used ----
+  //
+  // THE INVALIDATION RULE, which replaces "motion blur must never outlive motion" with something
+  // stronger and simpler: NO PREVIOUS FRAME, NO SMEAR. A displacement is only meaningful between
+  // two consecutive frames of one continuous animation, so the stored corners are marked valid
+  // only while the controller is running (below), and are invalidated outright by anything that
+  // makes "where it was last frame" a different question — a stop, a state reset, a resize, a
+  // theme change, a camera drag. Everything except the drag falls out of `sha3.running` on its
+  // own; the camera is checked explicitly because a drag mid-run does not stop the controller.
+  if (!sha3.prevCorners || sha3.prevCorners.length !== sha3.lanes.length * SHA3_SUBS_PER_LANE * 16) {
+    sha3.prevCorners = new Float32Array(sha3.lanes.length * SHA3_SUBS_PER_LANE * 16);
+    sha3.prevValid = false;
+  }
+  if (sha3.prevRotX !== sha3.rotX || sha3.prevRotY !== sha3.rotY) sha3.prevValid = false;
+  sha3.prevRotX = sha3.rotX; sha3.prevRotY = sha3.rotY;
+  const canSmear = !!(sha3.running && sha3.prevValid);
+  const prevC = sha3.prevCorners;
 
   // Zoom out slightly while lanes are lifted, so pi's transit arc (which rises above the whole
   // lattice by design — see SHA3_RAD_GAIN) still fits inside the canvas.
@@ -3792,7 +3874,8 @@ function sha3Render(opts) {
   // canvas. Same spatial unit as the offline pixel meter, so the live loop and the proof are
   // measuring the same quantity. Cheap — nine running sums, no readback.
 
-  for (const L of sha3.lanes) {
+  for (let laneI = 0; laneI < sha3.lanes.length; laneI++) {
+    const L = sha3.lanes[laneI];
     const spin = L.spin * Math.PI / 180;
     const cs = Math.cos(spin), sn = Math.sin(spin);
     // A lane's world position is exactly its slot plus pi's radial bloom — nothing else. The
@@ -3894,7 +3977,11 @@ function sha3Render(opts) {
         corners.push(p);
         depthSum += p.z;
       }
-      items.push({ corners, depth: depthSum / 8, base, edge, hi, cs, sn, k });
+      // `key` is the box's STABLE identity across frames — lane slot in sha3.lanes (which never
+      // reorders; a lane is a persistent object, see the lane model) times the sub-cubes per lane,
+      // plus k. It is what the previous frame's corners are stored under, so a box is always
+      // compared with its own past position and never with a neighbour's.
+      items.push({ corners, depth: depthSum / 8, base, edge, hi, cs, sn, k, key: laneI * SHA3_SUBS_PER_LANE + k });
     }
   }
   // Painter's algorithm: farthest first. Exactly correct here — the boxes are rigid, convex and
@@ -3904,14 +3991,160 @@ function sha3Render(opts) {
   // (Plain English: draw distant cubes first, nearer ones over the top, like an old-school
   // painter working back-to-front — cheap, and correct here because these particular cubes are
   // guaranteed to never overlap or poke through each other.)
+  //
+  // ---- THE FOOTPRINT ARGUMENT, i.e. what the swept smear does and does not change ----
+  //
+  // A swept hull is strictly LARGER than its box, so it is worth being exact about which property
+  // the sort actually depends on, because it is not the one the paragraph above reads like.
+  //
+  // What the sort needs is that whenever two DRAWN FOOTPRINTS overlap on screen, the depth key
+  // orders them the way occlusion does. Screen footprints of the boxes already overlap constantly
+  // and always have: the lattice pitch is 1.0 with a 0.66 cube, and under any off-square camera a
+  // box overlaps its neighbours' projections — that is precisely the situation a painter's
+  // algorithm exists to resolve. The measured pi separation of 0.055 world units
+  // (tools/verify_pi_pacing.mjs) is NOT a claim that footprints are disjoint; it is the claim that
+  // no two boxes are ever exactly CO-LOCATED, which is what makes the depth key a strict order
+  // with a defined answer rather than a tie. A smear cannot weaken that: it changes what is
+  // painted, never where a box is, so the ordering itself is bit-identical to before.
+  //
+  // What IS new is one bounded blend artefact. Draw order is `A.smear, A, B.smear, B` for
+  // A.depth < B.depth, so a NEARER box's smear is painted over a FARTHER box that has already been
+  // drawn — and that is wrong exactly when the nearer box's swept volume passed BEHIND the farther
+  // box during the exposure. Three things bound it: the hull is translucent (the failure is a
+  // slightly-too-strong blend, never a box disappearing), SHA3_SMEAR_MAX_W bounds how far a hull
+  // can reach, and the coverage plateau w/(w+d) FALLS as the smear lengthens — so the very
+  // configurations that reach furthest are the faintest. This was measured, not argued, across all
+  // 24 pi compositions; see docs/ for the audit and .lastSmearAudit for the hook it uses.
   items.sort((a, b) => a.depth - b.depth);
 
   let faces = 0;
+  let smeared = 0, smearMaxPx = 0;
+  const audit = sha3.smearAudit ? [] : null;
   ctx.lineJoin = 'round';
+  const hullPts = new Float64Array(32);
   for (const it of items) {
+    // ---------------------------------------------------------------------------------------
+    //  THE SMEAR. One convex polygon, drawn immediately before this box, in the same sorted pass.
+    // ---------------------------------------------------------------------------------------
+    let plateau = 1;
+    if (canSmear) {
+      const o = it.key * 16;
+      // Per-corner displacement since the previous frame, in SCREEN pixels and AFTER projection —
+      // so this is APPARENT motion, i.e. the motion actually drawn. That matters for the
+      // deliberate temporal-aliasing effect: the sinc warp (sha3AliasWarp) is applied upstream of
+      // the projection, so at the aliasing peak, where the lattice appears to freeze, the measured
+      // displacement collapses and the smear collapses with it. A strobe IS a short shutter; the
+      // two effects agree about what is moving instead of fighting.
+      let sdx = 0, sdy = 0, maxD2 = 0, mi = 0;
+      for (let i = 0; i < 8; i++) {
+        const dx = it.corners[i].sx - prevC[o + i * 2], dy = it.corners[i].sy - prevC[o + i * 2 + 1];
+        sdx += dx; sdy += dy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > maxD2) { maxD2 = d2; mi = i; }
+      }
+      let d = Math.sqrt(maxD2) * SHA3_SHUTTER_ANGLE;   // swept length before clamping, px
+      if (d >= SHA3_SMEAR_MIN_PX) {
+        // Direction of travel: the mean corner velocity, which is the box's translation. If the
+        // box is mostly SPINNING (rho) the mean nearly cancels while the corners still move, so
+        // fall back to the fastest corner's own direction — a rotating box still smears.
+        let ux = sdx / 8, uy = sdy / 8;
+        let ul = Math.hypot(ux, uy);
+        if (ul < 0.2 * Math.sqrt(maxD2)) {
+          ux = it.corners[mi].sx - prevC[o + mi * 2]; uy = it.corners[mi].sy - prevC[o + mi * 2 + 1];
+          ul = Math.hypot(ux, uy);
+        }
+        if (ul > 1e-6) {
+          ux /= ul; uy /= ul;
+          // The box's own screen width ALONG the direction of travel — the `w` of the trapezoid.
+          let lo = Infinity, hiP = -Infinity;
+          for (let i = 0; i < 8; i++) {
+            const t = it.corners[i].sx * ux + it.corners[i].sy * uy;
+            if (t < lo) lo = t;
+            if (t > hiP) hiP = t;
+          }
+          const wpx = Math.max(1e-3, hiP - lo);
+          // Clamp the swept length, and scale the whole displacement field by the same factor so
+          // the hull stays a genuine swept silhouette rather than a sheared one.
+          const cap = Math.min(SHA3_SMEAR_MAX_W * wpx, SHA3_SMEAR_MAX_PX);
+          const clampK = d > cap ? cap / d : 1;
+          d *= clampK;
+          const back = SHA3_SHUTTER_ANGLE * clampK;
+          for (let i = 0; i < 8; i++) {
+            const cx = it.corners[i].sx, cy = it.corners[i].sy;
+            hullPts[i * 2] = cx; hullPts[i * 2 + 1] = cy;
+            hullPts[16 + i * 2] = cx - (cx - prevC[o + i * 2]) * back;
+            hullPts[16 + i * 2 + 1] = cy - (cy - prevC[o + i * 2 + 1]) * back;
+          }
+          // THE COVERAGE RAMP — and this is a DERIVED result, not the one the research doc quotes.
+          //
+          // A shape of width w along the direction of travel sits at offset s during the exposure,
+          // with s uniform on [0, d]. A point x is covered iff x-w <= s <= x, so
+          //     coverage(x) = |[max(0, x-w), min(d, x)]| / d
+          // which is a trapezoid over the swept extent [0, w+d]: it ramps linearly over the first
+          // min(w, d), holds at min(1, w/d), and falls symmetrically over the last min(w, d).
+          //
+          //   plateau  = min(1, w/d)          NOT w/(w+d)
+          //   rampEnd  = min(w, d)/(w+d)      as a fraction of the gradient's length
+          //
+          // The distinction is not academic and it was MEASURED. w/(w+d) attenuates even a box
+          // that moved a fraction of its own width, and — because it dims the streak by exactly
+          // the factor by which the streak got longer — it paints the SAME extra ink no matter how
+          // short the smear is. That showed up as a real regression in the flash suite's 6x6 probe:
+          // 19 flashes per second against a bound of 3, and shortening the shutter did not move it
+          // (0.114 -> 0.110), because ink was independent of length. The true trapezoid instead
+          // integrates to EXACTLY w — the box's own ink — for any d, so the smear redistributes
+          // light rather than adding it, and it leaves a box moving less than its own width
+          // undimmed, which is also what a camera does.
+          //
+          // Consequence worth keeping in mind: for d <= w the plateau is 1, so the streak is fully
+          // opaque through its middle and the crisp box on top of it adds nothing there.
+          plateau = Math.min(1, wpx / d);
+          const rampEnd = Math.min(wpx, d) / (wpx + d);
+          const hull = sha3Hull(hullPts, 16);
+          // Gradient endpoints: the extremes of the hull along the travel direction, taken through
+          // the box centre so the axis is the axis of travel and nothing else.
+          let gl = Infinity, gh = -Infinity;
+          for (const i of hull) {
+            const t = hullPts[i * 2] * ux + hullPts[i * 2 + 1] * uy;
+            if (t < gl) gl = t;
+            if (t > gh) gh = t;
+          }
+          const g = ctx.createLinearGradient(ux * gl, uy * gl, ux * gh, uy * gh);
+          // `hi` is carried at the PLATEAU weight, not at full: the crisp box is drawn over this
+          // streak's leading end, and painting the wavefront's brightness at full strength in both
+          // would count the same emitted light twice.
+          const col = rgbaCss(it.base, SHA3_SMEAR_SHADE * (1 + it.hi * plateau), plateau);
+          g.addColorStop(0, rgbaCss(it.base, SHA3_SMEAR_SHADE * (1 + it.hi * plateau), 0));
+          g.addColorStop(Math.min(0.999, rampEnd), col);   // ramp ends at min(w,d)/(w+d) of the length
+          g.addColorStop(1, col);
+          ctx.beginPath();
+          ctx.moveTo(hullPts[hull[0] * 2], hullPts[hull[0] * 2 + 1]);
+          for (let i = 1; i < hull.length; i++) ctx.lineTo(hullPts[hull[i] * 2], hullPts[hull[i] * 2 + 1]);
+          ctx.closePath();
+          ctx.fillStyle = g;
+          // Explicitly 1: the PREVIOUS box left globalAlpha at ITS plateau, and inheriting that
+          // here would attenuate a streak by an unrelated box's speed — a draw-order-dependent
+          // value. The gradient stops carry this streak's own coverage; nothing else may.
+          ctx.globalAlpha = 1;
+          ctx.fill();                                      // no stroke: a streak has no rim
+          smeared++;
+          if (d > smearMaxPx) smearMaxPx = d;
+          if (audit) {
+            const poly = [];
+            for (const i of hull) poly.push(hullPts[i * 2], hullPts[i * 2 + 1]);
+            audit.push({ key: it.key, depth: it.depth, prevDepth: sha3.prevDepth ? sha3.prevDepth[it.key] : it.depth,
+                         d, w: wpx, plateau, poly });
+          }
+        }
+      }
+    }
     // `hi` already carries the wavefront, the residual per-lane afterglow and the speed-inverse
     // gain (see the DIRECTIONAL FLASH block) — one number, computed once per cube.
     const bright = 1 + it.hi;
+    // The crisp box fades as its own streak lengthens — that is the difference between "a blurred
+    // object" and "a sharp object towing a ghost". `plateau` is 1 for every box that did not move,
+    // so at rest and through theta/chi/rho/iota this line is the identity.
+    ctx.globalAlpha = window.__boxA === undefined ? plateau : (window.__boxA === 1 ? 1 : Math.max(plateau, window.__boxA)); /*EXPT*/
     for (const f of SHA3_FACES) {
       // spin the face normal the same way the corners were spun, then camera-rotate it
       const nx = f.n[0] * it.cs - f.n[1] * it.sn;
@@ -3941,10 +4174,39 @@ function sha3Render(opts) {
       faces++;
     }
   }
+  ctx.globalAlpha = 1;
+  // ---- carry this frame's corners forward, so the NEXT frame can measure against them ----
+  if (!sha3.prevDepth || sha3.prevDepth.length !== sha3.lanes.length * SHA3_SUBS_PER_LANE) {
+    sha3.prevDepth = new Float32Array(sha3.lanes.length * SHA3_SUBS_PER_LANE);
+  }
+  const auditAll = audit ? [] : null;
+  for (const it of items) {
+    const o = it.key * 16;
+    for (let i = 0; i < 8; i++) { prevC[o + i * 2] = it.corners[i].sx; prevC[o + i * 2 + 1] = it.corners[i].sy; }
+    if (auditAll) {
+      const c = [];
+      for (let i = 0; i < 8; i++) c.push(it.corners[i].sx, it.corners[i].sy);
+      auditAll.push({ key: it.key, depth: it.depth, prevDepth: sha3.prevDepth[it.key], c });
+    }
+    sha3.prevDepth[it.key] = it.depth;
+  }
+  sha3.lastSmearAuditAll = auditAll;   // every box, in DRAW ORDER, for the footprint audit
+  // Valid only for the next frame of a CONTINUOUS run. An idle repaint (drag, theme, resize, first
+  // load) deliberately leaves this false, so the first frame after any discontinuity is crisp.
+  sha3.prevValid = !!sha3.running;
   sha3.facesDrawn = faces;
   sha3.framesDrawn++;
-  sha3.lastBlur = !!blur;              // read-only instrumentation for the regression scripts
-  sha3.lastBlurAlpha = blur ? blur : 0; // ...and the strength it was drawn at (0 = crisp wipe)
+  // Read-only instrumentation for the regression scripts. `lastBlur` keeps its meaning — "this
+  // frame was drawn with motion blur" — but the mechanism under it is now per-object: it is true
+  // iff at least one box was smeared. `lastBlurAlpha` described the translucent wipe's alpha and
+  // that mechanism is gone; it is pinned at 0, which is what the old code already meant by "the
+  // wipe was opaque". Smear strength is reported by lastSmearMaxPx instead — in PIXELS OF SWEPT
+  // LENGTH, which is a property of the picture rather than of a tuning constant.
+  sha3.lastSmearCount = smeared;
+  sha3.lastSmearMaxPx = smearMaxPx;
+  sha3.lastSmearAudit = audit;
+  sha3.lastBlur = smeared > 0;
+  sha3.lastBlurAlpha = 0;
   // Close the loop. Only while the controller is running: a single idle repaint has no
   // before-frame to differ from, and feeding it one would let a drag or a theme toggle register
   // as a flash.
@@ -4212,7 +4474,8 @@ function sha3ResetState() {
   // legible, slow phases of the next one.
   sha3Gov.reset();
   sha3.tintAmtS = 0; sha3.tintColS = null;
-  sha3.blurTailUntil = 0; sha3.blurTailFrom = 0;
+  // A state wipe makes "where every box was last frame" a lie, so the smear's memory goes with it.
+  sha3.prevValid = false;
   sha3.phaseLog = [];
   sha3.roundsInBlock = 0; sha3.blocksDone = 0;
   sha3.flashType = null; sha3.flashP = 0; sha3.flashGain = 1; sha3.flashEsc = 0;
@@ -4526,7 +4789,7 @@ function sha3Ambient(dt) {
 // permanently until the user dragged or changed theme. Motion blur must never outlive motion.
 function sha3Stop() {
   sha3.running = false; sha3.active = null;
-  sha3.blurTailUntil = 0;   // the tail is part of motion; it must not outlive it either
+  sha3.prevValid = false;   // the smear is part of motion; it must not outlive it either
   sha3.flashType = null;   // motion must never outlive motion — same rule as the blur below
   sha3.flashCycles = 1;
   sha3.holdType = null;
@@ -4633,61 +4896,14 @@ function sha3Play(trace, onDone) {
       }
       if (stepper.on) { stepper.mark(sha3.qi, sha3StepLabel(sha3.stepPhase)); break; }
     }
-    // Motion blur: on during genuinely fast movement — pi's slide always (it is the fast
-    // rearrangement), and any phase short enough that discrete frames would read as stepping
-    // rather than moving (fast slider settings, or deep into an escalating run). Off at rest,
-    // off during drag (sha3Render is called without opts from the pointer handler), and off on
-    // the final frame (sha3Stop), so no trail can ever persist.
-    // ...and its STRENGTH rises with speed (sha3BlurAlpha: lower alpha = longer trail), so a fast
-    // run smears rather than strobes. 0 when not blurring, which sha3Render treats as an opaque
-    // wipe — so every "must be crisp" path (drag, idle, sha3Stop) is unaffected by construction.
-    // ...and it also turns on whenever the MEASURED governor has tripped, whatever the nominal
-    // duration says, because that is the case where a trail is doing safety work and not just
-    // looking right.
-    const blurring = !!sha3.active &&
-      (sha3.active.type === 'pi' || sha3.active.dur <= 90 || sha3Pace.share() > 0);
-    // THE TAIL. Switching straight from a deep trail back to an opaque wipe erases several
-    // frames of accumulated image in one frame, and that showed up in the pixel measurement as
-    // the single biggest luminance step of an entire run — a flash created by the anti-flash
-    // machinery. So the wipe alpha ramps back to opaque over SHA3_BLUR_TAIL_MS instead, and the
-    // trail dissolves. It still always reaches a genuinely opaque wipe (0 = crisp) well inside
-    // the settle window, so "motion blur must never outlive motion" is unchanged.
-    let blurAlpha = 0;
-    if (blurring) {
-      blurAlpha = sha3BlurAlphaNow(sha3.active.dur);
-      sha3.blurTailFrom = blurAlpha; sha3.blurTailUntil = now + SHA3_BLUR_TAIL_MS;
-    } else if (sha3.blurTailUntil && now < sha3.blurTailUntil) {
-      const t = 1 - (sha3.blurTailUntil - now) / SHA3_BLUR_TAIL_MS;
-      const a = sha3.blurTailFrom + (1 - sha3.blurTailFrom) * t;
-      blurAlpha = a >= 0.995 ? 0 : a;
-    }
-    // THE OTHER END OF THE TAIL. SHA3_BLUR_TAIL_MS already ramps the wipe back to opaque when
-    // motion stops, for the measured reason written above it. Switching the other way — from a
-    // fully opaque wipe at rest to a deep trail on the first frame of a run — is the same
-    // discontinuity mirrored, and it measured as the largest single-frame step in a run that
-    // starts from a resting lattice (0.08 on the centre tile at slider 100). So the wipe also
-    // ATTACKS from opaque down to its working value over SHA3_BLUR_ATTACK_MS. Nothing else
-    // changes: by the end of the first few frames this term is 1 and the alpha is whatever the
-    // speed asked for.
-    // Expressed as a FILTER ON THE WIPE ITSELF, deliberately, rather than as a ramp keyed off
-    // run-elapsed time. Keying it off the run would re-open the wipe to fully opaque on every
-    // re-click, which is precisely the thing that erases a live trail in one frame; sha3.wipeA
-    // persists across runs, so a Hash pressed mid-run simply carries the trail it already had.
-    // Deepening is filtered, going crisp is not — the existing SHA3_BLUR_TAIL_MS ramp already
-    // owns the release, and it must always be able to reach a genuinely opaque wipe.
-    if (sha3.wipeA === undefined) sha3.wipeA = 1;
-    const wipeTarget = blurAlpha > 0 ? blurAlpha : 1;
-    // ...and ONLY while the run is opening (sha3.resetEase). Filtering it for the whole run was
-    // tried and made things worse mid-run: every pi phase starts a fresh trail from an opaque
-    // wipe, and holding the wipe near-opaque for the first few frames of pi stops it smearing
-    // the transit's own geometry change, which measured as a LARGER step than not filtering at
-    // all. At a re-click the filter is a no-op by construction — wipeA is already deep, because
-    // it persists across runs, so there is nothing to ramp.
-    sha3.wipeA = (sha3.resetEase > 0 && wipeTarget < sha3.wipeA)
-      ? sha3.wipeA + (wipeTarget - sha3.wipeA) * (1 - Math.exp(-dt / SHA3_BLUR_ATTACK_TAU))
-      : wipeTarget;
-    blurAlpha = sha3.wipeA >= 0.995 ? 0 : sha3.wipeA;   // 0 is how sha3Render spells "opaque"
-    sha3Render({ blur: blurAlpha });
+    // Motion blur needs no decision here any more, and that is the point of the rewrite. There is
+    // no gate ("is this phase fast enough to blur?"), no strength curve keyed off the duration, no
+    // tail to dissolve an accumulated trail and no attack filter to ease one in — all four existed
+    // only to manage a whole-canvas accumulation wipe, and there is no accumulation now. sha3Render
+    // measures each box's own screen displacement against the previous frame and smears exactly
+    // what moved, by exactly how far it moved. Off at rest, off during a drag and off on the final
+    // frame by construction rather than by guard: no previous frame, no smear.
+    sha3Render();
 
     if (sha3.active || sha3.qi < sha3.queue.length) { requestAnimationFrame(frame); return; }
     // queue drained: fire onDone once, then keep painting briefly so the ambient easings settle
@@ -4845,12 +5061,28 @@ function initSha3Canvas() {
     bitsPerSub: SHA3_BITS_PER_SUB,
     boxCount: () => sha3.lanes.length * SHA3_SUBS_PER_LANE,
     facesDrawn: () => sha3.facesDrawn,
+    // "Was the last frame drawn with motion blur?" — still exactly that question, now answered
+    // per-object: true iff at least one box was smeared (see THE SWEPT-SILHOUETTE SMEAR).
     lastBlur: () => !!sha3.lastBlur,
-    // The wipe alpha the last frame was painted with: 0 = fully opaque wipe = crisp, and the
-    // LOWER a non-zero value is the LONGER the trail. Lets a test measure blur STRENGTH rather
-    // than just its presence.
-    lastBlurAlpha: () => sha3.lastBlurAlpha || 0,
-    blurAlphaFor: durMs => sha3BlurAlpha(durMs),
+    // ---- the two blur STRENGTH hooks are deprecated shims, and deliberately so ----
+    // They reported the alpha of the translucent accumulation wipe, and that mechanism no longer
+    // exists: the wipe is opaque on every frame. 0 is exactly what the old code meant by "the wipe
+    // was opaque", so these are honest values for a mechanism that is gone rather than fabricated
+    // ones — but a test asserting a NON-zero wipe alpha, or a monotone wipe-alpha-vs-duration
+    // curve, is asserting a mechanism that has been deleted and should be migrated to
+    // lastSmearMaxPx (see the note in the report / STATUS).
+    lastBlurAlpha: () => 0,
+    blurAlphaFor: () => 0,
+    // THE REPLACEMENT, and it measures the picture rather than a constant: the longest swept
+    // smear drawn last frame, in CSS pixels, and how many of the 200 boxes were smeared at all.
+    // Smear length IS displacement x shutter, so this scales with real speed by construction.
+    lastSmearMaxPx: () => sha3.lastSmearMaxPx || 0,
+    lastSmearCount: () => sha3.lastSmearCount || 0,
+    shutterAngle: SHA3_SHUTTER_ANGLE,
+    smearMaxW: SHA3_SMEAR_MAX_W,
+    // Per-box smear records for the painter's-order footprint audit — off by default (it allocates
+    // per frame); tools set it, read sha3.lastSmearAudit, and clear it again.
+    setSmearAudit: on => { sha3.smearAudit = !!on; },
     // THE LUMINANCE GOVERNOR — live state of the closed loop, plus the pure curve so a test can
     // pin the shape without an animation running.
     governor: () => ({
@@ -4869,7 +5101,7 @@ function initSha3Canvas() {
       const s = Math.max(sha3PaceShareForGap(ms), sha3GovShare(hz));
       return { share: s, gain: 1 - s * (1 - SHA3_GOV_GAIN_MIN) };
     },
-    blurAlphaNowFor: durMs => sha3BlurAlphaNow(durMs),
+    blurAlphaNowFor: () => 0,   // deprecated shim, see lastBlurAlpha above
     framesDrawn: () => sha3.framesDrawn,
     rotation: () => ({ rotX: sha3.rotX, rotY: sha3.rotY,
                        perspWeight: sha3PerspWeight(sha3.rotX, sha3.rotY) }),

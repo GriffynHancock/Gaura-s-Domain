@@ -123,7 +123,41 @@ const fnv=s=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeA
 ctfUid(); // ensures the shared ctf-uid cookie exists before the confetti engine seeds off it
 window.FX_TOTAL = 7; // matches STAGES.length — confetti fires once all 7 nights are real+solved
 
-function unlocked(){ return document.cookie.match(/(?:^|; )ctf-fnac-unlocked=1(?:;|$)/); }
+/* ---- the gate ----------------------------------------------------------------------------
+   FNAC opens once ALL THREE beginner modules are finished. Completion is asked of the shared
+   confetti engine (window.fxModuleComplete), which is the only thing that knows each module's
+   puzzle count — this page never counts anybody else's flags, and there is no per-module
+   "unlocked" cookie any more. The old `ctf-fnac-unlocked` cookie is deliberately NOT honoured:
+   it meant "Encoding is done", which under the new rule is one third of the requirement, so
+   reading it would grandfather people straight past Caesar and XOR. Stale copies are inert.
+   The konami bypass therefore rides on its OWN cookie name — a name no old browser can already
+   be carrying — so "ignore the old cookie" and "konami still unlocks, permanently" can both hold. */
+const REQUIRED = [
+  {id:'caesar',   label:'Caesar',   href:'../ceasar/'},
+  {id:'xor',      label:'XOR',      href:'../xor/'},
+  {id:'encoding', label:'Encoding', href:'../encoding/'}
+];
+const BYPASS_COOKIE = 'ctf-fnac-bypass';
+const bypassed = () => /(?:^|; )ctf-fnac-bypass=1(?:;|$)/.test(document.cookie);
+const setBypass = () => { document.cookie = BYPASS_COOKIE+'=1;path=/;max-age=31536000;samesite=lax'; };
+const moduleDone = id => !!(window.fxModuleComplete && window.fxModuleComplete(id));
+function unlocked(){ return bypassed() || REQUIRED.every(m => moduleDone(m.id)); }
+
+// Locked screen: says what is actually required and which of it is done. Every unfinished module
+// is a link — one click also REPAIRS its entry in the engine's index, which is how someone who
+// finished a module before this gate existed gets counted.
+function lockedMarkup(){
+  const rows = REQUIRED.map(m=>{
+    const done = moduleDone(m.id);
+    const p = window.fxModuleProgress && window.fxModuleProgress(m.id);
+    const count = (!done && p && p.t) ? ` <span style="opacity:.55">${p.n}/${p.t}</span>` : '';
+    return done
+      ? `<div>✓ ${m.label}</div>`
+      : `<div>· <a href="${m.href}" style="color:var(--gold)">${m.label}</a>${count}</div>`;
+  }).join('');
+  return `<div class="locked">nothing here yet.<br>finish all three first:
+    <div style="margin-top:14px; line-height:1.9; display:inline-block; text-align:left">${rows}</div></div>`;
+}
 
 const app = document.getElementById('app');
 
@@ -460,7 +494,9 @@ function creepStart(){
     }
     creepAt(t, ()=>{ eyes.style.opacity = '.92'; eyes.classList.add('breathe'); });
   }
-  // hard cut: scare.mp3 is 62s long and we take the first 7.8s of it, no fade
+  // hard cut, no fade: playback is stopped here at exactly CREEP.EYES. The shipped scare.mp3 is
+  // trimmed by tools/build_fnac_assets.py to 7.93s — a hair past this cut, never short of it, so
+  // the sound is still going when we kill it. (The 62s original lives in fnac-assets/.)
   creepAt(restoreAt, ()=>{
     creepStopAudio();
     creepLog('restore');
@@ -577,14 +613,15 @@ window.__creep = {
   armed: () => creepArmed
 };
 
-// ---- gate check (runs last, once everything above is defined) ----
-if(!unlocked()){
-  app.innerHTML = '<div class="locked">nothing here yet.<br>finish <a href="../encoding/" style="color:var(--gold)">Module 2</a> first.</div>';
-} else {
-  renderModule();
+// ---- gate check ----
+// NOT called here: the gate now asks the confetti engine, and engine.js is the LAST script on
+// the page. This runs from a one-line script after it (see the bottom of the file).
+function applyGate(){
+  if(!unlocked()) app.innerHTML = lockedMarkup();
+  else renderModule();
 }
 
-// ---- konami code easter egg (unlocks the same way the cookie gate does) ----
+// ---- konami code easter egg (the bypass — unlocks regardless of the three modules) ----
 (function(){
   const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
   let idx = 0;
@@ -599,7 +636,7 @@ if(!unlocked()){
       if(idx === KONAMI.length){
         idx = 0;
         if(!unlocked()){
-          document.cookie = 'ctf-fnac-unlocked=1;path=/;max-age=31536000;samesite=lax';
+          setBypass();
           renderModule();
         }
       }
@@ -612,5 +649,8 @@ if(!unlocked()){
 <script src="../confetti/manifest.js"></script>
 <script>window.FX_MODULE='fnac';</script>
 <script src="../confetti/engine.js"></script>
+<!-- The gate needs the engine's cross-module completion index, so it runs after it. Everything
+     above is already defined and inert until this call. -->
+<script>applyGate();</script>
 </body>
 </html>

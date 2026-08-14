@@ -79,11 +79,17 @@ async function newPage(reduced) {
     viewport: VIEW,
     reducedMotion: reduced ? 'reduce' : 'no-preference'
   });
-  await ctx.addCookies([
-    { name: 'ctf-fnac-unlocked', value: '1', url: BASE_URL },
-    { name: 'ctf-fnac-creep', value: '0', url: BASE_URL }
-  ]);
+  await ctx.addCookies([{ name: 'ctf-fnac-creep', value: '0', url: BASE_URL }]);
   const page = await ctx.newPage();
+  // FNAC's gate is now "Caesar + XOR + Encoding all complete", mirrored by the confetti engine
+  // into localStorage — no unlock cookie any more. Seed it so the module renders for the run.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ctf-complete:v1', JSON.stringify({
+        caesar: { c: true, n: 7, t: 7 }, xor: { c: true, n: 4, t: 4 }, encoding: { c: true, n: 6, t: 6 }
+      }));
+    } catch (e) {}
+  });
   const errs = [];
   // same-origin errors only — an external font request that flakes is not this page's bug
   const origin = new URL(BASE_URL).origin;

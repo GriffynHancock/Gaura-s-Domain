@@ -18,13 +18,29 @@ const check = (label, ok, detail) => {
 // does not. Faking the policy away would make the audio assertions meaningless.
 const browser = await chromium.launch();
 
-async function open({ viewport = { width: 1100, height: 950 }, unlocked = true, creepFired = true, hasTouch = false } = {}) {
+// The gate is no longer a cookie: FNAC opens when Caesar, XOR and Encoding are all complete,
+// which the confetti engine mirrors into localStorage['ctf-complete:v1']. Seeding that is how a
+// test says "this student has finished the beginner modules" — cookies cannot do it, so it goes
+// in via addInitScript (which coexists with the play() spy below).
+const GATE_KEY = 'ctf-complete:v1';
+const done = (n, t) => ({ c: true, n, t });
+const ALL_THREE = { caesar: done(7, 7), xor: done(4, 4), encoding: done(6, 6) };
+async function seedGate(page, entries) {
+  await page.addInitScript(([key, val]) => {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+  }, [GATE_KEY, entries]);
+}
+
+async function open({ viewport = { width: 1100, height: 950 }, unlocked = true, creepFired = true,
+                     hasTouch = false, gate = null, staleCookie = false } = {}) {
   const ctx = await browser.newContext({ viewport, hasTouch, isMobile: hasTouch });
   const cookies = [];
-  if (unlocked) cookies.push({ name: 'ctf-fnac-unlocked', value: '1', url: BASE_URL });
+  // the pre-gate-change cookie: seeded only where a test asserts it does NOT grant access
+  if (staleCookie) cookies.push({ name: 'ctf-fnac-unlocked', value: '1', url: BASE_URL });
   cookies.push({ name: 'ctf-fnac-creep', value: creepFired ? '1' : '0', url: BASE_URL });
   if (cookies.length) await ctx.addCookies(cookies);
   const page = await ctx.newPage();
+  await seedGate(page, gate || (unlocked ? ALL_THREE : {}));
   // spy on play() BEFORE any page script runs, and record how each promise settled — that is the
   // only way to tell "audio was permitted" from "audio was blocked and swallowed".
   await page.addInitScript(() => {
@@ -370,19 +386,20 @@ async function armedPage() {
 {
   const { page, ctx } = await open({ unlocked: true });
   await page.waitForSelector('#stage-night1 .flag-input');
-  // drop the unlock cookie WITHOUT reloading: the module stays rendered (inputs exist), but
-  // konami is now live again — exactly the state where the hole would bite. Cleared through the
-  // context, not document.cookie: addCookies() scoped it to the module's path, so a path=/
-  // deletion would silently leave it in place and make this check pass for the wrong reason.
+  // drop the completion index WITHOUT reloading: the module stays rendered (inputs exist), but
+  // konami is now live again — exactly the state where the hole would bite. Cookies are cleared
+  // through the context, not document.cookie: addCookies() scoped them to the module's path, so a
+  // path=/ deletion would silently leave one in place and make this check pass for the wrong reason.
   await ctx.clearCookies();
-  check('the unlock cookie really is gone before the konami keys are typed',
-    !(await page.evaluate(() => document.cookie.includes('ctf-fnac-unlocked=1'))));
+  await page.evaluate(k => localStorage.removeItem(k), 'ctf-complete:v1');
+  check('the module really does read as locked before the konami keys are typed',
+    await page.evaluate(() => !unlocked()));
   await page.click('#stage-night2 .flag-input');
   await page.keyboard.type('flag{almost}');
   for (const k of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'])
     await page.keyboard.press(k);
   check('konami keys typed inside a flag field do not trigger the unlock re-render',
-    await page.evaluate(() => !document.cookie.includes('ctf-fnac-unlocked=1')));
+    await page.evaluate(() => !document.cookie.includes('ctf-fnac-bypass=1')));
   check('...and the half-typed flag survives',
     (await page.inputValue('#stage-night2 .flag-input')).startsWith('flag{almost}'),
     await page.inputValue('#stage-night2 .flag-input'));
@@ -392,7 +409,7 @@ async function armedPage() {
   for (const k of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'])
     await page.keyboard.press(k);
   check('control: the same konami keys with no field focused DO unlock',
-    await page.evaluate(() => document.cookie.includes('ctf-fnac-unlocked=1')));
+    await page.evaluate(() => document.cookie.includes('ctf-fnac-bypass=1')));
   await ctx.close();
 }
 
@@ -449,11 +466,49 @@ await skipRun('clicks', 700);   // mid-flicker, and past the 500ms click dead zo
 await skipRun('space', 4600);   // during the eyes
 await skipRun('clicks', 4600);
 
-// ---------------------------------------------------------------- 7. gate + konami
+// ---------------------------------------------------------------- 7. gate: needs ALL THREE
+// Caesar + XOR + Encoding. Zero, one and two of them must all stay locked; the stale
+// pre-change `ctf-fnac-unlocked=1` cookie must not buy anything on its own.
 {
-  const { page, ctx, errs } = await open({ unlocked: false });
+  const cases = [
+    ['zero modules complete', {}],
+    ['one module complete', { encoding: done(6, 6) }],
+    ['two modules complete', { encoding: done(6, 6), caesar: done(7, 7) }],
+    ['three modules present but one incomplete',
+      { encoding: done(6, 6), caesar: done(7, 7), xor: { c: false, n: 3, t: 4 } }]
+  ];
+  for (const [label, gate] of cases) {
+    const { page, ctx } = await open({ gate });
+    await page.waitForSelector('.locked');
+    check(`locked with ${label}`, await page.locator('.stage').count() === 0);
+    await ctx.close();
+  }
+  {
+    const { page, ctx } = await open({ gate: {}, staleCookie: true });
+    await page.waitForSelector('.locked');
+    check('a stale ctf-fnac-unlocked=1 cookie does NOT bypass the new rule',
+      await page.locator('.stage').count() === 0);
+    const txt = await page.textContent('.locked');
+    check('the locked screen names all three modules',
+      ['Caesar', 'XOR', 'Encoding'].every(n => txt.includes(n)), txt.replace(/\s+/g, ' ').trim());
+    check('the locked screen links the unfinished ones',
+      await page.locator('.locked a[href="../ceasar/"], .locked a[href="../xor/"], .locked a[href="../encoding/"]').count() === 3);
+    await ctx.close();
+  }
+  {
+    const { page, ctx, errs } = await open({ unlocked: true });
+    await page.waitForSelector('#stage-night1');
+    check('unlocked with all three complete', await page.locator('.stage').count() === 7);
+    check('no console errors on the unlocked-by-progress path', errs.length === 0, errs.join(' | '));
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------- 7b. konami bypass
+{
+  const { page, ctx, errs } = await open({ gate: {} });
   await page.waitForSelector('.locked');
-  check('cookie gate still hides the module', await page.locator('.stage').count() === 0);
+  check('the gate hides the module', await page.locator('.stage').count() === 0);
   for (const k of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'])
     await page.keyboard.press(k);
   await page.waitForSelector('#stage-night1', { timeout: 3000 });

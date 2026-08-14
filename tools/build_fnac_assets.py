@@ -5,8 +5,10 @@ Run: .venv/bin/python tools/build_fnac_assets.py
 Idempotent: re-running reproduces byte-identical assets and clears the
 files each night no longer ships."""
 import io
+import json
 import pathlib
 import shutil
+import subprocess
 from PIL import Image, ImageDraw, ImageFont
 from fnac_png import (make_noise_png, append_trailing_bytes,
                       bit_split, bit_weave, xor_repeating)
@@ -47,12 +49,26 @@ NIGHT3_HINT_SRC = SRC / 'night3' / 'Sahur2.webp'
 
 # Intro creep sequence. Source names carry a space in the directory name and one file the user
 # called a .jpg is really a .png — deployed copies are renamed to plain URL-safe names.
+#
+# AUDIO IS TRIMMED HERE, not just copied. The page plays each sound and then hard-stops it from
+# JS (creepStopAudio); everything past that instant was being uploaded to Workers asset storage
+# and pulled down by every student's phone to be silently discarded. The `used` figures below are
+# the page's own timeline constants in public/crypto/fnac/index.html:
+#   scare.mp3   played at `eyesAt`, stopped at `eyesAt + CREEP.EYES`      -> 7.800s used
+#   flicker.mp3 played at t=0,      stopped at `darkAt`
+#                                   = 3*FLICKER_OFF + 2*FLICKER_ON       -> 1.920s used
+#   lights-on.mp3 played at `restoreAt`, stopped RESTORE=600ms later — the file is only 0.575s,
+#                 so it is consumed whole. Not trimmed.
+# The trim target is the used length plus a little slack, and the build ASSERTS the shipped
+# duration is >= the used length: a file that ended EARLY would silently turn the author's
+# deliberate hard cut-off into a natural fade to silence. No fade is applied — the cut is the point.
 CREEP_SRC = SRC / 'intro creep'
+# src name -> (deployed name, trim seconds or None, seconds the page actually plays)
 CREEP_FILES = {
-    'fnac-eyes.png': 'eyes.png',
-    'fnac.mp3': 'scare.mp3',
-    'light-flicker.mp3': 'flicker.mp3',
-    'lights-on.mp3': 'lights-on.mp3',
+    'fnac-eyes.png': ('eyes.png', None, None),
+    'fnac.mp3': ('scare.mp3', 7.9, 7.8),
+    'light-flicker.mp3': ('flicker.mp3', 2.0, 1.92),
+    'lights-on.mp3': ('lights-on.mp3', None, None),
 }
 
 
@@ -161,16 +177,69 @@ def build_night3():
           f'hint-sahur.webp ({hint.stat().st_size} bytes)')
 
 
+def probe_duration(path: pathlib.Path) -> float:
+    out = subprocess.run(
+        ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+         '-of', 'json', str(path)],
+        check=True, capture_output=True, text=True).stdout
+    return float(json.loads(out)['format']['duration'])
+
+
+def trim_audio(src: pathlib.Path, dst: pathlib.Path, seconds: float):
+    """Cut the first `seconds` off an mp3 with NO re-encode.
+
+    Stream copy, so the cut lands on the next whole MPEG frame boundary — the output is
+    therefore always slightly LONGER than asked for, which is the safe direction (see
+    CREEP_FILES). Re-encoding would be lossy and would add encoder delay, and libmp3lame's
+    gapless offsets can shave real content off the head.
+
+    Every parameter is pinned so a re-run is byte-identical: `-map_metadata -1` drops the
+    source's ID3 tags and `-fflags +bitexact` stops ffmpeg stamping its own version string
+    into the output. Without those two the file changes on every ffmpeg upgrade."""
+    subprocess.run(
+        ['ffmpeg', '-hide_banner', '-nostdin', '-v', 'error', '-y',
+         '-fflags', '+bitexact', '-i', str(src),
+         '-t', f'{seconds:.3f}', '-map_metadata', '-1', '-c:a', 'copy',
+         '-fflags', '+bitexact', str(dst)],
+        check=True)
+
+
+def optimise_png(src: pathlib.Path, dst: pathlib.Path):
+    """Re-save a PNG with zlib optimisation on. LOSSLESS and asserted so: no mode change,
+    no quantisation, and the decoded pixels must compare equal to the source's."""
+    img = Image.open(src)
+    buf = io.BytesIO()
+    img.save(buf, format='PNG', optimize=True)
+    out_img = Image.open(io.BytesIO(buf.getvalue()))
+    assert img.mode == out_img.mode and img.size == out_img.size, 'png re-save changed mode/size'
+    assert img.tobytes() == out_img.tobytes(), 'png re-save was not pixel-identical'
+    dst.write_bytes(buf.getvalue())
+
+
 def build_creep():
-    """Copy the intro-creep media out of `fnac-assets/intro creep/` (space in the name)
-    to URL-safe filenames under the served assets directory. Plain copies — the page
-    hard-cuts scare.mp3 at 7.8s in JS rather than depending on ffmpeg at build time."""
+    """Ship the intro-creep media out of `fnac-assets/intro creep/` (space in the name) to
+    URL-safe filenames under the served assets directory, trimmed to what the page can
+    actually play. The originals stay in fnac-assets/ as the source of truth; everything
+    under public/ is a build artefact."""
     out = OUT / 'creep'
     out.mkdir(parents=True, exist_ok=True)
-    for src_name, dst_name in CREEP_FILES.items():
-        shutil.copyfile(CREEP_SRC / src_name, out / dst_name)
-    _clean(out, set(CREEP_FILES.values()))
-    print('creep: wrote ' + ', '.join(sorted(CREEP_FILES.values())))
+    for src_name, (dst_name, trim, used) in CREEP_FILES.items():
+        src, dst = CREEP_SRC / src_name, out / dst_name
+        before = src.stat().st_size
+        if trim is not None:
+            trim_audio(src, dst, trim)
+            dur = probe_duration(dst)
+            # >= not ~=: a short file would fade instead of cutting. See CREEP_FILES.
+            assert dur >= used, f'{dst_name} is {dur:.3f}s, shorter than the {used}s the page plays'
+        elif src.suffix.lower() == '.png':
+            optimise_png(src, dst)
+        else:
+            shutil.copyfile(src, dst)
+        after = dst.stat().st_size
+        note = f' ({100 * (before - after) / before:.0f}% smaller)' if after < before else ''
+        print(f'  {dst_name}: {before} -> {after} bytes{note}')
+    _clean(out, {v[0] for v in CREEP_FILES.values()})
+    print('creep: wrote ' + ', '.join(sorted(v[0] for v in CREEP_FILES.values())))
 
 
 if __name__ == '__main__':

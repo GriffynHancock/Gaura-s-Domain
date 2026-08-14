@@ -483,13 +483,15 @@ PUZZLES.forEach((p,i)=>{
   if(storedSolved.has(p.id)){ node.classList.add('solved'); verdict.className='verdict ok'; verdict.textContent='correct — flag captured'; }
 });
 
-// Solving every puzzle here unlocks the FNAC bonus module: sets the gate cookie its page
-// checks, and shows a link to it. Also runs once on load so a student who finished this
-// module in a PAST session (page reload, cookie expired, whatever) gets re-unlocked instead
-// of staying stuck — this was the actual bug: nothing set the cookie, ever, live or on load.
+// Finishing this module shows the signpost to the FNAC bonus module. It no longer GRANTS
+// access: FNAC needs Caesar, XOR and Encoding all finished, and it works that out from the
+// confetti engine's completion index rather than from a cookie any one module can set.
+// The old `ctf-fnac-unlocked` cookie was written here and is gone — a per-module cookie can
+// only ever answer "did THIS module finish", which is no longer the question. The banner
+// stays: it is a pointer, and FNAC's own locked screen says what is still missing.
+// Runs once on load too, so a student who finished in a past session still sees the link.
 function checkFnacUnlock(){
   if(document.querySelectorAll('.card.solved').length < PUZZLES.length) return;
-  document.cookie = 'ctf-fnac-unlocked=1;path=/;max-age=31536000;samesite=lax';
   if(document.getElementById('fnac-link')) return;
   const el = document.createElement('div');
   el.id = 'fnac-link'; el.className = 'fnac-banner';
