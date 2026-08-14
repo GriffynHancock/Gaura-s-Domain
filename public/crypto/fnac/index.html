@@ -152,7 +152,10 @@ function bytesToHexDump(bytes, bytesPerRow=16, strictAscii=false){
   return out;
 }
 
-function mountRawBytesViewer(container, onBytes){
+// strictAscii is opt-in per call site: Night 2's halves are binary and contain 0x0a bytes that
+// would otherwise emit real newlines and shatter the dump's row alignment. Night 1 keeps the
+// original rendering (its call sites pass nothing).
+function mountRawBytesViewer(container, onBytes, strictAscii){
   container.innerHTML = `<div class="dropzone">drop a file here (stands in for <b>xxd</b>) — or click to choose</div><div class="hexdump" style="display:none"></div>`;
   const zone = container.querySelector('.dropzone');
   const dump = container.querySelector('.hexdump');
@@ -164,7 +167,7 @@ function mountRawBytesViewer(container, onBytes){
     try{
       const bytes = await readFileAsBytes(file);
       dump.style.display = 'block';
-      dump.textContent = bytesToHexDump(bytes);
+      dump.textContent = bytesToHexDump(bytes, 16, !!strictAscii);
       if(onBytes) onBytes(bytes);
     }catch(e){
       dump.style.display = 'block';
@@ -400,10 +403,10 @@ function mountXorTool(container, cipherUrl){
   container.innerHTML = `
     <div class="hexdump xor-cipher" style="max-height:150px">loading the message…</div>
     <label style="display:block;font-family:var(--mono);font-size:.7rem;color:var(--dim);margin-top:12px">CRIB — text you think the message starts with</label>
-    <input class="xor-crib" placeholder="flag{" style="width:100%;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:9px;margin-top:5px">
+    <input class="xor-crib" placeholder="flag{" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false" style="width:100%;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:9px;margin-top:5px">
     <div class="xor-crib-out" style="font-family:var(--mono);font-size:.76rem;color:var(--ink);margin-top:6px"></div>
     <label style="display:block;font-family:var(--mono);font-size:.7rem;color:var(--dim);margin-top:12px">KEY — repeated over the whole message</label>
-    <input class="xor-key" placeholder="type a key…" style="width:100%;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:9px;margin-top:5px">
+    <input class="xor-key" placeholder="type a key…" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false" style="width:100%;font-family:var(--mono);background:#000;color:var(--gold);border:1px solid var(--edge);border-radius:6px;padding:9px;margin-top:5px">
     <div class="hexdump xor-plain" style="white-space:pre-wrap;margin-top:6px;max-height:200px">—</div>`;
   const cipherBox = container.querySelector('.xor-cipher');
   const cribIn = container.querySelector('.xor-crib');
@@ -512,7 +515,7 @@ function buildNight2(bodyEl){
     </div>
     <div class="verdict" style="font-family:var(--mono);font-size:.76rem;margin-top:8px"></div>
   `;
-  mountRawBytesViewer(bodyEl.querySelector('.tool-raw'));
+  mountRawBytesViewer(bodyEl.querySelector('.tool-raw'), null, true);
   mountWeaveTool(bodyEl.querySelector('.tool-weave'));
   wireFlagCheck(bodyEl, 'night2', 'flag{raw_bit_weaving}');
 }
