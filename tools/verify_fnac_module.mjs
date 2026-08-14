@@ -13,15 +13,32 @@ const check = (label, ok, detail) => {
   else { console.log(`FAIL ${label}${detail ? ' — ' + detail : ''}`); fails.push(label); }
 };
 
-const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+// NO --autoplay-policy override: Chrome's real autoplay policy is left in force, because the
+// whole point of the round-2 trigger change is that a tap grants user activation and a scroll
+// does not. Faking the policy away would make the audio assertions meaningless.
+const browser = await chromium.launch();
 
-async function open({ viewport = { width: 1100, height: 950 }, unlocked = true, creepFired = true } = {}) {
-  const ctx = await browser.newContext({ viewport });
+async function open({ viewport = { width: 1100, height: 950 }, unlocked = true, creepFired = true, hasTouch = false } = {}) {
+  const ctx = await browser.newContext({ viewport, hasTouch, isMobile: hasTouch });
   const cookies = [];
   if (unlocked) cookies.push({ name: 'ctf-fnac-unlocked', value: '1', url: BASE_URL });
   cookies.push({ name: 'ctf-fnac-creep', value: creepFired ? '1' : '0', url: BASE_URL });
   if (cookies.length) await ctx.addCookies(cookies);
   const page = await ctx.newPage();
+  // spy on play() BEFORE any page script runs, and record how each promise settled — that is the
+  // only way to tell "audio was permitted" from "audio was blocked and swallowed".
+  await page.addInitScript(() => {
+    window.__playLog = [];
+    const orig = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      const src = (this.src || '').split('/').pop();
+      let p;
+      try { p = orig.apply(this, arguments); } catch (e) { window.__playLog.push({ src, ok: false, err: String(e) }); throw e; }
+      if (p && p.then) p.then(() => window.__playLog.push({ src, ok: true }), e => window.__playLog.push({ src, ok: false, err: String(e) }));
+      else window.__playLog.push({ src, ok: true, note: 'no promise' });
+      return p;
+    };
+  });
   const errs = [];
   // only errors from OUR origin count: the page links Google Fonts, and a flaky external
   // request is a network fact, not a defect in this module.
@@ -151,19 +168,91 @@ async function open({ viewport = { width: 1100, height: 950 }, unlocked = true, 
   await ctx.close();
 }
 
-// the WIRING: a real scroll, with the roll forced each way
+// the WIRING: a real click/tap, with the roll forced each way
 for (const [roll, expect] of [[0.05, true], [0.9, false]]) {
   const { page, ctx } = await open({ creepFired: false });
   await page.waitForSelector('#spook');
   await page.evaluate(r => { window.__creepRandom = () => r; }, roll);
-  await page.mouse.move(500, 400);
-  await page.mouse.wheel(0, 600);          // a real wheel scroll, not scrollTo()
+  await page.mouse.click(550, 500);        // a real pointer click on the page background
   await page.waitForTimeout(500);
   const running = await page.evaluate(() => window.__creep.state.phase !== 'idle');
-  check(`scroll with roll ${roll} ${expect ? 'starts' : 'does not start'} the sequence`, running === expect);
-  if (running) await page.evaluate(() => window.__creep.abort('test'));
+  check(`first tap with roll ${roll} ${expect ? 'starts' : 'does not start'} the sequence`, running === expect);
+  if (running) {
+    // the trigger is a user-activation gesture, so play() must actually be PERMITTED
+    const log = await page.evaluate(() => window.__playLog);
+    check('audio was permitted on the tap-triggered path (play() resolved, not rejected)',
+      log.length > 0 && log.every(e => e.ok), JSON.stringify(log));
+    await page.evaluate(() => window.__creep.abort('test'));
+  }
   check(`roll ${roll}: cookie flag ${expect ? 'set' : 'untouched'}`,
     await page.evaluate(() => window.__creep.fired()) === expect);
+  await ctx.close();
+}
+
+// a real TOUCH tap on a phone-sized, touch-enabled context — not a mouse click
+{
+  const { page, ctx } = await open({ creepFired: false, viewport: { width: 390, height: 780 }, hasTouch: true });
+  await page.waitForSelector('#spook');
+  await page.evaluate(() => { window.__creepRandom = () => 0.01; });
+  await page.tap('body');                  // dispatches real touchstart/touchend, then click
+  await page.waitForTimeout(400);
+  check('a real touch tap starts the sequence on a phone-sized viewport',
+    await page.evaluate(() => window.__creep.state.phase !== 'idle'));
+  const log = await page.evaluate(() => window.__playLog);
+  check('touch tap permits audio too', log.length > 0 && log.every(e => e.ok), JSON.stringify(log));
+  // a second tap right after must not start counting toward the skip either
+  await page.tap('body');
+  check('the follow-up tap did not count toward the 3-tap skip',
+    await page.evaluate(() => window.__creep.state.clicks) === 0);
+  await page.evaluate(() => window.__creep.abort('test'));
+  await ctx.close();
+}
+
+// the trigger is one-shot and the roll happens once: a second tap after a losing roll must not
+// re-roll the dice until the page is reloaded.
+{
+  const { page, ctx } = await open({ creepFired: false });
+  await page.waitForSelector('#spook');
+  await page.evaluate(() => { window.__creepRandom = () => 0.9; });
+  await page.mouse.click(550, 500);
+  await page.evaluate(() => { window.__creepRandom = () => 0.01; }); // a winning roll from here on
+  for (let i = 0; i < 4; i++) await page.mouse.click(600, 520);
+  await page.waitForTimeout(300);
+  check('the trigger is one-shot: later taps do not re-roll',
+    await page.evaluate(() => window.__creep.state.phase === 'idle'));
+  await ctx.close();
+}
+
+// scroll must NOT trigger it any more, and no scroll listener may remain
+{
+  const { page, ctx } = await open({ creepFired: false });
+  await page.waitForSelector('#spook');
+  await page.evaluate(() => { window.__creepRandom = () => 0.01; }); // a roll that would win
+  await page.mouse.move(500, 400);
+  await page.mouse.wheel(0, 900);          // a real wheel scroll
+  await page.waitForTimeout(600);
+  check('a scroll no longer starts the sequence',
+    await page.evaluate(() => window.__creep.state.phase === 'idle'));
+  const src = await (await fetch(BASE_URL + 'index.html')).text();
+  check("no scroll listener or scroll-position state remains in the source",
+    !/addEventListener\('scroll'/.test(src) && !src.includes('scrollY') && !src.includes('onScroll'));
+  await ctx.close();
+}
+
+// THE TRAP: the sequence is started BY a click, and three clicks skip it. A fast triple-click or
+// a double-tap must not abort the scare it just started.
+for (const [name, extraClicks, gap] of [['double-tap', 1, 40], ['fast triple-click', 2, 40], ['four fast taps', 3, 60]]) {
+  const { page, ctx, errs } = await open({ creepFired: false });
+  await page.waitForSelector('#spook');
+  await page.evaluate(() => { window.__creepRandom = () => 0.01; });
+  await page.mouse.click(550, 500);                       // this one triggers it
+  for (let i = 0; i < extraClicks; i++) { await page.mouse.click(550, 500, { delay: 5 }); await page.waitForTimeout(gap); }
+  await page.waitForTimeout(120);
+  check(`${name} at the trigger does not abort the sequence`,
+    await page.evaluate(() => window.__creep.state.phase !== 'idle'),
+    await page.evaluate(() => JSON.stringify({ phase: window.__creep.state.phase, clicks: window.__creep.state.clicks })));
+  await page.evaluate(() => window.__creep.abort('test'));
+  check(`${name}: no console errors`, errs.length === 0, errs.join(' | '));
   await ctx.close();
 }
 
@@ -176,6 +265,8 @@ for (const [roll, expect] of [[0.05, true], [0.9, false]]) {
   await page.waitForTimeout(300);
   check('"spook me again" starts the sequence from a real click',
     await page.evaluate(() => window.__creep.state.phase !== 'idle'));
+  const log = await page.evaluate(() => window.__playLog);
+  check('"spook me again" is a gesture too: play() resolved', log.length > 0 && log.every(e => e.ok), JSON.stringify(log));
   await page.evaluate(() => window.__creep.abort('test'));
   check('no console errors around the spook button', errs.length === 0, errs.join(' | '));
   await ctx.close();
@@ -185,12 +276,15 @@ for (const [roll, expect] of [[0.05, true], [0.9, false]]) {
 async function skipRun(how, waitMs) {
   const { page, ctx, errs } = await open({ creepFired: false });
   await page.waitForSelector('#spook');
-  await page.evaluate(() => window.__creep.start());
+  // start it the way a student does — a real tap — so the audio is actually playing and
+  // "audio stopped" below is a real assertion rather than a vacuous one under autoplay block.
+  await page.evaluate(() => { window.__creepRandom = () => 0.01; });
+  await page.mouse.click(550, 500);
   await page.waitForTimeout(waitMs);
   const phaseBefore = await page.evaluate(() => window.__creep.state.phase);
   const t0 = Date.now();
   if (how === 'space') await page.keyboard.press('Space');
-  else for (let i = 0; i < 3; i++) await page.mouse.click(550, 500);
+  else for (let i = 0; i < 3; i++) { await page.mouse.click(550, 500); await page.waitForTimeout(60); }
   const stopped = await page.evaluate(() => window.__creep.state.phase === 'idle');
   const dt = Date.now() - t0;
   const overlay = await page.evaluate(() => {
@@ -198,6 +292,8 @@ async function skipRun(how, waitMs) {
     return { on: el.classList.contains('on'), opacity: el.style.opacity };
   });
   const audioLive = await page.evaluate(() => Object.values(window.__creep.audio()).some(a => !a.paused));
+  const played = await page.evaluate(() => window.__playLog.filter(e => e.ok).length);
+  check(`skip by ${how}: audio was actually playing before the skip (${played} play() calls resolved)`, played > 0);
   check(`skip by ${how} during "${phaseBefore}" aborts immediately`, stopped && dt < 900, `${dt}ms`);
   check(`skip by ${how}: overlay cleared`, !overlay.on && overlay.opacity === '0', JSON.stringify(overlay));
   check(`skip by ${how}: audio stopped`, !audioLive);
@@ -209,7 +305,7 @@ async function skipRun(how, waitMs) {
   await ctx.close();
 }
 await skipRun('space', 700);    // mid-flicker
-await skipRun('clicks', 700);   // mid-flicker
+await skipRun('clicks', 700);   // mid-flicker, and past the 500ms click dead zone
 await skipRun('space', 4600);   // during the eyes
 await skipRun('clicks', 4600);
 

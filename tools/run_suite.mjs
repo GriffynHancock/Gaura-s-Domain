@@ -50,7 +50,14 @@ const GROUPS = {
 
 const argv = process.argv.slice(2);
 const has = f => argv.includes(f);
-const valOf = f => { const a = argv.find(x => x.startsWith(f + '=')); return a ? a.slice(f.length + 1) : null; };
+// Accepts both `--only=a,b` and `--only a,b` — getting that wrong silently runs the WHOLE suite
+// when someone asked for one script, which is the exact failure mode this runner exists to stop.
+const valOf = f => {
+  const eq = argv.find(x => x.startsWith(f + '='));
+  if (eq) return eq.slice(f.length + 1);
+  const i = argv.indexOf(f);
+  return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
+};
 
 if (has('--list')) {
   for (const [g, names] of Object.entries(GROUPS)) console.log(`${g.padEnd(7)} ${names.join(' ')}`);
@@ -101,9 +108,12 @@ async function pool(names, n) {
   return results;
 }
 
+// The parallel group's concurrency is fixed at 4 on purpose — these scripts are contention-safe,
+// so --jobs (which is about accepting contention risk) has nothing to say about them.
+const PARALLEL_JOBS = 4;
 const t0 = Date.now();
-console.log(`-- ${plannedParallel.length} state/pure scripts, ${jobs > 1 ? jobs : 4} at a time`);
-const results = await pool(plannedParallel, 4);
+console.log(`-- ${plannedParallel.length} state/pure scripts, ${PARALLEL_JOBS} at a time`);
+const results = await pool(plannedParallel, PARALLEL_JOBS);
 if (plannedSerial.length) {
   console.log(`-- ${plannedSerial.length} timing-sensitive scripts, ${jobs} at a time (nothing else running)`);
   results.push(...await pool(plannedSerial, jobs));

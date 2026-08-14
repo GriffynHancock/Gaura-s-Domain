@@ -79,7 +79,14 @@ algorithms.
 `[FAIRLY ACCURATE]` / `[ANALOGY]` tags throughout, so a reader can tell which visuals are the real
 algorithm and which are teaching aids.
 
-### Test suite — 16 scripts in `tools/`, run them all before merging anything
+### Test suite — 15 scripts in `tools/`, run them all before merging anything
+**Run them with `node tools/run_suite.mjs`** (`--list` for the groups). It parallelises the
+state-only scripts, runs the pacing-sensitive ones one at a time so CPU contention cannot fake a
+failure, and leaves out `verify_flash_safety` unless you pass `--all` — the fast gate is ~87s
+against ~6.5 min for everything serially. Pass `--all` for any change that can move a flash
+(animation timing, pacing, escalation/aliasing curves, per-frame colour, opacity/blur, the
+governor, repaint cadence). Timings and reasoning: `docs/research/test-suite-speed-audit.md`.
+
 `test_md5_trace` · `test_keccak_trace` · `verify_task3_lane_grid` · `verify_task4_sha3_animation` ·
 `verify_task5_md5_registers` · `verify_task6_block_stack` · `verify_task7_input_box` ·
 `verify_task8_collision` · `verify_task9_full_integration` · `verify_task_wiggle_juice` ·
