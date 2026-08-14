@@ -215,6 +215,8 @@
   .keyhex{font-family:var(--mono); font-weight:700; font-size:.92rem; color:var(--read-on);
     background:var(--read-bg); border:1px solid #000; border-radius:6px; padding:10px 12px;
     box-shadow:0 0 0 1px var(--edge); min-width:64px; text-align:center}
+  /* the hex half of C1's key box — an INPUT, not a readout: either box can be typed in */
+  .keyrow input.keyhexin{font-weight:700; min-width:92px; max-width:110px; text-align:center}
   .xanim{display:flex; gap:5px; flex-wrap:wrap; margin:8px 0 4px; min-height:34px}
   .xb{font-family:var(--mono); font-weight:700; font-size:.8rem; min-width:26px; text-align:center; padding:7px 4px;
     border-radius:5px; background:var(--panel2); border:1px solid var(--edge); color:var(--dim); transition:.12s}
@@ -657,11 +659,11 @@ addCard({
     ctx.work.innerHTML =
       '<div class="lab">The scrambled message — hex (top) and text (bottom)</div>'+
       '<div class="hexdump"></div>'+
-      '<div class="lab">Apply a key — type a character to try</div>'+
+      '<div class="lab">Apply a key — type a character, or type its hex code</div>'+
       '<div class="keyrow"><input class="keyin" maxlength="1" spellcheck="false" autocomplete="off" placeholder="one character" aria-label="key character">'+
-        '<span class="keyhex" aria-label="key in hex">0x··</span>'+
-        '<span class="keyhint">the hex code of that character</span></div>'+
-      '<div class="decout">(type a character to try)</div>'+
+        '<input class="keyhexin" spellcheck="false" autocomplete="off" placeholder="0x··" aria-label="key in hex">'+
+        '<span class="keyhint">type in either box — the other one follows</span></div>'+
+      '<div class="decout">(type a character, or its hex code)</div>'+
       '<div class="lab">Try a few keys yourself, then when you get bored, click the button below to brute force it — trying every combination.</div>'+
       '<button class="mini runbrute">BRUTE FORCE ▸</button>'+
       '<div class="brutewrap hide"><div class="brutelist"></div></div>';
@@ -670,7 +672,7 @@ addCard({
       c.innerHTML='<div class="hxh">'+b.toString(16).padStart(2,'0')+'</div><div class="hxc">'+
         (b>=32&&b<=126?String.fromCharCode(b):'·')+'</div>'; hd.appendChild(c); });
     const wrap=ctx.work.querySelector('.brutewrap'), list=ctx.work.querySelector('.brutelist'),
-          keyin=ctx.work.querySelector('.keyin'), keyhex=ctx.work.querySelector('.keyhex'),
+          keyin=ctx.work.querySelector('.keyin'), keyhex=ctx.work.querySelector('.keyhexin'),
           decout=ctx.work.querySelector('.decout');
 
     // decode under every key, in KEY ORDER (not sorted — spotting the readable one is the skill)
@@ -688,16 +690,26 @@ addCard({
     }
     ctx.work.querySelector('.runbrute').onclick=()=>{ wrap.classList.toggle('hide');
       if(!wrap.classList.contains('hide') && !list.children.length) renderList(); };
-    function apply(k){ keyhex.textContent='0x'+k.toString(16).padStart(2,'0');
+    // The two boxes are two views of ONE byte: type a character and its hex appears, type hex and the
+    // character appears. `src` says which box the student is typing in, so we never overwrite the box
+    // under their cursor. Non-printable bytes still render into the character box (author's call:
+    // "if it's broken text, let it be broken") — the hex box is what stays authoritative for those.
+    function apply(k,src){
+      if(src!=='char') keyin.value=String.fromCharCode(k);
+      if(src!=='hex')  keyhex.value='0x'+k.toString(16).padStart(2,'0');
       const dec=xorBytes(cipher,Uint8Array.of(k));
       decout.innerHTML=''; decout.appendChild(flagMark(toStr(dec))); }
-    // clicking a row puts that key's CHARACTER in the box; if the byte isn't typeable (control /
-    // high byte) the box is cleared and the hex readout carries the key on its own — still decodes.
-    function pick(k){ keyin.value=(k>=32&&k<=126)?String.fromCharCode(k):''; apply(k); }
+    function idle(){ decout.textContent='(type a character, or its hex code)'; }
+    function pick(k){ apply(k); }                          // a brute-list row fills BOTH boxes
     keyin.addEventListener('input',()=>{
-      keyin.value=(keyin.value||'').slice(-1);            // paste of many chars keeps the last one
-      if(!keyin.value){ keyhex.textContent='0x··'; decout.textContent='(type a character to try)'; return; }
-      apply(keyin.value.charCodeAt(0)&255); });
+      keyin.value=(keyin.value||'').slice(-1);             // paste of many chars keeps the last one
+      if(!keyin.value){ keyhex.value=''; idle(); return; }
+      apply(keyin.value.charCodeAt(0)&255,'char'); });
+    keyhex.addEventListener('input',()=>{
+      const raw=(keyhex.value||'').trim().replace(/^0x/i,'');
+      if(!raw){ keyin.value=''; idle(); return; }
+      if(!/^[0-9a-f]{1,2}$/i.test(raw)){ decout.textContent='(hex is 0–9 and a–f, one or two digits: 37 or 0x37)'; return; }
+      apply(parseInt(raw,16),'hex'); });
     return plain;
   }
 });
