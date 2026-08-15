@@ -6,6 +6,18 @@ _Single source of truth. Updated as we go. Full plan: `docs/superpowers/specs/20
 Projected, presenter-led web modules (~60 min) teaching teenagers crypto before a national CTF.
 Spine: **recognise → identify → decode/crack → submit.**
 
+## Which doc to read
+- **`CLAUDE.md`** — conventions, local dev, deploy, and the load-bearing invariants. Read before editing code.
+- **`docs/voice-guide.md`** — binding style rules for anything a student reads. Read before writing copy.
+  Backed by **`docs/authors-original-copy.md`** (the author's verbatim dictation, the source of truth for
+  voice) and **`docs/prose-accounting.md`** (which strings on each page are his and which were generated).
+- **`docs/next-session.md`** — what the next session is for. **This supersedes
+  `docs/NEXT-SESSION-QUEUE.md`, which is stale** (it still lists XOR C4 as unbuilt and blocking FNAC).
+- **`docs/ideas-backlog.md`** — parked ideas, not scheduled.
+- **`docs/research/`** — supporting research. **Not audited recently; treat as possibly stale.**
+- **`docs/superpowers/specs/`** and **`plans/`** — design specs and implementation plans.
+- **`docs/2026-06-26-module4-xor-spec.md`** — XOR's spec and handoff.
+
 ## Modules
 The directory renumbered to **101–105** on 2026-08-15 and is now the student-facing landing page
 "Gaura's Domain" (`public/crypto/index.html`), not a dev page. Note XOR is **103** and Hashing is
@@ -32,7 +44,7 @@ people really struggled with it in XOR C2, which matters because C2, C3 and FNAC
 landing. A reported "Night 2 is broken" turned out to be a student mixing Night 1 and Night 2 files; the
 assets are correct and live matches local.
 
-## Module 3 — Hashing (live, `/crypto/hash`)
+## Module 104 · Intro to Hashing (live, `/crypto/hash`)
 
 **Current state.** An avalanche-effect + internals visualization, not a puzzle ramp — no scored
 challenges yet (idea logged in `docs/ideas-backlog.md`). From-scratch, trace-instrumented MD5 and
@@ -184,7 +196,7 @@ feedback loop through 2026-08-13/14 produced the Canvas rebuild, phase controlle
 governor, step-through and π pacing described above. Specs in `docs/superpowers/specs/`, supporting
 research in `docs/research/`.
 
-## Module 1 — Encryption 101 (live, `/crypto/ceasar`) — 6 puzzles
+## Module 101 · Simplest Cryptography (live, `/crypto/ceasar`) — 6 puzzles
 Titled **"Encryption 101"** (h1), kicker links back to Gaura's Domain. Opens with a plain-language framing of
 what encryption is, an ℹ note on letters-as-numbers, and a highlighted call to action telling students they're
 hunting a signal that reads `flag{`. Dial instrument(s) + alphabet slide-rule + dark mode + solved-ticks
@@ -229,7 +241,7 @@ hunting a signal that reads `flag{`. Dial instrument(s) + alphabet slide-rule + 
   `flag{affine_ace}` into the UNLOCK panel themselves, which maps codes → reward URLs (currently **placeholder
   rickrolls — swap real meme URLs** in `REWARDS`). Persisted in localStorage (`caesar-unlocks`).
 
-## Module 2 — Encoding is not encryption (live, `/crypto/encoding`) — 9 puzzles
+## Module 102 · Common Encoding Schemes (live, `/crypto/encoding`) — 9 puzzles
 Titled **"Encoding is not ~~encryption~~"**. Click-to-build decode pipeline; **method tiles shuffle per
 card/refresh**; preview **TEXT ⇄ IMAGE** (resizable) that **always starts on TEXT** — flipping to IMAGE is the
 student's move to make; type-the-flag SUBMIT; solved-tick; dark mode; resizable blob window. Methods:
@@ -275,7 +287,7 @@ Solve-paths/authoring guide: `docs/superpowers/module2-solve-paths.md` (current 
 Clearing every puzzle here reveals the FNAC banner link. It no longer writes a `ctf-fnac-unlocked` cookie —
 that cookie is gone, and FNAC's gate now asks the confetti engine for all three beginner modules instead.
 
-## Bonus — Five Nights at Crypto's (live, `/crypto/fnac`)
+## Module 105 · 5 Nights at Crypto's (live, `/crypto/fnac`)
 File-forensics bonus module, deployed. Seven stages; **nights 1–3 are real, 4–7 are placeholders**
 (`ready:false`, dimmed). `FX_TOTAL = 3`, matching the real, solvable nights — hard-coded, not derived
 from `STAGES.length` (which is 7), and must be raised by hand as each placeholder night goes live.
@@ -292,8 +304,9 @@ now one third of the requirement, so reading it would grandfather people past Ca
 inert. The konami bypass therefore rides on its own cookie name (`ctf-fnac-bypass`) that no old browser can
 already be carrying. The locked screen lists all three with ✓ / `n/t` progress, and each unfinished module is a
 link whose click also **repairs** that module's entry in the engine's cross-module index — which is how someone
-who finished a module before the gate existed gets counted. See the ⚠️ at the top: XOR cannot currently be
-completed, so in practice the gate is konami-only.
+who finished a module before the gate existed gets counted. **The gate is reachable normally** — XOR's C4 was
+built on 2026-08-15, so all three beginner modules can be completed and konami is a shortcut, not the only way
+in.
 
 **The gate is an overlay, not a replacement.** It used to do `app.innerHTML = lockedMarkup()`; the module now
 renders always and the locked board sits on top of it as a fixed panel, with `#app` marked `inert` and the

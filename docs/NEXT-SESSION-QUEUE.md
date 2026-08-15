@@ -1,3 +1,8 @@
+> # ⚠️ SUPERSEDED — do not work from this file
+> Written 2026-08-15 **morning**. Its headline item (build XOR C4, which was blocking FNAC) was done
+> that same day, so the ranking below is stale. **The current plan is `docs/next-session.md`.**
+> Kept only because some of the per-item detail here is still specified enough to dispatch from.
+
 # Next session queue — written 2026-08-15, reconciled against the code at the end of that session
 
 Ordered by value. Everything here is specified enough to dispatch without re-deriving it.
