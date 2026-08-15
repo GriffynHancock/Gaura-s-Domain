@@ -340,6 +340,16 @@ have failed on a correctly locked page) to assert coverage, opacity, `inert`, sc
   order** (source byte 0 → high nibble of output byte 0, source byte 1 → low nibble of output byte 0, …); each
   half is `ceil(len/2)` bytes. An odd-length source zero-pads the final low nibble and loses its own length,
   so the builder pads to an **even-length source** and asserts `bit_weave(bit_split(x)) == x`.
+- **Night 4 · You Spin Me Right Round** — ⬜ **spec'd, not built.**
+  `docs/superpowers/specs/2026-08-15-fnac-night4-spec.md`. Every word of a passage Caesar-shifted by
+  its own key; solve by brute-forcing each word. Flag `flag{anathemgoodbook}`, carried as eight
+  ordinary words with the braces written as `curly brace` so no punctuation leaks the position.
+  Measured: scanning for a shift that yields `flag` returns exactly one hit and zero false positives
+  on the shipped text, and every flag word ranks 1st or 2nd of 26 on English trigram score. Reward is
+  `fnac-assets/spinor.mp4` (already pure-green, keys cleanly) chroma-keyed in the bottom-left corner
+  as a trophy with glow, RGB outline and sun rays; muted loop, click for sound, and the whole animated
+  assembly needs a flash-safety measurement. Building it takes `FX_TOTAL` 3 → 4.
+
 - **Night 3 · Triple T** — `night3-a.txt`, 86 bytes of repeating-key XOR, key `tung tung tung sahur`
   (20 bytes). Plaintext: `i said one more video three hours ago. its 3am now.   flag{stop_scrolling}  go to bed.`
   Flag `flag{stop_scrolling}`.

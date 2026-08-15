@@ -2,8 +2,11 @@
 
 ## What this is
 A set of **interactive teaching modules** to give Victorian TAFE teenagers a working intro to
-cryptography **before they compete in a national CTF**. Hosted at `ctf.sandhi.com.au/crypto/*`.
-The first module (Caesar/ROT) lives at `/crypto/ceasar`.
+cryptography **before they compete in a national CTF**. Hosted at `ctf.sandhi.com.au/crypto/*`,
+numbered 101–105. The landing page `/crypto/` is student-facing ("Gaura's Domain"), not a dev index.
+**Read `STATUS.md` for current state and `docs/next-session.md` for what to work on next.**
+
+**Writing anything a student reads? `docs/voice-guide.md` is binding.** See the copy section below.
 
 ## Audience — assume zero
 Assume the room does **not** know what a flag is, what a CTF is, or what cryptography is.
@@ -160,6 +163,13 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   bit-interleaver run as `a,b` produces garbage and `b,a` produces the PNG). Neither output opens by
   double-click without a `.png` extension, so a correct solve and a wrong one look identical until you run
   `file` on them.
+- **Night 4 is spec'd but NOT built** — `docs/superpowers/specs/2026-08-15-fnac-night4-spec.md`.
+  Per-word Caesar (a different key every word). Its one non-obvious rule: the flag's braces are
+  carried as the **words** `curly brace`, never as `{` and `}`, because punctuation does not rotate
+  and a literal `{` both leaks the flag's position and gives the brute force nothing to rank. The
+  builder must assert that no other word in the ciphertext rotates to any of the eight flag words;
+  that currently holds with zero collisions, but it is a property of the specific source text, not a
+  guarantee. Building it takes FNAC's `FX_TOTAL` from 3 to 4.
 - **Night 3's flag sits at offset 54, deliberately, and the offset is load-bearing.** At offset 0 a `flag{`
   crib lands first try and there is nothing to search, so the night was a "guess the key" puzzle wearing a
   crib costume. 54 % 20 = **phase 14**, the phase at which the crib recovers `" sahu"` — the half the

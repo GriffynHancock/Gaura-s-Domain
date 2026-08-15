@@ -25,13 +25,17 @@ It is hidden about 75% of the way through the passage, as six ordinary-looking w
 its own shift like every other word:
 
 ```
-flag  brace  anathem  good  book  brace
+flag  curly brace  anathem  good  book  curly brace
 ```
 
-The solver decodes those six words like any others, sees `flag brace anathem good book brace`, and
-reassembles `flag{anathemgoodbook}`. First `brace` is the opening one, second is the closing one.
+Eight words. The solver decodes them like any others, sees
+`flag curly brace anathem good book curly brace`, and reassembles `flag{anathemgoodbook}`. The first
+`curly brace` opens, the second closes, by position.
 
-**Braces are written as the word `brace`, never as `{` and `}`.** This was the author's call and it
+It is `curly brace` and not bare `brace` because `brace` on its own reads as a dental brace or a
+bracing position. Both words are ordinary dictionary words, so this costs nothing.
+
+**Braces are never written as `{` and `}`.** This was the author's call and it
 is load-bearing for two reasons. Punctuation does not rotate, so a literal `{` would sit in the
 ciphertext in plain sight and `grep '{'` would locate the flag instantly. And a chunk that is
 mostly punctuation gives the brute force nothing to rank, so it breaks the solve as well as leaking
@@ -60,6 +64,7 @@ Under the word-boundary encoding above, scored by English trigram frequency, the
 | chunk | in dictionary | rank of true answer |
 |---|---|---|
 | `flag` | yes | 2 / 26 |
+| `curly` | yes | 1 / 26 |
 | `brace` | yes | 1 / 26 |
 | `anathem` | **no** | 1 / 26 |
 | `good` | yes | 2 / 26 |
@@ -68,6 +73,22 @@ Under the word-boundary encoding above, scored by English trigram frequency, the
 `anathem` is not a dictionary word but still ranks first on trigram score, so the pun survives. A
 dictionary-only script will miss that one chunk and a frequency-scoring script will not, which is a
 fair thing for this night to teach.
+
+## Can you just scan for the word "flag"?
+
+Yes, and that is a legitimate intended path: scan every word for a shift that produces `flag`, then
+read the words either side of the hit by hand. **Measured against the real source text, it returns
+exactly one hit and zero false positives.**
+
+The reason it is robust rather than lucky: every letter in a word shifts by the same amount, so a
+word can only rotate into `flag` if it has the identical pattern of gaps between its letters. That is
+a 1 in 26³ = 17,576 chance for any given four-letter word. `night4-nonflag.txt` has 9 four-letter
+words, so the expected number of false hits is about 0.0005. Checked directly, all of
+`flag`, `curly`, `brace`, `good`, `book` and `anathem` have **zero** collisions in the source.
+
+**This is a property of this particular text, not a guarantee.** The builder must assert it, or
+swapping the passage later could silently reintroduce a false hit and send a student down a dead end.
+Assert, for each of the eight flag words, that no other word in the finished ciphertext rotates to it.
 
 ## Source text
 
@@ -102,7 +123,16 @@ Mark the block `<!-- copy: author -->`.
 
 ## The reward
 
-On solve, `spinor.mp4` loops in the **bottom-left corner**, first 8 seconds only, chroma-keyed.
+On solve, `spinor.mp4` loops in the **bottom-left corner**, first 8 seconds only, chroma-keyed, and
+dressed as a trophy: a glow, an animated RGB outline, and sun rays radiating behind it.
+
+**Keep it as video, do not convert it to a GIF.** The author noted the clip has sound and should play
+it on click. A GIF cannot carry audio, so converting would remove the thing he asked for. A GIF of
+720×1280 for 8 seconds would also be several times the size of the 1.6 MB mp4, and its 1-bit
+transparency would leave a hard green fringe where the canvas key gives a clean edge.
+
+Behaviour: muted loop by default (browsers will not autoplay it otherwise), and a click toggles the
+sound on. Clicking must not stop the loop.
 
 Verified facts about the asset (`fnac-assets/spinor.mp4`):
 - 720×1280 portrait, 30fps, 12.5s, 1.6 MB, **has an audio track**.
@@ -122,7 +152,12 @@ Implementation notes:
   was. If the spin rate lands near the flash bound, slow the playback rate rather than dropping the
   effect.
 - It is destined for a trophy room later, so build the keyed-video player as something reusable
-  rather than inline in Night 4.
+  rather than inline in Night 4. The glow, RGB outline and sun rays belong to the trophy frame, not
+  to Night 4, for the same reason.
+- **The trophy dressing is animated, so it carries its own flash risk.** An animated rainbow outline
+  and rotating sun rays on a `#000000` page are periodic large-area motion. Measure the whole
+  assembly, not just the video, and if the rays or the outline cycle near the bound, slow them rather
+  than removing them. Rays should be low-contrast against the black.
 
 ## Wiring
 
@@ -148,7 +183,6 @@ Assert the solvability property in the **builder** too, so a future text swap ca
 
 ## Open
 
-- Whether `brace` reads clearly enough as "this is a curly brace" for a 15-year-old. The alternative
-  is spelling it `openbrace` / `closebrace`, which is less elegant and no longer a dictionary word.
-- Whether the reward video should carry sound behind a click, given it is muted by necessity on
-  autoplay.
+Nothing blocking. Both earlier open questions were settled by the author on 2026-08-15: it is
+`curly brace` rather than bare `brace`, and the reward keeps its sound behind a click rather than
+becoming a silent GIF.
