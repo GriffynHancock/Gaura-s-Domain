@@ -92,8 +92,12 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   request (including ones that resolve to a real file) go through the Worker first — required if you want to
   mutate/inspect responses for existing pages (e.g. stamping a header on every page), not just for routes with
   no matching asset (e.g. a bare `/` redirect, which works either way since nothing there 404s into the worker).
-- **Module 2 (Encoding) lives at `public/crypto/encoding/` → served at `/crypto/encoding/`**.
-  Module 1 (Caesar) is `public/crypto/ceasar/` → `/crypto/ceasar/`.
+- **Module numbering changed 2026-08-15 and the directory now uses 101–105**, in this order:
+  101 Simplest Cryptography (`ceasar/`), 102 Common Encoding Schemes (`encoding/`), 103 XOR & Binary
+  (`xor/`), 104 Intro to Hashing (`hash/`), 105 5 Nights at Crypto's (`fnac/`). **XOR is 103 and Hashing
+  is 104**, which is the reverse of the old "Module 3 = Hashing" numbering still quoted in older notes.
+  The directory (`public/crypto/index.html`) is no longer a dev page: it is the student-facing landing
+  page "Gaura's Domain", every module's kicker links back to it, and its card copy is the author's own.
 - **Module 3 (Hashing, `public/crypto/hash/index.html`) has a 15-script test suite in `tools/`**, driven by
   `node tools/run_suite.mjs` (add `--all` for flash safety). Two are pure Node (`test_md5_trace`,
   `test_keccak_trace` — digest parity against Node's own `crypto`); the rest are Playwright and need
@@ -152,14 +156,29 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   (odd lengths zero-pad the last nibble and lose the original length). The page no longer ships a WEAVE tool
   to keep in sync — the helper widgets were all removed and FNAC now assumes a commandline — so the only
   guard is the builder's own round-trip assert.
+  Also note the weave **order**: reassembling is `b` then `a` (`bit_weave(a,b)` handles it, but a generic
+  bit-interleaver run as `a,b` produces garbage and `b,a` produces the PNG). Neither output opens by
+  double-click without a `.png` extension, so a correct solve and a wrong one look identical until you run
+  `file` on them.
+- **Night 3's flag sits at offset 54, deliberately, and the offset is load-bearing.** At offset 0 a `flag{`
+  crib lands first try and there is nothing to search, so the night was a "guess the key" puzzle wearing a
+  crib costume. 54 % 20 = **phase 14**, the phase at which the crib recovers `" sahu"` — the half the
+  `hint-sahur.webp` image completes. Phase 15 (full `sahur`) is **impossible**: the `l` of `flag` lands
+  under the key's `a` and XORs to `0x0d`. Any rewrite of `NIGHT3_PLAINTEXT` must keep `flag{` at an offset
+  ≡ 14 (mod 20) **and** avoid every (character, key-phase) pair that XORs to CR/LF or to a byte ≥ `0x80`;
+  the double spaces are those phase shifts, not sloppy typing. The builder now asserts all of it.
 - **FNAC's gate deliberately ignores the old `ctf-fnac-unlocked` cookie.** That cookie meant "Encoding is
   done", which under the current rule (Caesar **and** XOR **and** Encoding) is one third of the requirement,
   so honouring it would grandfather people straight past two modules. It is not a bug and is not to be
   "restored". The konami bypass rides on its own cookie name (`ctf-fnac-bypass`) precisely so that ignoring
   the old one and keeping a permanent bypass can both hold. Completion is asked of the confetti engine
   (`fxModuleComplete`), the only thing that knows another module's puzzle count — which also means **a wrong
-  `FX_TOTAL` on any beginner module silently locks FNAC** (XOR ships `FX_TOTAL=4` with three cards today,
-  and that is exactly why FNAC is konami-only right now).
+  `FX_TOTAL` on any beginner module silently locks FNAC**. This has bitten twice. XOR shipped `FX_TOTAL=4`
+  against three cards until C4 was built (2026-08-15), and FNAC itself shipped `FX_TOTAL=7` against three
+  real nights, so its own completion could never fire; that is now hard-coded to 3 and must be raised as
+  each placeholder night ships. Caesar and Encoding derive their totals from their own puzzle registries
+  and cannot drift. **A test asserted the buggy `FX_TOTAL === 7`**, i.e. it defended the bug — see the
+  note on tests-pinning-bugs below.
 - **Encoding challenge IX must stay `base64 → rot47 → atbash`, in that order, and stay layered PER REGION.**
   Only the payload field is enciphered; the surrounding capture dump is plain, so base64 alone yields a
   readable dump rather than soup — that is what gives the student something to aim at. On the order: with
@@ -188,7 +207,31 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   declared, never inferred from a zero. The engine also mirrors completion into a shared
   `localStorage['ctf-complete:v1']` index and exposes `fxModuleComplete(id)` / `fxModuleProgress(id)`, which
   is how one page reads another's state; that index is what FNAC's gate is built on.
-- **Repo IS under git now** (initialised 2026-06-25). Commit before large edits.
+- **Repo IS under git now** (initialised 2026-06-25). Commit before large edits. **`master` is the trunk**
+  and is what deploys; `feat/caesar-rewrite-fnac-nights` is fully contained in it and retired — don't
+  branch from it. Deploying is `npx wrangler deploy`, which ships the **working tree**, not `HEAD`: check
+  `git status` first, or you can publish a half-finished edit a subagent left behind.
+
+## Writing copy — read `docs/voice-guide.md` before touching any student-facing prose
+The author writes his own copy and rejected a batch of AI-written prose on 2026-08-15 in strong terms
+("im pretty ashamed i showed real humans that fucking slop"). Three files now govern this:
+- **`docs/voice-guide.md`** — binding style rules, derived from his own writing. Headline: **no em dashes**
+  (he uses 0 per 1k words, the rejected drafts used ~21), **no bold** (he uses 0, drafts used ~28), no
+  "it's not X, it's Y", don't narrate the reader's next physical action, say it once, quote marks are his
+  emphasis, Australian spelling, no swearing in published copy.
+- **`docs/authors-original-copy.md`** — everything he dictated, verbatim. **This is the source of truth for
+  voice.** If the guide and his words disagree, his words win.
+- **`docs/prose-accounting.md`** — which strings on each page are his and which are generated.
+Mark page copy with `<!-- copy: author -->` / `<!-- copy: generated -->` / `<!-- copy: mixed -->` so a
+later pass can tell them apart. Never silently reword his copy while transcribing it: "Play with this to
+get an **intuition** for" shipped as "get a **feel** for", which is the kind of drift that looks like his
+voice at a glance and isn't.
+
+- **Tests here have twice pinned a bug in place.** `verify_fnac_module.mjs` asserted `FX_TOTAL === 7`
+  (defending the count that made FNAC uncompletable) and asserted Night 3's flag sat **at offset 0**
+  (defending the very property that made it a "guess the key" puzzle rather than a crib-drag). When a test
+  fails after a deliberate design change, check whether it is pinning the old bug before you "fix" the code
+  back. Update the assertion to pin the new intent, and say so.
 
 ## Status
 See `STATUS.md`.

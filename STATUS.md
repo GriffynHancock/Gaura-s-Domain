@@ -7,20 +7,30 @@ Projected, presenter-led web modules (~60 min) teaching teenagers crypto before 
 Spine: **recognise → identify → decode/crack → submit.**
 
 ## Modules
+The directory renumbered to **101–105** on 2026-08-15 and is now the student-facing landing page
+"Gaura's Domain" (`public/crypto/index.html`), not a dev page. Note XOR is **103** and Hashing is
+**104**, the reverse of the old numbering that older notes still quote.
+
 | # | Module | State | URL / path |
 |---|--------|-------|-----------|
-| 1 | Encryption 101 — ROT / Caesar (+ Vigenère + Affine) | ✅ **live** | `ctf.sandhi.com.au/crypto/ceasar` |
-| 2 | Encoding is not encryption | ✅ **live** | `ctf.sandhi.com.au/crypto/encoding` |
-| 3 | Hashing | ✅ **live** | `ctf.sandhi.com.au/crypto/hash` |
-| 4 | XOR | 🚧 **in progress** (demo+C1–C3 done, C4 left, not deployed) | `public/crypto/xor/` → `/crypto/xor/` |
-| ★ | **Five Nights at Crypto's** (bonus, gated behind Caesar + XOR + Encoding) | ✅ **live** (nights 1–3 real, 4–7 placeholders) | `ctf.sandhi.com.au/crypto/fnac` |
+| 101 | Simplest Cryptography (Caesar / ROT, + Vigenère + Affine) | ✅ **live** | `ctf.sandhi.com.au/crypto/ceasar` |
+| 102 | Common Encoding Schemes | ✅ **live** | `ctf.sandhi.com.au/crypto/encoding` |
+| 103 | XOR & Binary | ✅ **live** (all 4 challenges) | `ctf.sandhi.com.au/crypto/xor` |
+| 104 | Intro to Hashing | ✅ **live** | `ctf.sandhi.com.au/crypto/hash` |
+| 105 | **5 Nights at Crypto's** (gated behind Caesar + XOR + Encoding) | ✅ **live** (nights 1–3 real, 4–7 placeholders) | `ctf.sandhi.com.au/crypto/fnac` |
 | — | Live Kali demo (CyberChef + archive crack) | ⬜ presenter prep | n/a |
 
-> ⚠️ **The one blocking fact.** XOR's C4 is unbuilt, but `public/crypto/xor/index.html` already declares
-> `FX_TOTAL = 4` against three `addCard` calls, so **XOR can never register as complete**. FNAC's new gate
-> requires Caesar + XOR + Encoding all complete, so **FNAC is currently reachable only by the konami bypass**,
-> and a student who finishes everything buildable sees `XOR 3/4` on the locked screen forever (the locked
-> markup prints `${p.n}/${p.t}` straight from `fxModuleProgress`). Building C4 clears both at once.
+> ✅ **The old blocking fact is cleared.** XOR's C4 was built on 2026-08-15, so `FX_TOTAL = 4` now matches
+> four real cards and XOR can register complete. FNAC's gate is therefore reachable by finishing the three
+> beginner modules, not only by konami. FNAC's own `FX_TOTAL` was also wrong (7 against 3 real nights) and
+> is now 3; raise it as each placeholder night ships.
+
+## First live session — 2026-08-15
+Ran ~1 hour with the real cohort. **Got through Caesar, XOR and Encoding only**, so three beginner modules
+is the realistic hour. One student solved FNAC Night 1 and was close on Night 2. **Cribbing was the wall** —
+people really struggled with it in XOR C2, which matters because C2, C3 and FNAC Night 3 all depend on it
+landing. A reported "Night 2 is broken" turned out to be a student mixing Night 1 and Night 2 files; the
+assets are correct and live matches local.
 
 ## Module 3 — Hashing (live, `/crypto/hash`)
 
@@ -300,15 +310,21 @@ completed, so in practice the gate is konami-only.
   order** (source byte 0 → high nibble of output byte 0, source byte 1 → low nibble of output byte 0, …); each
   half is `ceil(len/2)` bytes. An odd-length source zero-pads the final low nibble and loses its own length,
   so the builder pads to an **even-length source** and asserts `bit_weave(bit_split(x)) == x`.
-- **Night 3 · Triple T** — `night3-a.txt`, 170 bytes of repeating-key XOR, key `tung tung tung sahur`
-  (20 bytes). The plaintext starts with the flag, so a `flag{` crib at offset 0 recovers `tung ` and the
-  vendored hint image (`hint-sahur.webp`, 31 KB, downloaded not hotlinked) supplies the rest of the name.
-  Flag `flag{stop_scrolling}`. The ciphertext is fetched by the page as an `arrayBuffer` and latin-1 decoded,
-  never `.text()`, so the block you read on screen is byte-for-byte the file you downloaded. It is asserted
-  7-bit and CR/LF-free so it survives a text-mode transfer *and* so the on-page block renders no line break
-  the file does not have; the double-spaces in the plaintext are load-bearing phase shifts that dodge the
-  (character, key-phase) pairs which would XOR to CR/LF or to ≥ `0x80`. NULs are unavoidable (the flag repeats
-  the key's own words) and transfer verbatim.
+- **Night 3 · Triple T** — `night3-a.txt`, 86 bytes of repeating-key XOR, key `tung tung tung sahur`
+  (20 bytes). Plaintext: `i said one more video three hours ago. its 3am now.   flag{stop_scrolling}  go to bed.`
+  Flag `flag{stop_scrolling}`.
+  **Rebuilt 2026-08-15 into a real crib-drag.** The flag now sits at **offset 54**, not 0. At 0 a `flag{`
+  crib landed first try and there was nothing to search, so the night was a "guess the key" puzzle wearing
+  a crib costume. 54 % 20 = **phase 14**, the phase where the crib recovers `" sahu"`, which the vendored
+  `hint-sahur.webp` completes. Phase 15 (the full `sahur`) is **impossible** — the `l` of `flag` lands
+  under the key's `a` and XORs to `0x0d`. Sweeping all 86 offsets gives exactly one meaningful hit.
+  Any rewrite must keep `flag{` at an offset ≡ 14 (mod 20) and dodge every (character, key-phase) pair
+  that XORs to CR/LF or ≥ `0x80`; the double spaces are those phase shifts. The builder asserts all of it,
+  and `verify_fnac_module.mjs` now pins the new intent (it previously asserted the flag was **at offset 0**,
+  i.e. it defended the broken design).
+  The ciphertext is fetched as an `arrayBuffer` and latin-1 decoded, never `.text()`, so the block on
+  screen is byte-for-byte the downloaded file. The brief closes on the author's line,
+  "I toss and turn in my Crib, sleepless...".
 
 **Intro scare sequence.** Fires at most once per person, on a 1-in-5 roll per visit, on the first *tap*
 (a tap grants audio autoplay permission; a scroll does not). Flicker → dark hold → eyes → lights-on, with
@@ -350,36 +366,53 @@ sets it, so "complete" is declared rather than inferred from `FX_TOTAL === 0`).
 `{c,n,t}` a *different* page can read. This is what FNAC's gate is built on, and it is the only place that
 knows any module's puzzle count.
 
-## Module 4 · XOR — IN PROGRESS (`public/crypto/xor/index.html`)
-**Full handoff + remaining work: `docs/2026-06-26-module4-xor-spec.md` (v2) — read it before touching this.**
-Rebuilt from a v1 that was "demos in costume". Frame: *the keystream is the weakness.* Plain language
-(encrypted/decrypted/lock/unlock, "scrambled message" — NOT cipher/plaintext). Local: `python3 -m http.server 8787`
-→ `http://localhost:8787/public/crypto/xor/` (append `?v=N` to bust cache). **Not deployed yet — deploy only on user go.**
+## Module 103 · XOR & Binary — LIVE (`public/crypto/xor/index.html`)
+Titled **"this xor that"**. Rebuilt end to end on 2026-08-15 against the author's dictated copy
+(`docs/authors-original-copy.md`). Frame: *the keystream is the weakness.* Plain language
+(encrypted/decrypted/lock/unlock, "scrambled message" — never cipher/plaintext/recovered).
 
-- **Demo** (unscored) — gate toy + two-column LOCK/UNLOCK. Key on top; result readout on top in plain text with
-  TEXT|HEX toggle. Animation = two passes: message bits **drop in**, pause, key-on bits **flip**; encrypted result
-  **pipes** to column ② after a 1 s beat; same key unlocks back. ✅ done+verified.
-- **C1 · Brute Force** — 1-byte key hidden; 256 decodes listed **in key order (NOT sorted — spotting is the skill)**
-  + a student-driven crib **filter**; hex+text dump; type key as char or hex. The `0x37`/`0x17` twin (XOR-by-`0x20`
-  = case flip) is the **decoy lesson** (pick lowercase `flag{`). ✅ done+verified.
-- **C2 · Crib the Key** — repeating key, hidden; student types the `flag{` crib, recovered bytes spell the repeat
-  (`c a t c a` → `cat`); CyberChef-can't-do->2-byte-keys note. ✅ done+verified.
-- **C3 · Same Key Twice** (boss) — two reused-key blobs; COMBINE cancels key → `m1⊕m2`; crib-drag slider reveals the
-  other message; full sentence drag peels the flag. ✅ done+verified.
-- **C4 · Long Key, Many Keys** — ⬜ **LAST TODO. Design decided: 3-byte LIVE TUNER** (three byte-knobs, whole
-  message re-renders live, tune until the full sentence reads — NOT per-column brute lists, which can't be eyeballed).
-  Content node-verified (see spec): plain `the long key is really many tiny keys flag{stacked}`, key `sun` (len 3,
-  given), flag `flag{stacked}`. Embodies the lesson: a long key = 3 single-byte knobs.
+Header explains binary place values (2⁰..2³, "no 8, yes 4, yes 2, no 1"); the info block opens with the
+red ℹ glyph like its siblings and explains mixing/unmixing. **Every byte display on the page carries a
+HEX / BINARY / TEXT toggle** via one shared `fmtToggle(el, bytes, render?, modes?)` helper.
 
-⚠ **C4's absence is now load-bearing, not just a gap.** `FX_TOTAL=4` against three `addCard` calls means XOR
-can never report complete, and FNAC's gate requires XOR complete — so building C4 is what unblocks FNAC for
-anyone without the konami code. Do not "fix" this by dropping `FX_TOTAL` to 3; that would declare a
-three-quarters module finished and quietly retire the last challenge.
+- **Demo** (unscored) — gate toy + two-column LOCK/UNLOCK, single character, tap the red key bits.
+  The truth table drops below the bit buttons at ≤430px. ✅
+- **C1 · Brute Force** — 1-byte key `0x37`, flag `flag{brute_force_me}`. Reading order is hex dump →
+  **apply-a-key box** → "try a few yourself, then brute force it" → BRUTE FORCE button → the 256 rows.
+  The key box takes **a character or its hex**, each box mirroring the other (non-printable bytes render
+  into the character box; the hex box stays authoritative). Rows fill with a per-row `animation-delay` of
+  `k*10ms`, so all 256 land in ~2.56s, with a half-second heat fade; `prefers-reduced-motion` fills
+  instantly. Rows stay in **key order — never sort by readability**. The `0x17` case-flip twin
+  (`FLAG[BRUTE·FORCE·ME]`) is the deliberate decoy. No hint box, no crib filter, no decode animation. ✅
+- **C2 · Crib the Key** — repeating key `cat`, flag `flag{repeating_xor_key}`. Crib starts empty. Cells
+  stack **key / message / hex** top to bottom, key on red, message on light, with a static worked-example
+  legend to the right of the crib box. No hint box. ✅
+- **C3 · Reuse, Recycle** — key reuse. p1 `you got it right! flag{compost!}`, p2
+  `waltzing matilda, waltzing matilda`, key `PURPLEHAZE`, flag **`flag{compost!}`**.
+  **`build()` returns the flag explicitly, not `p1`** — p1 has an 18-character prefix and returning it
+  would make the card unsolvable. That prefix is load-bearing: it puts `flag{` at **offset 18**, and
+  `waltzing matilda, ` is also 18 characters, so the crib at 18 reveals **`waltz`** while offset 0 gives
+  `hbx3f`, a visible dead end. A static K1/M1 ⊕ K1/M2 = M1/M2 diagram sits under the intro; the two
+  scrambled boxes now stack with ⊕ and = into the combined box (the old COMBINE button is gone) and the
+  crib-drag is always visible. ✅
+  ⚠ **The hint still hands over the crib phrase** ("that runner-up's name — sung twice over. Type it into
+  the crib and slide it along"), which skips the mechanism the offset was engineered to force. Flagged
+  twice, not yet cut. The 1977 anthem facts in it are sourced and correct.
+- **C4 · Brute Force 2** — 3-**byte** key **`T4x`** ("death and taxes" → singular → leetspeak), plain
+  `the long key is really many tiny keys flag{stacked}`, flag `flag{stacked}`. Three knobs **stacked
+  vertically**, one per key position, each with ±1/±16 steppers, a slider and a typed field; the three
+  previews merged into one window above with a HEX/TEXT toggle; sliders carry the same red/yellow/green
+  as the characters they control (`--k0/--k1/--k2`, lifted in dark theme for contrast). Node-verified:
+  137,700 all-printable keys, **exactly one** letters-only key, `T4x` ranked #1. Known near-miss: `0x20`
+  flips case, so `t4x` reads as near-English but its flag `fLag[stAckEd}` will not submit.
+  **The copy says byte, not bit** — the author's dictation said "3 bit key", which would be 8
+  possibilities; it is 3 bytes = 16,777,216, and the demo two cards earlier teaches that a letter is 8 bits. ✅
 
-**Engine wiring:** `FX_MODULE='xor'`, `FX_TOTAL=4`, `fxSolved(id)` per capture; engine bakes store key
-`ctf-solved:v2:xor`. Card framework = `addCard({id,title,sub,intro,hint,build})`; `build(ctx)` wires bespoke body
-into `ctx.work` and **returns the flag string**. IDs `c1`–`c4` in `const VALID`; stale ids are pruned on load
-(can't bump store to v3 without editing the shared engine). **Node-verify every attack before wiring UI.**
+**Engine wiring:** `FX_MODULE='xor'`, `FX_TOTAL=4`, ids `c1`–`c4` in `VALID`, store `ctf-solved:v2:xor`.
+
+⚠ **`worst-case/` has never had C4.** `worst-case/text-challenges/xor/` holds only `brute-force`,
+`crib-the-key`, `same-key-twice`. C3's flag also changed (`flag{same_key_twice}` → `flag{compost!}`) and
+its messages changed, so that mirror is now wrong as well as incomplete, and nothing tests it.
 
 ## Conventions
 - One static HTML file per module under `public/crypto/<name>/`; all JS client-side; flat `warm-editorial-ui` skin.
@@ -387,12 +420,17 @@ into `ctx.work` and **returns the flag string**. IDs `c1`–`c4` in `const VALID
 - Verify UI with **real pointer clicks** (Chrome MCP / Playwright), not synthetic events. Precompute heavy assets
   in Python (`.venv/bin/python` — global python is broken).
 - Repo **is** under git now (init 2026-06-25). Commit before large edits.
-- **Deploy state.** Production is `ctf.sandhi.com.au`. All of this session's work lives on
-  `feat/caesar-rewrite-fnac-nights`, **pushed to GitHub but not merged to master** — so `master` and
-  `origin/master` are both a long way behind what this file describes. Two different worker versions have been
-  reported for what is live (`0ecbf196` and `d1c2c1c0` = commit `e3795f6`); the Cloudflare MCP is read-only and
-  errored when asked, so **check the Cloudflare dashboard before assuming which is deployed.** Either way the
-  live hash page predates the motion-blur work.
+- **Deploy state.** Production is `ctf.sandhi.com.au`. **`master` is the trunk, it is pushed, and it is what
+  is deployed** — the old `feat/caesar-rewrite-fnac-nights` branch is fully contained in master (0 commits
+  ahead) and retired. Everything in this file is live as of 2026-08-15.
+  ⚠ **`npx wrangler deploy` ships the working tree, not `HEAD`.** Check `git status` before deploying, or a
+  subagent's half-finished edit goes to production. Verify after deploying with
+  `curl -sL https://ctf.sandhi.com.au/crypto/<mod>/ | md5` against `md5 -q public/crypto/<mod>/index.html`
+  (a direct `.../index.html` fetch 307s to the trailing slash and returns an empty body, which looks like a
+  failed deploy and isn't).
+- **Writing copy: read `docs/voice-guide.md` first.** The author rejected a batch of AI prose on 2026-08-15.
+  His verbatim dictation is `docs/authors-original-copy.md` (source of truth for voice) and
+  `docs/prose-accounting.md` says which strings on each page are his and which are generated.
 
 ## Open / todo
 
@@ -405,7 +443,7 @@ into `ctx.work` and **returns the flag string**. IDs `c1`–`c4` in `const VALID
       **still placeholder.** `flag{affine_ace}` currently opens a rickroll.
 - [ ] **Decide on `fnac-assets/cats/`** — 10 source JPGs, unreferenced since the Night 3 rewrite. Keep or delete.
 
-**Housekeeping owed after the current branch**
+**Housekeeping owed**
 - [ ] **Regenerate `worst-case/launch_offline.py`** (`.venv/bin/python tools/build_offline_launcher.py`) — it
       embeds copies of the module pages and is stale for **every** page on this branch. The shared header row
       has now landed everywhere, so the blocker on this is gone: run it.
@@ -417,9 +455,27 @@ into `ctx.work` and **returns the flag string**. IDs `c1`–`c4` in `const VALID
       two orders of magnitude under the number the exclusion was sized against.
 
 **Next build work**
-- [ ] ⚠️ **Module 4 XOR: build C4** — the last challenge, and now **blocking FNAC** (see the note at the top).
-      Spec'd + content node-verified in `docs/2026-06-26-module4-xor-spec.md`. Then user playtest → deploy.
-      XOR is still undeployed.
+- [x] ~~**Module 4 XOR: build C4**~~ — built, reworked as "Brute Force 2" with key `T4x`, and **deployed**.
+- [ ] ⚠️ **Cut the generated filler prose**, page by page, per `docs/prose-accounting.md`. The directory's five
+      card blurbs and Caesar's call-to-action block are done. Still to go: Caesar's injective/number-line
+      paragraphs, every caption on the hash page, XOR's labels and C2's CyberChef note, and **C3's hint, which
+      gives away the crib phrase**. Most of it should be deleted rather than rewritten.
+- [ ] **Rewrite FNAC Night 3's plaintext in the author's voice.** The current text is serviceable but was
+      written to fit the offset maths, not chosen. Constraint: `flag{` at an offset ≡ 14 (mod 20), no
+      (character, key-phase) pair XORing to CR/LF or ≥ `0x80`.
+- [ ] **Encoding search-space info panel** and **FNAC physics unlock reveal** — both dispatched 2026-08-15,
+      landing state unknown at the time of writing. Check `public/crypto/encoding/index.html` and
+      `public/crypto/fnac/index.html` before rebuilding either.
+- [ ] **Leaderboard** — wanted, with a complete/incomplete achievement card per module. **Blocked on
+      architecture, not storage**: every flag is validated client-side and readable in page source, so a
+      leaderboard on today's build is scoreable by view-source. Needs flags moved to server-side SHA-256
+      comparison in the Worker first. D1 + `PRIMARY KEY (team, challenge)` + a Cloudflare rate-limit rule is
+      the easy half. Note the design tension: confetti fires on module completion to drive tutoring, a
+      leaderboard rewards speed and hoarding.
+- [ ] **Decoding 102** — a follow-on module teaching `file` / magic bytes / `xxd` / `strings`. Logged in
+      `docs/ideas-backlog.md` with the incident that motivated it.
+- [ ] **Improve C2's cribbing explanation.** It was the wall in the first live session, and C3 and FNAC
+      Night 3 both inherit the gap.
 - [ ] **Desktop micro-themes for the Hashing page** — designed and researched, NOT built. Skin the
       MD5 panel as Windows 95 and the SHA-3 panel as Windows 7, framed by a fake Proxmox top bar, so
       "old and busted vs modern" lands without a word. Full specs incl. exact colours, bevel

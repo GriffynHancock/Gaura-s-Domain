@@ -15,10 +15,17 @@
     --read-bg:#1a1812; --read-dim:#5e5a3a; --read-on:#f0bb4d;
     --disp:"Fraunces",Georgia,serif; --ui:"Hanken Grotesk",system-ui,sans-serif;
     --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+    /* per-source-byte swatches for the A/B mapping window (--swn = owned by no byte, i.e. padding) */
+    --sw0:hsl(12 55% 79%); --sw1:hsl(40 58% 76%); --sw2:hsl(72 40% 74%); --sw3:hsl(148 34% 76%);
+    --sw4:hsl(190 40% 77%); --sw5:hsl(220 45% 82%); --sw6:hsl(268 34% 82%); --sw7:hsl(330 40% 82%);
+    --swn:hsl(45 12% 82%);
   }
   html[data-theme="dark"]{
     --bg:#15130d; --panel:#221f14; --panel2:#201d13; --edge:#403a28;
     --ink:#ece3cd; --dim:#9a8f72; --accent:#e0593d; --gold:#c79338; --ok:#62ab77; --read-bg:#14120c;
+    --sw0:hsl(12 38% 34%); --sw1:hsl(40 40% 31%); --sw2:hsl(72 30% 27%); --sw3:hsl(148 26% 28%);
+    --sw4:hsl(190 32% 29%); --sw5:hsl(220 34% 34%); --sw6:hsl(268 26% 35%); --sw7:hsl(330 28% 34%);
+    --swn:hsl(45 8% 26%);
   }
   *{box-sizing:border-box}
   body{margin:0; color:var(--ink); font-family:var(--ui); background:var(--bg);
@@ -153,6 +160,58 @@
   /* (no `.cyber` hint-box rule: no puzzle has a hint any more — VIII's was the last, and
      the author removed it. `.hide` went with it; nothing else used either class.) */
 
+  /* ---- scheme reference panel + A/B mapping window ----
+     Collapsed by default so it never pushes the puzzles down the page. Deliberately NOT
+     `details.card`: students count cards, and FX_TOTAL is 9. Every rule here is scoped to
+     .schemes / .sch- / .ab- so nothing leaks into the puzzle cards (in particular the base
+     `.seg` rule is untouched — .ab-seg is a separate wrapping variant, six options don't fit
+     in an inline-flex overflow:hidden strip). */
+  .schemes{background:var(--panel); border:1px solid var(--edge); border-radius:10px;
+    box-shadow:0 14px 30px -24px #000; overflow:hidden; margin:0 0 26px}
+  .schemes>summary{padding:15px 20px; font-family:var(--mono); font-size:.68rem; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--dim)}
+  .schemes>summary .tg{color:var(--accent)}
+  .schemes>summary::after{content:"\25B8"; margin-left:auto}
+  .schemes[open]>summary::after{content:"\25BE"}
+  .sch-body{padding:0 20px 22px}
+  .sch-scroll{overflow-x:auto}
+  table.sch{border-collapse:collapse; font-family:var(--mono); font-size:.72rem; min-width:100%}
+  table.sch th{text-align:left; font-size:.58rem; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--dim); font-weight:700; padding:0 14px 6px 0; border-bottom:1px solid var(--edge); vertical-align:bottom}
+  table.sch td{padding:9px 14px 9px 0; border-bottom:1px solid var(--edge); vertical-align:top; line-height:1.5}
+  table.sch tr:last-child td{border-bottom:none}
+  table.sch td.nm{color:var(--accent); font-weight:700; white-space:nowrap}
+  table.sch td.num{text-align:right; padding-right:20px}
+  .alpha{display:inline-block; max-width:26ch; word-break:break-all; opacity:.88}
+  .sch-line{font-family:var(--mono); font-size:.72rem; line-height:1.6; color:var(--dim); margin:14px 0 0}
+  .sch-line b{color:var(--accent); font-weight:700}
+
+  .ab{margin-top:20px; border-top:1px solid var(--edge); padding-top:16px}
+  .ab-src{width:100%; font-family:var(--mono); font-size:.92rem; color:var(--read-on);
+    background:var(--read-bg); border:1px solid #000; border-radius:6px; padding:10px 12px;
+    box-shadow:0 0 0 1px var(--edge)}
+  .ab-src:focus{outline:none; box-shadow:0 0 0 1px var(--accent)}
+  .ab-row{display:flex; flex-wrap:wrap; gap:4px; margin-top:9px}
+  .ab-pane{margin-top:16px}
+  .ab-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .ab-tag{font-family:var(--mono); font-weight:700; font-size:.68rem; color:#fff; background:var(--gold);
+    border-radius:3px; padding:3px 8px}
+  .ab-seg{display:flex; flex-wrap:wrap; gap:6px}
+  .ab-seg button{font-family:var(--mono); font-size:.64rem; letter-spacing:.08em; cursor:pointer;
+    border:1px solid var(--edge); border-radius:6px; padding:5px 9px; background:transparent; color:var(--dim)}
+  .ab-seg button.on{background:var(--accent); border-color:var(--accent); color:#fff}
+  /* one swatch per source byte, cycled. Two vars so a base64 character straddling two bytes can
+     paint half of each — that split IS the lesson, so it must not be flattened. */
+  .cell{font-family:var(--mono); font-size:.8rem; line-height:1; cursor:pointer; min-width:1.9em;
+    text-align:center; padding:6px 5px; border-radius:4px; border:1px solid transparent; color:#241f17;
+    background:linear-gradient(90deg, var(--c1) 0 50%, var(--c2) 50% 100%)}
+  [data-theme="dark"] .cell{color:#ece3cd}
+  .cell.part{box-shadow:inset 0 -3px 0 -1px var(--dim)}
+  .cell:hover{border-color:var(--dim)}
+  .ab.sel .cell{opacity:.26}
+  .ab.sel .cell.hot{opacity:1; border-color:var(--ink)}
+  .ab-empty{font-family:var(--mono); font-size:.72rem; color:var(--dim); padding:6px 0}
+
   /* (the bottom RESET MODULE row is gone for good — reset now lives in the header button row) */
   footer{text-align:center; font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; color:var(--dim); margin-top:42px; text-transform:uppercase}
 </style>
@@ -194,6 +253,37 @@
     of <span class="vs">%</span> signs paired with two hex digits (<span class="vs">0&ndash;9</span> and
     <span class="vs">A&ndash;F</span>) to stand in for symbols and spaces &mdash; <span class="vs">%20</span>
     is a space, <span class="vs">%2F</span> is a slash.</div>
+
+  <!-- copy: generated -->
+  <!-- Scheme reference + A/B mapping. Collapsed by default. The table rows, the counts and the
+       group ratios are all built in JS from the same alphabet strings the encoders use, so a
+       number on screen cannot drift away from the code under it. -->
+  <details class="schemes" id="schemes">
+    <summary><span class="tg">&#9679;</span> What each scheme is made of</summary>
+    <div class="sch-body">
+      <div class="sch-scroll"><table class="sch" id="sch-table"></table></div>
+      <p class="sch-line" id="sch-math"></p>
+      <p class="sch-line">rot13, rot47 and atbash swap one character for another. Same bytes in, same
+        bytes out, nothing gets packed, and anything outside their alphabet passes straight through.</p>
+
+      <div class="ab" id="ab">
+        <div class="lab">Same text, two schemes &mdash; tap a character to see where it went</div>
+        <input class="ab-src" id="ab-src" maxlength="24" spellcheck="false" autocomplete="off"
+               aria-label="text to encode" value="hi there">
+        <div class="ab-row" id="ab-bytes"></div>
+        <div class="ab-pane">
+          <div class="ab-head"><span class="ab-tag">A</span><span class="ab-seg" data-pane="a"></span></div>
+          <div class="ab-row" data-out="a"></div>
+        </div>
+        <div class="ab-pane">
+          <div class="ab-head"><span class="ab-tag">B</span><span class="ab-seg" data-pane="b"></span></div>
+          <div class="ab-row" data-out="b"></div>
+        </div>
+        <p class="sch-line">A character with two colours came from two source bytes. A dotted underline
+          means the character is only part full, and <b>=</b> came from no byte at all.</p>
+      </div>
+    </div>
+  </details>
 
   <footer>ctf.sandhi.com.au · crypto · encoding</footer>
 </div>
@@ -508,6 +598,134 @@ function checkFnacUnlock(){
   footer.parentNode.insertBefore(el, footer);
 }
 checkFnacUnlock();
+
+// ---------------- scheme reference panel + A/B mapping window ----------------
+// Reference numbers are DERIVED from the same alphabet strings the encoders use, so nothing
+// on screen can drift away from the code. The window only ever runs text FORWARD into a
+// scheme (24 characters max) — it is not a second decoder, the per-card pipeline above is
+// the only decoder on the page.
+(function(){
+  const panel=document.getElementById('schemes'); if(!panel) return;
+  const RANGE=(a,b)=>{ let s=''; for(let c=a;c<=b;c++) s+=String.fromCharCode(c); return s; };
+  const UPPER=RANGE(65,90), LOWER=RANGE(97,122), DIGIT=RANGE(48,57);
+  // base64's alphabet read straight out of btoa: the top six bits of (i<<2) are i, so the first
+  // character of btoa(chr(i<<2)) is symbol i. That is the proof the digits run 0-9.
+  const B64=Array.from({length:64},(_,i)=>btoa(String.fromCharCode(i<<2))[0]).join('');
+  const HEX=DIGIT+'abcdef';
+  const UNRESERVED=UPPER+LOWER+DIGIT+'-._~';       // RFC 3986: everything else becomes %XX
+  const URLA=UNRESERVED+'%';
+  const LETTERS=UPPER+LOWER, R47=RANGE(33,126);
+  const DASH='-';
+
+  // one cell per output character: {c: character, o: [source byte indices], p: partly filled}
+  const ENC={
+    base64(bytes){
+      const out=btoa(toStr(bytes)), bits=bytes.length*8, cells=[];
+      for(let i=0;i<out.length;i++){
+        if(out[i]==='='){ cells.push({c:'=',o:[],p:false}); continue; }
+        const own=[]; let part=false;
+        for(let b=i*6;b<i*6+6;b++){ if(b>=bits){ part=true; continue; }
+          const by=b>>3; if(own[own.length-1]!==by) own.push(by); }
+        cells.push({c:out[i],o:own,p:part});
+      }
+      return cells;
+    },
+    hex(bytes){ const cells=[];
+      for(let i=0;i<bytes.length;i++){ cells.push({c:HEX[bytes[i]>>4],o:[i],p:false},{c:HEX[bytes[i]&15],o:[i],p:false}); }
+      return cells; },
+    url(bytes){ const cells=[];
+      for(let i=0;i<bytes.length;i++){ const ch=String.fromCharCode(bytes[i]);
+        if(UNRESERVED.indexOf(ch)>=0){ cells.push({c:ch,o:[i],p:false}); }
+        else { const h=(bytes[i]<16?'0':'')+bytes[i].toString(16).toUpperCase();
+          cells.push({c:'%',o:[i],p:false},{c:h[0],o:[i],p:false},{c:h[1],o:[i],p:false}); } }
+      return cells; },
+  };
+  // rot13 / rot47 / atbash are their own inverse, so the page's decoders ARE the encoders.
+  // No second implementation of anything.
+  ['rot13','rot47','atbash'].forEach(m=>{ ENC[m]=bytes=>{ const o=METHODS[m](bytes); const cells=[];
+    for(let i=0;i<o.length;i++) cells.push({c:String.fromCharCode(o[i]),o:[i],p:false}); return cells; }; });
+
+  const SCHEMES=[
+    {k:'base64', alpha:B64,     bits:'6',  grp:'3 bytes → 4 characters',
+     pad:'= fills the last group out to 4. One leftover byte gives ==, two give ='},
+    {k:'hex',    alpha:HEX,     bits:'4',  grp:'1 byte → 2 characters',      pad:'none'},
+    {k:'url',    alpha:URLA,    bits:DASH, grp:'1 byte → 1 or 3 characters', pad:'none'},
+    {k:'rot13',  alpha:LETTERS, bits:DASH, grp:'1 byte → 1 character',       pad:'none'},
+    {k:'rot47',  alpha:R47,     bits:DASH, grp:'1 byte → 1 character',       pad:'none'},
+    {k:'atbash', alpha:LETTERS, bits:DASH, grp:'1 byte → 1 character',       pad:'none'},
+  ];
+
+  // --- part 1: the table ---
+  const cols=['scheme','alphabet','symbols','bits per character','bytes in, characters out','padding'];
+  const tbl=document.getElementById('sch-table');
+  const thead=document.createElement('thead'), hr=document.createElement('tr');
+  cols.forEach(c=>{ const th=document.createElement('th'); th.textContent=c; hr.appendChild(th); });
+  thead.appendChild(hr); tbl.appendChild(thead);
+  const tb=document.createElement('tbody');
+  SCHEMES.forEach(s=>{
+    const tr=document.createElement('tr');
+    const td=(txt,cls)=>{ const d=document.createElement('td'); if(cls) d.className=cls; d.textContent=txt; tr.appendChild(d); return d; };
+    td(s.k,'nm');
+    const a=td('',''); const sp=document.createElement('span'); sp.className='alpha'; sp.textContent=s.alpha; a.appendChild(sp);
+    td(String(s.alpha.length),'num'); td(s.bits,'num'); td(s.grp); td(s.pad);
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb);
+  const n=(x)=>x.toLocaleString('en-AU');
+  document.getElementById('sch-math').textContent =
+    'A 4-character base64 group holds 64^4 = '+n(Math.pow(64,4))+' arrangements, and the 3 bytes it '
+    +'came from hold 2^24, the same number, so nothing is lost. Hex does it with 16^2 = '+n(256)+' = 2^8.';
+
+  // --- part 2: the A/B window ---
+  const ab=document.getElementById('ab'), src=document.getElementById('ab-src');
+  const bytesRow=document.getElementById('ab-bytes');
+  const outRow={a:ab.querySelector('[data-out="a"]'), b:ab.querySelector('[data-out="b"]')};
+  const pick={a:'base64', b:'hex'};
+  let sel=null;   // comma-joined owner key of the tapped cell, or null
+
+  ab.querySelectorAll('.ab-seg').forEach(seg=>{
+    const p=seg.dataset.pane;
+    SCHEMES.forEach(s=>{ const b=document.createElement('button'); b.type='button'; b.textContent=s.k;
+      b.onclick=()=>{ pick[p]=s.k; sel=null; render(); };
+      seg.appendChild(b); });
+  });
+
+  function cell(ch,own,part){
+    const s=document.createElement('span'); s.className='cell'+(part?' part':'');
+    s.textContent = ch===' ' ? '␣' : ch;
+    s.style.setProperty('--c1', own.length?'var(--sw'+(own[0]%8)+')':'var(--swn)');
+    s.style.setProperty('--c2', own.length?'var(--sw'+(own[own.length-1]%8)+')':'var(--swn)');
+    s.dataset.own=own.join(',');
+    s.onclick=()=>{ const k=own.join(','); sel=(!own.length||sel===k)?null:k; paint(); };
+    return s;
+  }
+  function paint(){
+    const set=sel?new Set(sel.split(',')):null;
+    ab.classList.toggle('sel',!!set);
+    ab.querySelectorAll('.cell').forEach(el=>{
+      const own=el.dataset.own?el.dataset.own.split(','):[];
+      el.classList.toggle('hot', !!set && own.some(o=>set.has(o)));
+    });
+  }
+  function fill(row,cells){
+    row.innerHTML='';
+    if(!cells.length){ const e=document.createElement('span'); e.className='ab-empty'; e.textContent='nothing to encode'; row.appendChild(e); return; }
+    cells.forEach(c=>row.appendChild(cell(c.c,c.o,c.p)));
+  }
+  function render(){
+    const clean=src.value.replace(/[^\x20-\x7E]/g,'');
+    if(clean!==src.value) src.value=clean;
+    const bytes=toBytes(clean);
+    fill(bytesRow, Array.from(bytes,(b,i)=>({c:String.fromCharCode(b),o:[i],p:false})));
+    ['a','b'].forEach(p=>{
+      ab.querySelectorAll('.ab-seg[data-pane="'+p+'"] button').forEach(b=>b.classList.toggle('on', b.textContent===pick[p]));
+      fill(outRow[p], ENC[pick[p]](bytes));
+    });
+    paint();
+  }
+  src.addEventListener('input',()=>{ sel=null; render(); });
+  render();
+})();
 
 </script>
 
