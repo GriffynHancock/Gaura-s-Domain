@@ -295,6 +295,23 @@ link whose click also **repairs** that module's entry in the engine's cross-modu
 who finished a module before the gate existed gets counted. See the ⚠️ at the top: XOR cannot currently be
 completed, so in practice the gate is konami-only.
 
+**The gate is an overlay, not a replacement.** It used to do `app.innerHTML = lockedMarkup()`; the module now
+renders always and the locked board sits on top of it as a fixed panel, with `#app` marked `inert` and the
+document scroll-locked while it is up. That is presentation, not protection — the flags are in the page source
+either way. The reason for the change is that on the **first** load after all three beginner modules are done,
+the board falls off: one top corner releases at random, it swings from the other as a compound pendulum, and
+the second corner goes after one full swing plus a small random extra so it sometimes spins away. Clicking it
+while it is loose adds an upward impulse plus a sideways one whose direction is a fresh coin flip, additive
+and with no hit limit, so it can be juggled and can also be knocked off the side. It plays **once ever**
+(`localStorage['ctf-fnac-reveal:v1']`, set the moment the first corner goes, because juggling has no end);
+`prefers-reduced-motion` skips the physics; konami takes the board off with no animation. The whole drop
+measures **0 WCAG flashes/sec** at every probe with a whole-screen excursion of 0.0010 — the board is `--panel`
+over a `--bg` page, so board-to-module is a 0.0124 (4×4) / 0.0358 (8×8) worst-tile step against WCAG's 0.10
+transition threshold, which is why juggling it at any speed still cannot produce a flash.
+`verify_fnac_module.mjs` drives the simulation through `window.__reveal` rather than looking at pixels, and its
+four "locked means zero `.stage` elements" assertions were rewritten (they pinned the old structure and would
+have failed on a correctly locked page) to assert coverage, opacity, `inert`, scroll-lock and real Tab presses.
+
 - **Night 1 · Meta Parts** — `night1-a.png` / `night1-b.png`, two noise PNGs with flag halves appended after
   `IEND`. Flag `flag{tune_into_the_static}` (unchanged from the old "Static" night; only the title and
   filenames moved).
