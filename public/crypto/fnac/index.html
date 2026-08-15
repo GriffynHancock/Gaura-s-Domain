@@ -31,6 +31,12 @@
      [data-theme] rules at all, so a toggle would be an inert control that lies about what it
      does. FNAC stays black-only: the dark is the point, and the intro creep assumes it. --- */
   .kicker{font-family:var(--mono); font-size:.7rem; letter-spacing:.28em; text-transform:uppercase;
+  /* home link back to Gaura's Domain (the /crypto/ landing page) — matches ceasar's, retinted
+     to the flat skin's tokens (ceasar uses its analog --signal/--brass). */
+  .home-link{color:var(--accent); text-decoration:none; font:inherit; letter-spacing:inherit;
+    border-bottom:1px solid transparent; padding-bottom:1px; transition:color .18s, border-color .18s}
+  .home-link:hover, .home-link:focus-visible{color:var(--gold); border-bottom-color:currentColor}
+  .home-link:focus-visible{outline:none}
     color:var(--accent); display:flex; justify-content:space-between; align-items:center; margin-bottom:10px}
   .hdr-btns{display:flex; gap:8px; align-items:center; flex:0 0 auto}
   .hdr-btn{width:40px; height:40px; padding:0; display:inline-flex; align-items:center;
@@ -189,8 +195,11 @@ function lockedMarkup(){
       ? `<div>✓ ${m.label}</div>`
       : `<div>· <a href="${m.href}" style="color:var(--gold)">${m.label}</a>${count}</div>`;
   }).join('');
+  // The locked screen replaces the whole app, header included — so it must carry its own way back
+  // to the directory, or a locked student is stranded with only the browser Back button.
   return `<div class="locked">nothing here yet.<br>finish all three first:
-    <div style="margin-top:14px; line-height:1.9; display:inline-block; text-align:left">${rows}</div></div>`;
+    <div style="margin-top:14px; line-height:1.9; display:inline-block; text-align:left">${rows}</div>
+    <div style="margin-top:26px"><a href="../" style="color:var(--gold)">&larr; Gaura's Domain</a></div></div>`;
 }
 
 const app = document.getElementById('app');
@@ -200,7 +209,7 @@ const ICON_SVG = id => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 function renderModule(){
   app.innerHTML = `
     <header>
-      <div class="kicker"><span>Crypto 101 · Bonus</span><div class="hdr-btns">
+      <div class="kicker"><a class="home-link" href="../">Gaura&#39;s Domain</a><div class="hdr-btns">
         <button id="reset-mod" class="hdr-btn" type="button" aria-label="Reset module progress" title="Reset module progress">${ICON_SVG('reset')}</button>
         <button id="fx-btn" class="hdr-btn" type="button" aria-disabled="true" aria-label="Confetti locked" title="Confetti locked">${ICON_SVG('lock')}</button>
       </div></div>
