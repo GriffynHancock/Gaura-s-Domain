@@ -186,3 +186,25 @@ If a local version is ever actually needed, the shape is deliberately boring:
   fail fast. Verify with the network panel / an offline profile before promising it works.
 - Unrelated to `worst-case/launch_offline.py`, which is the **presenter's** paper/offline fallback
   (embedded page copies + text challenges), not a student-facing server.
+
+## Decoding 102 — teach `file` and friends
+
+Raised 2026-08-15. A follow-on module for identifying what you are holding, rather than decoding it.
+Core tool is `file` (magic-byte sniffing), which is the reflex a CTF player needs constantly and
+which nothing in the current track teaches.
+
+Why it earns a module rather than a footnote: during the first session a student's Night 2 attempt
+looked broken, and the diagnosis needed exactly this skill. The output of a correct solve and an
+incorrect one were both 5450 bytes, both unopenable by double-click (no extension), and visually
+identical as "nothing happened". `file` separates them instantly:
+
+    out_ab: data
+    out_ba: PNG image data, 222 x 180, 8-bit/color RGBA, non-interlaced
+
+(That particular incident turned out to be the student mixing Night 1 and Night 2 files, not a bug.
+The assets are correct and the live copies match local. But the general failure mode stands: a
+beginner cannot tell a correct binary result from a wrong one without a magic-byte check.)
+
+Natural companions for the same module: `xxd`/`hexdump` for reading headers by eye, `strings`,
+extension-vs-content mismatch (ties to FNAC's double-extension `.zip.exe` gag), and why trailing
+bytes after `IEND` survive (ties to Night 1 and Night 2's easter egg).
