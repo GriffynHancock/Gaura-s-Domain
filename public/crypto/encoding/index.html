@@ -181,7 +181,7 @@
   table.sch td{padding:9px 14px 9px 0; border-bottom:1px solid var(--edge); vertical-align:top; line-height:1.5}
   table.sch tr:last-child td{border-bottom:none}
   table.sch td.nm{color:var(--accent); font-weight:700; white-space:nowrap}
-  table.sch td.num{text-align:right; padding-right:20px}
+  table.sch td.num{padding-right:20px; max-width:16ch}
   .alpha{display:inline-block; max-width:26ch; word-break:break-all; opacity:.88}
   .sch-line{font-family:var(--mono); font-size:.72rem; line-height:1.6; color:var(--dim); margin:14px 0 0}
   .sch-line b{color:var(--accent); font-weight:700}
@@ -267,7 +267,7 @@
         bytes out, nothing gets packed, and anything outside their alphabet passes straight through.</p>
 
       <div class="ab" id="ab">
-        <div class="lab">Same text, two schemes - tap a character to see where it went</div>
+        <div class="lab">Same text, two schemes, tap a character to see where it went</div>
         <input class="ab-src" id="ab-src" maxlength="24" spellcheck="false" autocomplete="off"
                aria-label="text to encode" value="hi there">
         <div class="ab-row" id="ab-bytes"></div>
@@ -615,7 +615,6 @@ checkFnacUnlock();
   const UNRESERVED=UPPER+LOWER+DIGIT+'-._~';       // RFC 3986: everything else becomes %XX
   const URLA=UNRESERVED+'%';
   const LETTERS=UPPER+LOWER, R47=RANGE(33,126);
-  const DASH='-';
 
   // one cell per output character: {c: character, o: [source byte indices], p: partly filled}
   const ENC={
@@ -648,11 +647,13 @@ checkFnacUnlock();
   const SCHEMES=[
     {k:'base64', alpha:B64,     bits:'6',  grp:'3 bytes → 4 characters',
      pad:'= fills the last group out to 4. One leftover byte gives ==, two give ='},
-    {k:'hex',    alpha:HEX,     bits:'4',  grp:'1 byte → 2 characters',      pad:'none'},
-    {k:'url',    alpha:URLA,    bits:DASH, grp:'1 byte → 1 or 3 characters', pad:'none'},
-    {k:'rot13',  alpha:LETTERS, bits:DASH, grp:'1 byte → 1 character',       pad:'none'},
-    {k:'rot47',  alpha:R47,     bits:DASH, grp:'1 byte → 1 character',       pad:'none'},
-    {k:'atbash', alpha:LETTERS, bits:DASH, grp:'1 byte → 1 character',       pad:'none'},
+    {k:'hex',    alpha:HEX,     bits:'4',      grp:'1 byte → 2 characters',      pad:'none'},
+    {k:'url',    alpha:URLA,    bits:'varies', grp:'1 byte → 1 or 3 characters', pad:'none'},
+    // 52 characters, but the structure is a 26-ring applied to each case. Saying only "52" reads
+    // as one ring of 52 and teaches the wrong shape.
+    {k:'rot13',  alpha:LETTERS, bits:'none',   grp:'1 byte → 1 character', pad:'none', sym:'two rings of 26'},
+    {k:'rot47',  alpha:R47,     bits:'none',   grp:'1 byte → 1 character', pad:'none'},
+    {k:'atbash', alpha:LETTERS, bits:'none',   grp:'1 byte → 1 character', pad:'none', sym:'two rings of 26'},
   ];
 
   // --- part 1: the table ---
@@ -667,7 +668,7 @@ checkFnacUnlock();
     const td=(txt,cls)=>{ const d=document.createElement('td'); if(cls) d.className=cls; d.textContent=txt; tr.appendChild(d); return d; };
     td(s.k,'nm');
     const a=td('',''); const sp=document.createElement('span'); sp.className='alpha'; sp.textContent=s.alpha; a.appendChild(sp);
-    td(String(s.alpha.length),'num'); td(s.bits,'num'); td(s.grp); td(s.pad);
+    td(s.alpha.length + (s.sym?' ('+s.sym+')':''),'num'); td(s.bits,'num'); td(s.grp); td(s.pad);
     tb.appendChild(tr);
   });
   tbl.appendChild(tb);
