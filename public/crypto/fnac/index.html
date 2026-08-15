@@ -26,18 +26,46 @@
 
   .locked{font-family:var(--mono); font-size:.9rem; color:var(--dim); text-align:center; padding:80px 20px}
 
+  /* --- the gate panel ---
+     The module always renders now, and this sits on top of it (see the gate comment in the
+     script). It is painted in --panel over a --bg page, a luminance step of nothing, which is
+     what keeps the drop animation off the flash budget: a board that size going away has to be
+     the same darkness as what is behind it.
+     transform is the only thing the physics touches. Nothing here animates, no transition and
+     no keyframes: every frame is an inline transform written by the integrator, so a
+     backgrounded automation tab reads the same numbers the screen does. */
+  #gate-panel{position:fixed; inset:0; z-index:9000; background:var(--panel);
+    /* planks, and a rim. The rim is the only reason the board has a silhouette once it starts
+       turning: without it the leading edge is black on black and the thing reads as a hole in
+       the page rather than a board coming off it. Both are still deep in the --panel/--edge end
+       of the palette, which is where the flash budget wants them. */
+    background-image:repeating-linear-gradient(90deg,
+      var(--panel) 0 118px, var(--panel2) 118px 120px);
+    box-shadow:inset 0 0 0 2px var(--edge);
+    display:flex; align-items:center; justify-content:center;
+    transform-origin:50% 50%; will-change:transform; touch-action:none; overflow:hidden}
+  #gate-panel .locked{padding:20px}
+  /* the two bolts it hangs on, so which corner let go is visible rather than inferred */
+  .gate-bolt{position:absolute; top:16px; width:11px; height:11px; border-radius:50%;
+    background:var(--gold); opacity:.5}
+  .gate-bolt.tl{left:16px} .gate-bolt.tr{right:16px}
+  .gate-bolt.off{background:var(--edge); opacity:.35}
+  /* while a panel is up, nothing behind it scrolls. #app also carries [inert], so the module
+     underneath is not tabbable or clickable either. */
+  html.gate-shut, html.gate-shut body{overflow:hidden}
+
   /* --- header button row: reset · confetti. Icon-only, >=40px touch targets.
      NO theme button here: this module is a deliberately single-palette black skin — it has no
      [data-theme] rules at all, so a toggle would be an inert control that lies about what it
      does. FNAC stays black-only: the dark is the point, and the intro creep assumes it. --- */
   .kicker{font-family:var(--mono); font-size:.7rem; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--accent); display:flex; justify-content:space-between; align-items:center; margin-bottom:10px}
   /* home link back to Gaura's Domain (the /crypto/ landing page) — matches ceasar's, retinted
      to the flat skin's tokens (ceasar uses its analog --signal/--brass). */
   .home-link{color:var(--accent); text-decoration:none; font:inherit; letter-spacing:inherit;
     border-bottom:1px solid transparent; padding-bottom:1px; transition:color .18s, border-color .18s}
   .home-link:hover, .home-link:focus-visible{color:var(--gold); border-bottom-color:currentColor}
   .home-link:focus-visible{outline:none}
-    color:var(--accent); display:flex; justify-content:space-between; align-items:center; margin-bottom:10px}
   .hdr-btns{display:flex; gap:8px; align-items:center; flex:0 0 auto}
   .hdr-btn{width:40px; height:40px; padding:0; display:inline-flex; align-items:center;
     justify-content:center; line-height:0; border-radius:6px; cursor:pointer; color:var(--ink);
@@ -186,8 +214,8 @@ function unlocked(){ return bypassed() || REQUIRED.every(m => moduleDone(m.id));
 // Locked screen: says what is actually required and which of it is done. Every unfinished module
 // is a link — one click also REPAIRS its entry in the engine's index, which is how someone who
 // finished a module before this gate existed gets counted.
-function lockedMarkup(){
-  const rows = REQUIRED.map(m=>{
+function gateRows(){
+  return REQUIRED.map(m=>{
     const done = moduleDone(m.id);
     const p = window.fxModuleProgress && window.fxModuleProgress(m.id);
     const count = (!done && p && p.t) ? ` <span style="opacity:.55">${p.n}/${p.t}</span>` : '';
@@ -195,11 +223,21 @@ function lockedMarkup(){
       ? `<div>✓ ${m.label}</div>`
       : `<div>· <a href="${m.href}" style="color:var(--gold)">${m.label}</a>${count}</div>`;
   }).join('');
-  // The locked screen replaces the whole app, header included — so it must carry its own way back
+}
+function lockedMarkup(){
+  // The panel covers the whole viewport, header included — so it must carry its own way back
   // to the directory, or a locked student is stranded with only the browser Back button.
-  return `<div class="locked">nothing here yet.<br>finish all three first:
-    <div style="margin-top:14px; line-height:1.9; display:inline-block; text-align:left">${rows}</div>
+  return `<div class="locked"><!-- copy: author -->nothing here yet.<br>finish all three first:
+    <div style="margin-top:14px; line-height:1.9; display:inline-block; text-align:left">${gateRows()}</div>
     <div style="margin-top:26px"><a href="../" style="color:var(--gold)">&larr; Gaura's Domain</a></div></div>`;
+}
+// The same board, but every row is a tick and there is no way back on it, because this one is
+// about to fall off the screen.
+function revealMarkup(){
+  // the heading is its own block: an inline-block row list next to bare text sits on the same
+  // line as it, which is not what "list under a heading" looks like
+  return `<div class="locked"><!-- copy: generated --><div>that's the three.</div>
+    <div style="margin-top:14px; line-height:1.9; display:inline-block; text-align:left">${gateRows()}</div></div>`;
 }
 
 const app = document.getElementById('app');
@@ -220,7 +258,10 @@ function renderModule(){
   `;
   renderStages();
   wireHeaderButtons();
-  installCreep();
+  // installCreep() is NOT called here any more. The module now renders underneath the gate
+  // panel, so its document-level "first click anywhere" trigger would be live while the panel
+  // is up — the click that punches the falling board would roll the jump scare and run two
+  // large-area animations on top of each other. Whoever takes the panel down installs it.
 }
 
 // ---- header button row: reset · confetti ----
@@ -658,12 +699,259 @@ window.__creep = {
   armed: () => creepArmed
 };
 
+/* =========================================================================================
+   THE GATE PANEL, AND THE UNLOCK DROP
+   -----------------------------------------------------------------------------------------
+   The gate used to do `app.innerHTML = lockedMarkup()`, which REPLACED the module. Nothing can
+   fall off the front of a module that was never rendered, so the module renders first now and
+   the gate is an overlay above it.
+
+   That overlay is a presentation device and nothing else. This is a CTF: every flag, every
+   night's prose and every asset URL is in the page source whether the board is up or not, and
+   nothing on this page has been relaxed on the idea that the board hides them. What it does do
+   is stop a locked student reading or reaching the module by accident: #app carries [inert]
+   (no clicks, no tab stops, no screen reader) and the document does not scroll while it is up.
+
+   The drop fires ONCE EVER, on the first load after Caesar, XOR and Encoding are all complete.
+   It is a rigid body with two attachment points, and the model is the honest one for a board
+   nailed at two corners:
+     * both bolts in     - nothing moves;
+     * one bolt out      - a compound pendulum about the OTHER corner. A rectangle swinging
+                           about its corner has I = m(W^2+H^2)/3 and its centre of mass at
+                           d = sqrt(W^2+H^2)/2, so the equivalent simple-pendulum length is
+                           L = I/(m d) = (2/3)sqrt(W^2+H^2), and theta'' = -(g/L) sin(theta)
+                           with theta the angle of pivot-to-centre off straight down;
+     * both bolts out    - free rigid body. The centre keeps whatever velocity the swing gave
+                           it (v = omega x r), the spin carries on at whatever omega it had,
+                           and gravity does the rest.
+   A click while it is loose is an impulse: straight up, plus a sideways kick whose direction is
+   a fresh coin flip every time. The impulses add, so it can be juggled, and because the
+   sideways direction is random it can just as easily be knocked away from you.
+
+   PHOTOSENSITIVITY. The board is --panel (#0d0c0a) on a --bg (#000000) page, so the thing
+   arriving as it leaves is the same darkness it was. Motion is continuous and there is no
+   flash, no strobe and no full-area luminance swing anywhere in it. prefers-reduced-motion
+   skips the physics entirely and just reveals the module.
+   ========================================================================================= */
+const REVEAL_KEY = 'ctf-fnac-reveal:v1';
+const revealPlayed = () => { try{ return localStorage.getItem(REVEAL_KEY) === '1'; }catch(e){ return true; } };
+// Marked at the moment the FIRST bolt goes, not at the end. Juggling is endless, so "the end"
+// is a moment that may never arrive, and a reload after a minute of juggling must not replay it.
+const setRevealPlayed = () => { try{ localStorage.setItem(REVEAL_KEY,'1'); }catch(e){} };
+// overridable so the test can pin the corner, the jitter and the coin flips
+const revealRandom = () => (window.__revealRandom || Math.random)();
+const reducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+const PHYS = {
+  HOLD:1100,          // board sits still first, long enough to read the three ticks
+  G:3.8,              // gravity, in board-heights per second squared (so it scales with the viewport)
+  PUNCH_UP:1.35,      // click impulse, up, in board-heights per second
+  PUNCH_SIDE:0.45,    // click impulse, sideways, coin-flipped left or right
+  SWING_JITTER:0.15,  // second bolt goes at one full swing PLUS up to this much more of one.
+                      // One-sided on purpose: "one full swing before it releases" is the ask, so
+                      // the roll can only ever add. At exactly one swing it is back at the top
+                      // with no spin left and it drops almost flat; a little further in and it is
+                      // moving again, which is the release that sends it spinning away.
+  SUBSTEP:1/480,      // fixed integrator step; the frame delta is chopped into these
+  MAX_DT:0.032        // a frame longer than this is a stall, not motion — clamp it
+};
+
+let sim = null;
+
+// rotation by `ang` in screen axes (x right, y DOWN), which is the same direction CSS rotate()
+// turns. Note it DEcreases theta: r_x = d sin(theta0 - ang), so theta = theta0 - ang.
+const rot = (u, a) => { const c=Math.cos(a), s=Math.sin(a); return {x:u.x*c - u.y*s, y:u.x*s + u.y*c}; };
+
+// One quarter period, integrated with the same equation the animation runs, times four. Used
+// only to schedule the second bolt: "one full swing" is a number this model owns, not a guess.
+// It is integrated at a FINER step than the animation (0.2ms against ~2ms), and symplectic Euler
+// runs a touch fast at the coarser step, so the board is measurably back where it started ~80ms
+// before this number says it should be. The error is in the safe direction and the jitter only
+// ever adds, which is what makes "a full swing has happened before the second bolt goes" hold
+// even on a zero roll. Making the animation's substep coarser would eat that margin.
+function swingPeriod(theta0, k){
+  let th = theta0, w = 0, t = 0;
+  const h = 0.0002, s = Math.sign(theta0) || 1;
+  while(t < 40){ w += -k*Math.sin(th)*h; th += w*h; t += h; if(s*th <= 0) break; }
+  return 4*t;
+}
+
+function startReveal(panel){
+  const W = panel.offsetWidth, H = panel.offsetHeight;
+  panel.style.width = W+'px'; panel.style.height = H+'px';  // freeze it: a resize mid-fall must
+                                                            // not move the pivot under the sim
+  const diag2 = W*W + H*H;
+  const first = revealRandom() < 0.5 ? 'tl' : 'tr';         // which bolt goes FIRST
+  const pivotName = first === 'tl' ? 'tr' : 'tl';
+  const pivot = pivotName === 'tl' ? {x:0, y:0} : {x:W, y:0};
+  const u0 = {x:(W/2) - pivot.x, y:(H/2) - pivot.y};         // pivot -> centre, board upright
+  const theta0 = Math.atan2(u0.x, u0.y);
+  const g = PHYS.G * H;
+  const Leq = (2/3)*Math.sqrt(diag2);
+  const period = swingPeriod(theta0, g/Leq);
+  const jitter = 1 + revealRandom()*PHYS.SWING_JITTER;
+  sim = {
+    panel, W, H, g, Leq, pivot, pivotName, first, u0, theta0, period,
+    Icom: diag2/12, Ipiv: diag2/3, radius: Math.sqrt(diag2)/2,   // unit mass throughout
+    phase:'held', ang:0, angVel:0, cx:W/2, cy:H/2, vx:0, vy:0,
+    t:0, releaseFirstAt:PHYS.HOLD, releaseSecondAt:PHYS.HOLD + period*1000*jitter,
+    raf:0, last:0, driven:false, punches:[]
+  };
+  if(!panel.dataset.wired){ panel.dataset.wired = '1'; panel.addEventListener('pointerdown', e => { revealPunch(e.clientX, e.clientY); }); }
+  revealPaint();
+  sim.raf = requestAnimationFrame(revealFrame);
+}
+
+function comFromPivot(){
+  const r = rot(sim.u0, sim.ang);
+  sim.cx = sim.pivot.x + r.x; sim.cy = sim.pivot.y + r.y;
+  return r;
+}
+
+const dropBolt = name => { const b = sim.panel && sim.panel.querySelector('.gate-bolt.'+name); if(b) b.classList.add('off'); };
+
+// One frame, chopped into fixed substeps so the result depends on elapsed time and not on how
+// the frames were sliced. The phase boundaries are tested INSIDE the loop: a release that landed
+// mid-frame must not swallow the rest of that frame, or a 16ms screen and an 8ms screen stop
+// agreeing about where the board is.
+function revealStep(dt){
+  const k = sim.g/sim.Leq;
+  for(let rem=dt; rem>1e-12; ){
+    const h = Math.min(rem, PHYS.SUBSTEP);
+    rem -= h;
+    sim.t += h*1000;
+    if(sim.phase === 'held'){
+      if(sim.t >= sim.releaseFirstAt){ sim.phase = 'swing'; setRevealPlayed(); dropBolt(sim.first); }
+      continue;
+    }
+    if(sim.phase === 'swing'){
+      sim.angVel += k*Math.sin(sim.theta0 - sim.ang)*h;   // theta = theta0 - ang, so the sign flips
+      sim.ang += sim.angVel*h;
+      const r = comFromPivot();
+      if(sim.t >= sim.releaseSecondAt){
+        sim.phase = 'free';
+        sim.vx = sim.angVel*(-r.y); sim.vy = sim.angVel*(r.x);  // v = omega x r, screen axes
+        dropBolt(sim.pivotName);
+      }
+      continue;
+    }
+    sim.vy += sim.g*h;
+    sim.cx += sim.vx*h; sim.cy += sim.vy*h;
+    sim.ang += sim.angVel*h;
+  }
+}
+
+// Impulse at a point, unit mass. The generalised force on `ang` from a force F applied at
+// offset r is r_x*F_y - r_y*F_x (r from the pivot while a bolt is in, from the centre once it
+// is loose), so the impulse changes the spin as well as the velocity.
+function revealPunch(px, py){
+  if(!sim || (sim.phase !== 'swing' && sim.phase !== 'free')) return null;
+  const dir = revealRandom() < 0.5 ? -1 : 1;    // 50/50, and not related to where you clicked
+  const Jx = dir*PHYS.PUNCH_SIDE*sim.H, Jy = -PHYS.PUNCH_UP*sim.H;
+  if(sim.phase === 'free'){
+    sim.vx += Jx; sim.vy += Jy;
+    const rx = px - sim.cx, ry = py - sim.cy;
+    sim.angVel += (rx*Jy - ry*Jx)/sim.Icom;
+  } else {
+    const rx = px - sim.pivot.x, ry = py - sim.pivot.y;
+    sim.angVel += (rx*Jy - ry*Jx)/sim.Ipiv;     // still nailed at one corner: torque only
+  }
+  sim.punches.push(dir);
+  return dir;
+}
+
+function revealPaint(){
+  sim.panel.style.transform =
+    `translate(${(sim.cx - sim.W/2).toFixed(2)}px, ${(sim.cy - sim.H/2).toFixed(2)}px) rotate(${sim.ang.toFixed(5)}rad)`;
+}
+
+// Gone when the whole board is past an edge. Its bounding circle is the half diagonal, so this
+// is true whatever it is rotated to. Deliberately NOT true when it is above the top: a hard
+// juggle throws it off the top of the screen and it has to be allowed to come back down.
+function revealGone(){
+  return sim.cy - sim.radius > sim.H || sim.cx + sim.radius < 0 || sim.cx - sim.radius > sim.W;
+}
+
+function revealFrame(now){
+  if(!sim || sim.driven || sim.phase === 'gone') return;
+  const dt = sim.last ? Math.min((now - sim.last)/1000, PHYS.MAX_DT) : 0;
+  sim.last = now;
+  if(dt > 0) revealStep(dt);
+  revealPaint();
+  if(revealGone()){ finishReveal(); return; }   // and the loop is not rescheduled
+  sim.raf = requestAnimationFrame(revealFrame);
+}
+
+function finishReveal(){
+  if(sim){ if(sim.raf) cancelAnimationFrame(sim.raf); sim.raf = 0; sim.phase = 'gone'; }
+  setRevealPlayed();
+  unmountGatePanel();
+  installCreep();
+}
+
+function mountGatePanel(mode){
+  const p = document.createElement('div');
+  p.id = 'gate-panel';
+  p.innerHTML = (mode === 'locked' ? lockedMarkup() : revealMarkup())
+    + '<div class="gate-bolt tl"></div><div class="gate-bolt tr"></div>';
+  document.body.appendChild(p);
+  document.documentElement.classList.add('gate-shut');
+  app.inert = true;
+  app.setAttribute('aria-hidden','true');
+  return p;
+}
+function unmountGatePanel(){
+  const p = document.getElementById('gate-panel'); if(p) p.remove();
+  document.documentElement.classList.remove('gate-shut');
+  app.inert = false;
+  app.removeAttribute('aria-hidden');
+}
+
+// test hooks — the simulation is driven and read through these. step() detaches the rAF loop
+// and advances the integrator by an explicit delta, which is the only way to watch this in an
+// automation tab (rAF is paused there) and is also how the frame-rate independence is checked.
+window.__reveal = {
+  PHYS,
+  state: () => sim && { phase:sim.phase, t:sim.t, ang:sim.ang, angVel:sim.angVel,
+    cx:sim.cx, cy:sim.cy, vx:sim.vx, vy:sim.vy, first:sim.first, pivot:sim.pivotName,
+    period:sim.period, releaseSecondAt:sim.releaseSecondAt, punches:sim.punches.slice(),
+    raf:sim.raf, W:sim.W, H:sim.H, gone:sim.phase==='gone' ? true : revealGone() },
+  step: ms => {
+    if(!sim || sim.phase === 'gone') return null;
+    if(!sim.driven){ sim.driven = true; if(sim.raf) cancelAnimationFrame(sim.raf); sim.raf = 0; }
+    revealStep(ms/1000);
+    revealPaint();
+    if(revealGone()) finishReveal();
+    return window.__reveal.state();
+  },
+  punch: (x,y) => revealPunch(x,y),
+  played: revealPlayed,
+  panel: () => document.getElementById('gate-panel'),
+  // Re-roll the whole thing from t=0 with the rAF loop already detached. A test that just calls
+  // step() has whatever real wall-clock time the loop already ate before the call baked into
+  // its state, which is different on every run and on every machine; this is how a drop test
+  // starts from the same instant twice.
+  restart: () => {
+    const p = document.getElementById('gate-panel'); if(!p) return null;
+    if(sim && sim.raf) cancelAnimationFrame(sim.raf);
+    startReveal(p);
+    cancelAnimationFrame(sim.raf); sim.raf = 0; sim.driven = true;
+    return window.__reveal.state();
+  }
+};
+
 // ---- gate check ----
 // NOT called here: the gate now asks the confetti engine, and engine.js is the LAST script on
 // the page. This runs from a one-line script after it (see the bottom of the file).
 function applyGate(){
-  if(!unlocked()) app.innerHTML = lockedMarkup();
-  else renderModule();
+  renderModule();                          // the module renders FIRST, always
+  if(!unlocked()){ mountGatePanel('locked'); return; }   // reduced motion still gets the board
+  if(!revealPlayed() && !bypassed() && !reducedMotion()){
+    startReveal(mountGatePanel('reveal'));
+    return;
+  }
+  setRevealPlayed();
+  installCreep();
 }
 
 // ---- konami code easter egg (the bypass — unlocks regardless of the three modules) ----
@@ -682,7 +970,11 @@ function applyGate(){
         idx = 0;
         if(!unlocked()){
           setBypass();
-          renderModule();
+          // The module is already rendered underneath; the bypass just takes the board off.
+          // No physics on this path — it is a way in, not a reward, and it is repeatable.
+          setRevealPlayed();
+          unmountGatePanel();
+          installCreep();
         }
       }
     } else {

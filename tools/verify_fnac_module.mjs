@@ -31,9 +31,16 @@ async function seedGate(page, entries) {
   }, [GATE_KEY, entries]);
 }
 
+// The unlock drop plays ONCE, the first time an unlocked student loads the page, and while it is
+// playing the module underneath is inert. Every test here that is not about the drop wants the
+// state a student is in on their SECOND visit, so the "already played" key is seeded by default
+// and the drop tests opt back in with reveal:true.
+const REVEAL_KEY = 'ctf-fnac-reveal:v1';
+
 async function open({ viewport = { width: 1100, height: 950 }, unlocked = true, creepFired = true,
-                     hasTouch = false, gate = null, staleCookie = false } = {}) {
-  const ctx = await browser.newContext({ viewport, hasTouch, isMobile: hasTouch });
+                     hasTouch = false, gate = null, staleCookie = false, reveal = false,
+                     reducedMotion = 'no-preference', revealRandom = null } = {}) {
+  const ctx = await browser.newContext({ viewport, hasTouch, isMobile: hasTouch, reducedMotion });
   const cookies = [];
   // the pre-gate-change cookie: seeded only where a test asserts it does NOT grant access
   if (staleCookie) cookies.push({ name: 'ctf-fnac-unlocked', value: '1', url: BASE_URL });
@@ -41,6 +48,9 @@ async function open({ viewport = { width: 1100, height: 950 }, unlocked = true, 
   if (cookies.length) await ctx.addCookies(cookies);
   const page = await ctx.newPage();
   await seedGate(page, gate || (unlocked ? ALL_THREE : {}));
+  if (!reveal) await page.addInitScript(k => { try { localStorage.setItem(k, '1'); } catch (e) {} }, REVEAL_KEY);
+  // pin the corner roll and the swing jitter, for the tests that need two runs to be comparable
+  if (revealRandom !== null) await page.addInitScript(v => { window.__revealRandom = () => v; }, revealRandom);
   // spy on play() BEFORE any page script runs, and record how each promise settled — that is the
   // only way to tell "audio was permitted" from "audio was blocked and swallowed".
   await page.addInitScript(() => {
@@ -486,6 +496,42 @@ await skipRun('clicks', 4600);
 // ---------------------------------------------------------------- 7. gate: needs ALL THREE
 // Caesar + XOR + Encoding. Zero, one and two of them must all stay locked; the stale
 // pre-change `ctf-fnac-unlocked=1` cookie must not buy anything on its own.
+//
+// WHAT "LOCKED" MEANS CHANGED, and these assertions changed with it. The gate used to do
+// `app.innerHTML = lockedMarkup()`, so a locked page had zero .stage elements and the old checks
+// counted them. The module has to render before anything can fall off the front of it, so it
+// renders always and the gate is an overlay on top. Counting stages would now be counting the
+// wrong thing entirely — it would fail on a page that is correctly locked. What is asserted
+// instead is the intent the count was standing in for: the board covers the viewport, and the
+// module behind it cannot be read, clicked, tabbed into or scrolled to.
+//
+// It is NOT asserted that the flags are unreachable. They are in the page source either way,
+// on a page whose whole point is that students go looking in page sources.
+async function checkShut(page, label) {
+  await page.waitForSelector('#gate-panel .locked');
+  const shut = await page.evaluate(() => {
+    const p = document.getElementById('gate-panel'), a = document.getElementById('app');
+    const r = p.getBoundingClientRect();
+    return {
+      covers: r.left <= 0 && r.top <= 0 && r.right >= innerWidth && r.bottom >= innerHeight,
+      opaque: getComputedStyle(p).backgroundColor === 'rgb(13, 12, 10)',
+      inert: a.inert === true && a.getAttribute('aria-hidden') === 'true',
+      noScroll: getComputedStyle(document.documentElement).overflow === 'hidden',
+      // the panel is what a click at the centre of the screen actually lands on
+      onTop: p.contains(document.elementFromPoint(innerWidth / 2, innerHeight / 2))
+    };
+  });
+  check(`${label}: the board covers the viewport, opaque, on top`, shut.covers && shut.opaque && shut.onTop, JSON.stringify(shut));
+  check(`${label}: the module behind it is inert and cannot be scrolled to`, shut.inert && shut.noScroll, JSON.stringify(shut));
+  // real tabbing, not a computed guess: nothing behind the board may take focus
+  await page.keyboard.press('Tab'); await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
+  const focus = await page.evaluate(() => {
+    const a = document.activeElement;
+    return { tag: a ? a.tagName : null, inApp: !!(a && document.getElementById('app').contains(a)) };
+  });
+  check(`${label}: tabbing cannot reach the module behind the board`, !focus.inApp, JSON.stringify(focus));
+}
+
 {
   const cases = [
     ['zero modules complete', {}],
@@ -496,15 +542,12 @@ await skipRun('clicks', 4600);
   ];
   for (const [label, gate] of cases) {
     const { page, ctx } = await open({ gate });
-    await page.waitForSelector('.locked');
-    check(`locked with ${label}`, await page.locator('.stage').count() === 0);
+    await checkShut(page, `locked with ${label}`);
     await ctx.close();
   }
   {
     const { page, ctx } = await open({ gate: {}, staleCookie: true });
-    await page.waitForSelector('.locked');
-    check('a stale ctf-fnac-unlocked=1 cookie does NOT bypass the new rule',
-      await page.locator('.stage').count() === 0);
+    await checkShut(page, 'a stale ctf-fnac-unlocked=1 cookie does NOT bypass the new rule');
     const txt = await page.textContent('.locked');
     check('the locked screen names all three modules',
       ['Caesar', 'XOR', 'Encoding'].every(n => txt.includes(n)), txt.replace(/\s+/g, ' ').trim());
@@ -515,7 +558,9 @@ await skipRun('clicks', 4600);
   {
     const { page, ctx, errs } = await open({ unlocked: true });
     await page.waitForSelector('#stage-night1');
-    check('unlocked with all three complete', await page.locator('.stage').count() === 7);
+    check('unlocked with all three complete', await page.locator('.stage').count() === 7
+      && await page.locator('#gate-panel').count() === 0
+      && await page.evaluate(() => document.getElementById('app').inert !== true));
     check('no console errors on the unlocked-by-progress path', errs.length === 0, errs.join(' | '));
     await ctx.close();
   }
@@ -523,15 +568,214 @@ await skipRun('clicks', 4600);
 
 // ---------------------------------------------------------------- 7b. konami bypass
 {
-  const { page, ctx, errs } = await open({ gate: {} });
-  await page.waitForSelector('.locked');
-  check('the gate hides the module', await page.locator('.stage').count() === 0);
+  const { page, ctx, errs } = await open({ gate: {}, reveal: true });
+  await checkShut(page, 'the gate covers the module');
   for (const k of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'])
     await page.keyboard.press(k);
   await page.waitForSelector('#stage-night1', { timeout: 3000 });
-  check('konami code unlocks the module', await page.locator('.stage').count() === 7);
+  check('konami code takes the board off', await page.locator('.stage').count() === 7
+    && await page.locator('#gate-panel').count() === 0
+    && await page.evaluate(() => document.getElementById('app').inert !== true));
+  // the bypass is a way in, not a reward: no physics on this path, and it must not queue one
+  check('konami does not run the drop animation', await page.evaluate(() => window.__reveal.state() === null));
   check('konami render leaves exactly one spook button', await page.locator('#spook').count() === 1);
   check('no console errors through the konami path', errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- 8. the unlock drop
+// Motion is unwatchable in an automation tab (rAF is paused, computed style reads pre-animation
+// values), so nothing here looks at pixels. The simulation is driven through window.__reveal.step
+// and the state it reports is what gets asserted.
+{
+  const { page, ctx, errs } = await open({ reveal: true });
+  await page.waitForSelector('#gate-panel');
+  // Rewind to t=0 with the rAF loop detached FIRST. The animation is already running by the time
+  // Playwright gets here, so a covers-the-viewport check taken before this is a race against the
+  // board having started to swing — and it lost that race once.
+  const s0 = await page.evaluate(() => {
+    localStorage.removeItem('ctf-fnac-reveal:v1');
+    return window.__reveal.restart();
+  });
+  await checkShut(page, 'the drop starts with the board up');
+  check('it starts held at two corners, not moving', s0.phase === 'held' && s0.ang === 0 && s0.angVel === 0,
+    JSON.stringify({ phase: s0.phase, ang: s0.ang }));
+  check('the pivot is the corner that did not go first', s0.pivot !== s0.first && ['tl', 'tr'].includes(s0.first),
+    `${s0.first} released, hanging from ${s0.pivot}`);
+
+  // step to just after the first release, then to just before the second
+  const step = ms => page.evaluate(m => window.__reveal.step(m), ms);
+  const s1 = await step(1200);
+  check('the first corner releases and it starts swinging', s1.phase === 'swing' && s1.angVel !== 0, JSON.stringify({ phase: s1.phase, angVel: s1.angVel }));
+  check('the drop is marked played the moment the first corner goes', await page.evaluate(() => window.__reveal.played()));
+  // one full swing PLUS a roll of up to SWING_JITTER more of one, never less
+  const P = await page.evaluate(() => window.__reveal.PHYS);
+  const swings = (s1.releaseSecondAt - P.HOLD) / (s1.period * 1000);
+  check('the second corner is scheduled at one full swing plus a jitter that can only add',
+    swings >= 1 - 1e-9 && swings <= 1 + P.SWING_JITTER + 1e-9,
+    `${swings.toFixed(4)} swings, period ${(s1.period).toFixed(3)}s, second release ${(s1.releaseSecondAt - P.HOLD).toFixed(0)}ms after the first`);
+
+  // walk the swing in 8ms slices and watch it come back. A full swing means the angle returns to
+  // where it started with the spin reversing sign, and the second corner must not have gone before that.
+  // The board hangs from one corner, so it starts off to one side and swings TOWARDS straight
+  // down. `ang` is how far it has turned from where it was nailed: 0 at the start, theta0 when
+  // the centre is directly under the pivot, 2*theta0 at the far side, and back to 0 one full
+  // swing later. Sign follows which corner is holding it, so everything below is measured on
+  // |ang| against theta0 = atan(W/H).
+  const walk = await page.evaluate(async () => {
+    const st = window.__reveal.state();
+    const theta0 = Math.atan2(st.W / 2, st.H / 2);
+    const out = { theta0, peak: 0, downAt: null, farAt: null, back: null, swingEndedAt: null };
+    for (let i = 0; i < 2000; i++) {
+      const s = window.__reveal.step(8);
+      if (!s) break;
+      const a = Math.abs(s.ang);
+      out.peak = Math.max(out.peak, a);
+      if (out.downAt === null && a >= theta0) out.downAt = s.t;          // passed straight down
+      if (out.farAt === null && a >= 2 * theta0 - 0.01) out.farAt = s.t; // reached the far side
+      if (out.back === null && out.farAt !== null && a <= 0.01) out.back = s.t;
+      if (s.phase !== 'swing') { out.swingEndedAt = s.t; break; }
+    }
+    return out;
+  });
+  check('the board swings past straight down and all the way back to where it started',
+    walk.downAt !== null && walk.farAt !== null && walk.back !== null
+    && Math.abs(walk.peak - 2 * walk.theta0) < 0.02,
+    `straight down at ${walk.downAt}ms, far side at ${walk.farAt}ms, back at ${walk.back}ms, peak |ang| ${walk.peak.toFixed(4)} vs 2*theta0 ${(2 * walk.theta0).toFixed(4)}`);
+  check('the second corner does not release before the swing has come back',
+    walk.swingEndedAt !== null && walk.back !== null && walk.swingEndedAt >= walk.back,
+    `came back at ${walk.back}ms, second corner at ${walk.swingEndedAt}ms`);
+
+  // once loose, it falls and leaves the viewport, and the rAF loop is not left running
+  const fell = await page.evaluate(async () => {
+    for (let i = 0; i < 2000; i++) { const s = window.__reveal.step(8); if (!s || s.phase === 'gone') return s; }
+    return window.__reveal.state();
+  });
+  check('it falls off the screen and the panel is removed', fell.phase === 'gone'
+    && await page.locator('#gate-panel').count() === 0, JSON.stringify({ phase: fell.phase, cy: fell.cy }));
+  check('the rAF loop is stopped', fell.raf === 0);
+  check('the module is live again once the board is gone',
+    await page.evaluate(() => document.getElementById('app').inert !== true)
+    && await page.locator('#spook').count() === 1);
+  check('no console errors through the drop', errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+
+// clicking it while it is loose: additive impulses, and a 50/50 sideways direction
+{
+  const { page, ctx, errs } = await open({ reveal: true });
+  await page.waitForSelector('#gate-panel');
+  // NOTE ON HOW THIS IS DRIVEN. The clicks below mostly do not advance time between them. That
+  // is not a shortcut around a hit limit (there isn't one) — it is because the sideways kick is
+  // a real coin flip, so a long run of clicks with time passing legitimately walks the board off
+  // the side of the screen and out of play. That is the behaviour the author asked for, so it
+  // cannot also be the thing the test needs to not happen.
+  const res = await page.evaluate(() => {
+    window.__reveal.restart();
+    window.__reveal.step(1200);                      // first corner gone
+    while (window.__reveal.state().phase === 'swing') window.__reveal.step(8);   // now free
+    while (window.__reveal.state().vy <= 0) window.__reveal.step(8);             // let it be falling
+    const falling = window.__reveal.state();
+    window.__reveal.punch(500, 400);
+    const one = window.__reveal.state();
+    const one_dvy = one.vy - falling.vy;
+    window.__reveal.punch(500, 400); window.__reveal.punch(500, 400);
+    const three = window.__reveal.state();
+    // 200 more, sampling the coin flip. No time passes, so nothing can leave the viewport and
+    // "did a click ever stop working" is a real question rather than a race.
+    const dirs = [], sides = [];
+    for (let i = 0; i < 200; i++) {
+      const vx0 = window.__reveal.state().vx;
+      dirs.push(window.__reveal.punch(500, 400));
+      sides.push(window.__reveal.state().vx - vx0);
+    }
+    return { falling, one, one_dvy, three, dirs, sides, H: falling.H, after: window.__reveal.state() };
+  });
+  check('a click while it is falling reverses it: downward velocity becomes upward',
+    res.falling.vy > 0 && res.one.vy < 0,
+    `falling at ${res.falling.vy.toFixed(0)}px/s, ${res.one.vy.toFixed(0)}px/s after one click`);
+  check('the upward impulse is the one the constant asks for',
+    Math.abs(res.one_dvy + 1.35 * res.H) < 1e-6, `${res.one_dvy.toFixed(1)}px/s per click`);
+  check('impulses are additive: three clicks add three times the velocity of one',
+    Math.abs((res.three.vy - res.falling.vy) - 3 * res.one_dvy) < 1e-6,
+    `${(res.three.vy - res.falling.vy).toFixed(1)}px/s from three vs ${res.one_dvy.toFixed(1)} from one`);
+  const left = res.dirs.filter(d => d === -1).length, right = res.dirs.filter(d => d === 1).length;
+  check('the sideways direction is a coin flip, not always the same', left > 20 && right > 20,
+    `${left} left / ${right} right over 200 clicks`);
+  check('the sideways kick is the same size whichever way it goes',
+    res.sides.every(s => Math.abs(Math.abs(s) - 0.45 * res.H) < 1e-6),
+    `${(0.45 * res.H).toFixed(1)}px/s either way`);
+  check('there is no hit limit: click 203 still works', res.dirs[199] !== null && res.after.phase === 'free');
+  // driving the RNG proves the coin flip reads it, both ways
+  const forced = await page.evaluate(() => {
+    window.__revealRandom = () => 0.1; const a = window.__reveal.punch(500, 400);
+    window.__revealRandom = () => 0.9; const b = window.__reveal.punch(500, 400);
+    delete window.__revealRandom; return [a, b];
+  });
+  check('the coin flip is the random source, driven both ways', forced[0] === -1 && forced[1] === 1, JSON.stringify(forced));
+  // and a real pointer click on the real element, not the hook: the panel must actually be hit-testable
+  const real = await page.evaluate(() => window.__reveal.state().vy);
+  await page.mouse.click(550, 470);
+  check('a real pointer click on the board is what drives it',
+    await page.evaluate(v => window.__reveal.state().vy < v, real));
+  check('no console errors while juggling', errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+
+// Frame-rate independence: the integrator is driven by elapsed time, so 2 seconds of animation
+// must land in the same place whether it arrived as 120 frames or 240. Both runs are seeded to
+// the same corner and the same swing jitter, so the frame rate is the only difference.
+{
+  const twoSeconds = async n => {
+    const { page, ctx } = await open({ reveal: true, revealRandom: 0.25 });
+    await page.waitForSelector('#gate-panel');
+    const s = await page.evaluate(frames => {
+      window.__reveal.restart();
+      window.__reveal.step(1200);
+      const dt = 2000 / frames;
+      for (let i = 0; i < frames; i++) window.__reveal.step(dt);
+      return window.__reveal.state();
+    }, n);
+    await ctx.close();
+    return s;
+  };
+  const a = await twoSeconds(120), b = await twoSeconds(240);
+  check('60Hz and 120Hz land in the same place after the same elapsed time',
+    a.first === b.first && Math.abs(a.ang - b.ang) < 0.01 && Math.abs(a.cy - b.cy) < 2,
+    `ang ${a.ang.toFixed(4)} vs ${b.ang.toFixed(4)}, cy ${a.cy.toFixed(1)} vs ${b.cy.toFixed(1)}`);
+}
+
+// it plays once ever: a reload after the drop shows the module with no board
+{
+  const { page, ctx, errs } = await open({ reveal: true });
+  await page.waitForSelector('#gate-panel');
+  await page.evaluate(() => { window.__reveal.step(1200); });   // first corner goes, key is set
+  await page.reload();
+  await page.waitForSelector('#stage-night1');
+  check('a reload after the drop has started shows the module with no board and no animation',
+    await page.locator('#gate-panel').count() === 0
+    && await page.evaluate(() => window.__reveal.state() === null)
+    && await page.evaluate(() => document.getElementById('app').inert !== true));
+  check('no console errors on the second visit', errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+
+// prefers-reduced-motion: no board, no physics, just the module
+{
+  const { page, ctx, errs } = await open({ reveal: true, reducedMotion: 'reduce' });
+  await page.waitForSelector('#stage-night1');
+  check('reduced motion reveals the module with no drop at all',
+    await page.locator('#gate-panel').count() === 0
+    && await page.evaluate(() => window.__reveal.state() === null)
+    && await page.evaluate(() => document.getElementById('app').inert !== true)
+    && await page.locator('#spook').count() === 1);
+  check('reduced motion still gets the LOCKED board when the modules are unfinished',
+    await (async () => {
+      const { page: p2, ctx: c2 } = await open({ gate: {}, reveal: true, reducedMotion: 'reduce' });
+      const ok = await p2.locator('#gate-panel .locked').count() === 1;
+      await c2.close(); return ok;
+    })());
+  check('no console errors under reduced motion', errs.length === 0, errs.join(' | '));
   await ctx.close();
 }
 

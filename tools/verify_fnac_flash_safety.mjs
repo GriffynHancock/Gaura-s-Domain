@@ -88,6 +88,12 @@ async function newPage(reduced) {
       localStorage.setItem('ctf-complete:v1', JSON.stringify({
         caesar: { c: true, n: 7, t: 7 }, xor: { c: true, n: 4, t: 4 }, encoding: { c: true, n: 6, t: 6 }
       }));
+      // ...and mark the one-shot unlock drop as already played. Seeding the gate above is what
+      // makes an unlocked page, which is also what makes the drop fire, and a board swinging
+      // across the frame during THIS recording would put a second large-area animation in the
+      // same numbers. The baseline these figures are compared against was measured without it,
+      // so the creep sequence is measured alone, as it always was.
+      localStorage.setItem('ctf-fnac-reveal:v1', '1');
     } catch (e) {}
   });
   const errs = [];
