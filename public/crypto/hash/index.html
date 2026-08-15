@@ -563,10 +563,12 @@
       <button id="fx-btn" class="theme-btn hdr-btn" type="button" aria-disabled="true" aria-label="Confetti locked" title="Confetti locked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-lock"/></svg></button>
       <button id="theme" class="theme-btn hdr-btn" type="button" aria-label="Switch theme" title="Switch theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-moon"/></svg></button>
     </div></div>
-    <h1>Watch a hash <em>eat</em> your input.</h1>
-    <p>Pick something to hash, pick an algorithm, and watch the machinery — padding, blocks, rounds,
-      chaining — grind it into a fixed-length fingerprint. Same input, same output, every time. Change
-      one bit, and the whole fingerprint changes beyond recognition.</p>
+    <h1>Same sized <em>chaos</em> output.</h1>
+    <p>Hashing functions take an arbitrary input, mix it up, and make an output of a fixed size. The
+      special thing about them is that <em>in theory</em> any two inputs should make totally different
+      outputs, even if they differ by only one tiny piece. Old hashing schemes like MD5 were found to
+      produce the same output for certain inputs &mdash; called a <b>collision</b> &mdash; which makes
+      them insecure.</p>
   </header>
 
   <!-- The three control boxes: WHAT to hash, WHICH algorithm, and WHAT CAME OUT. Nothing here
@@ -794,26 +796,10 @@
        demo itself. -->
   <div id="history-list"></div>
 
-  <!-- The MD5 collision demo: two DIFFERENT real byte strings (published by Wang & Rescorla,
-       2004/2005) that MD5 maps to the exact same 128-bit digest. [EXACT] — both messages and both
-       digests are the real published collision, recomputed live by this page's own MD5
-       implementation, not hard-coded results. This is the concrete payoff of "MD5 is broken":
-       a real attacker can build two different files that hash identically. -->
-  <details class="collision-panel">
-    <summary>MD5 collision demo — two different real messages, one digest</summary>
-    <div class="collision-cols">
-      <div class="collision-col">
-        <div class="box-title">Message 1</div>
-        <div id="collision-digest-1" class="h-digest">—</div>
-      </div>
-      <div class="collision-col">
-        <div class="box-title">Message 2</div>
-        <div id="collision-digest-2" class="h-digest">—</div>
-      </div>
-    </div>
-    <button id="collision-run-btn">Hash both, live</button>
-    <div id="collision-verdict"></div>
-  </details>
+  <!-- The MD5 collision demo panel was REMOVED by author decision. The two Wang & Rescorla collision
+       messages are still shipped as INPUT PRESETS (see PRESETS, kind 'collision'), so the collision
+       is still demonstrable from the main Input box — this only removed the dedicated panel. The
+       panel's JS is guarded on its elements existing, so it no-ops rather than throwing. -->
 
   <!-- Real-time speed switch: measures how long this page's own MD5/SHA-3 code actually takes to
        run on THIS machine, with the animation/trace switched off, and reports that alongside how
@@ -5569,7 +5555,11 @@ else setTimeout(runHashBenchmark, 700);
 // break is that an attacker can DELIBERATELY CONSTRUCT two different inputs landing on the same
 // output, which defeats using MD5 to prove "this file hasn't been swapped for a different one".
 
-document.getElementById('collision-run-btn').onclick = () => {
+// The dedicated panel was removed by author decision; this block is kept because the collision
+// messages still ship as Input presets. Guarded so the missing button can't throw and kill every
+// listener registered after it.
+const collisionRunBtn = document.getElementById('collision-run-btn');
+if (collisionRunBtn) collisionRunBtn.onclick = () => {
   const b1 = hexToBytes(COLLISION_MSG_1_HEX), b2 = hexToBytes(COLLISION_MSG_2_HEX);
   const r1 = md5WithTrace(b1), r2 = md5WithTrace(b2);
   document.getElementById('collision-digest-1').textContent = r1.digest;
