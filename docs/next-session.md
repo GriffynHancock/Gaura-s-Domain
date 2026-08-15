@@ -3,6 +3,14 @@
 Agreed at the end of 2026-08-15. The session is **speccing first, then probably building the
 leaderboard**.
 
+## Ready to build
+**FNAC Night 4 · "You Spin Me Right Round"** — spec'd and measured, see
+`docs/superpowers/specs/2026-08-15-fnac-night4-spec.md`. Per-word Caesar (a different key every
+word), flag `flag{anathemgoodbook}` carried as six ordinary words with the braces written as the
+word `brace` so nothing leaks and every chunk stays brute-forceable. Source text is
+`night4-nonflag.txt`, reward is `fnac-assets/spinor.mp4` chroma-keyed in the corner. Remember
+FNAC's `FX_TOTAL` goes 3 → 4.
+
 ## Spec, don't build (yet)
 
 **Hashing challenges: rainbow tables and salting.** Module 104 has no scored challenges at all, it is
