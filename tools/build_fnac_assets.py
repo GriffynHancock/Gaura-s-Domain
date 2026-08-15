@@ -42,9 +42,18 @@ NIGHT3_KEY = b'tung tung tung sahur'
 # rewrite them AND because a real 0x0a would make the on-page ciphertext block render a line
 # break the file doesn't have. The double spaces are the phase shifts that dodge those pairs;
 # nudging a word here means re-running the asserts, not eyeballing it.
-NIGHT3_PLAINTEXT = (b'flag{stop_scrolling}  It comes down the hall at 3am with a bat.  '
-                    b'It always counts to three.  Put your phone down.  '
-                    b'It does not hide its name. It shouts it, over and over.')
+# The flag sits at offset 54, NOT at 0, and that is the whole puzzle. At offset 0 a `flag{` crib
+# lands first try and there is nothing to search, so the night was a "guess the key" puzzle wearing
+# a crib costume. 54 % 20 == 14, which is the phase that makes the crib reveal ` sahu` — the half
+# the hint image (Sahur) completes. Phase 15, which would reveal the full `sahur`, is impossible:
+# the `l` of `flag` would sit under the key's `a` and XOR to 0x0d.
+#
+# Two constraints bind any rewrite. The offset of `flag{` must stay ≡ 14 (mod 20), and no
+# (character, key-phase) pair may XOR to CR/LF or to a byte >= 0x80. The double spaces are the
+# phase shifts that dodge those pairs; they are load-bearing, not sloppy typing. Change a word and
+# the asserts below tell you.
+NIGHT3_PLAINTEXT = (b'i said one more video three hours ago. its 3am now.   '
+                    b'flag{stop_scrolling}  go to bed.')
 NIGHT3_HINT_SRC = SRC / 'night3' / 'Sahur2.webp'
 
 # Intro creep sequence. Source names carry a space in the directory name and one file the user
@@ -169,6 +178,13 @@ def build_night3():
     # the plaintext is worded to avoid producing them. NULs are unavoidable
     # (the flag repeats the key's own words) and transfer verbatim.
     assert 0x0a not in cipher and 0x0d not in cipher, 'ciphertext contains CR/LF'
+    # The crib-drag is the puzzle, so the flag must not sit where a first-try crib finds it, and it
+    # must sit at the key phase that reveals the Sahur half. Both are silent failures otherwise:
+    # the night still builds and still solves, it just stops being a search.
+    _off = NIGHT3_PLAINTEXT.find(b'flag{')
+    assert _off > 0, 'night3 flag is at offset 0 — there is nothing to crib-drag toward'
+    assert _off % len(NIGHT3_KEY) == 14, (
+        f'night3 flag at phase {_off % len(NIGHT3_KEY)}, expected 14 so the crib reveals " sahu"')
     (out / 'night3-a.txt').write_bytes(cipher)
     hint = out / 'hint-sahur.webp'
     shutil.copyfile(NIGHT3_HINT_SRC, hint)

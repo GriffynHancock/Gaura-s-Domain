@@ -133,7 +133,24 @@ async function open({ viewport = { width: 1100, height: 950 }, unlocked = true, 
   const key = 'tung tung tung sahur';
   let plain = '';
   fileBytes.forEach((b, i) => plain += String.fromCharCode(b ^ key.charCodeAt(i % key.length)));
-  check('decoding with the key yields the flag at offset 0', plain.startsWith('flag{stop_scrolling}'), plain.slice(0, 60));
+  // The flag deliberately does NOT sit at offset 0 any more: at 0 a `flag{` crib lands first try and
+  // there is nothing to crib-drag toward. This assertion used to pin offset 0, i.e. it defended the
+  // very property the night was rebuilt to remove. It now pins the search instead.
+  const flagAt = plain.indexOf('flag{stop_scrolling}');
+  check('decoding with the key yields the flag', flagAt >= 0, plain.slice(0, 90));
+  check('the flag is NOT at offset 0 — there is something to crib-drag toward', flagAt > 0, `offset ${flagAt}`);
+  check('the flag sits at the key phase that reveals " sahu"', flagAt % key.length === 14,
+    `phase ${flagAt % key.length}, want 14`);
+  {
+    const crib = 'flag{';
+    const hits = [];
+    for (let off = 0; off + crib.length <= fileBytes.length; off++) {
+      let rec = '';
+      for (let j = 0; j < crib.length; j++) rec += String.fromCharCode(fileBytes[off + j] ^ crib.charCodeAt(j));
+      if (/^[a-z ]+$/.test(rec)) hits.push(`${off}:${rec}`);
+    }
+    check('the crib at the real offset recovers a slice of the key', hits.some(h => h === `${flagAt}: sahu`), hits.join(' '));
+  }
   const links = await page.locator('.dl').evaluateAll(a => a.map(x => x.getAttribute('href')));
   const want = ['assets/night1/night1-a.png', 'assets/night1/night1-b.png', 'assets/night2/night2-a.bin',
     'assets/night2/night2-b.bin', 'assets/night3/night3-a.txt'];
