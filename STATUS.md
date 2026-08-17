@@ -14,6 +14,8 @@ Spine: **recognise → identify → decode/crack → submit.**
 - **`docs/next-session.md`** — what the next session is for. **This supersedes
   `docs/NEXT-SESSION-QUEUE.md`, which is stale** (it still lists XOR C4 as unbuilt and blocking FNAC).
 - **`docs/ideas-backlog.md`** — parked ideas, not scheduled.
+- **`docs/future-ideas/`** — the author's longer working notes on things that might get built.
+  Public on purpose. Not commitments, not wired into anything.
 - **`docs/research/`** — supporting research. **Not audited recently; treat as possibly stale.**
 - **`docs/superpowers/specs/`** and **`plans/`** — design specs and implementation plans.
 - **`docs/2026-06-26-module4-xor-spec.md`** — XOR's spec and handoff.

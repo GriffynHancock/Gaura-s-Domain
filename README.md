@@ -40,7 +40,8 @@ live site.
 
 ## Working on it
 
-`CLAUDE.md` has the conventions, local dev and deploy. `STATUS.md` has the current state and what is
+`docs/future-ideas/` has notes on things that might get added. `CLAUDE.md` has the conventions,
+local dev and deploy. `STATUS.md` has the current state and what is
 outstanding. Read `docs/voice-guide.md` before writing any copy a student will read, alongside
 `docs/authors-original-copy.md` and `docs/prose-accounting.md`.
 
