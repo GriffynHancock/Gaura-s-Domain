@@ -49,6 +49,62 @@ Measure that first (§6.4 of the long doc). If they are vanishingly rare, the fa
 server hold the payload and release it on a valid proof: uniqueness stops mattering and any real win
 opens the box, at the cost of it no longer being a self-contained file you can hide somewhere.
 
+## How big is the search space (measured)
+
+Counted directly. Hamiltonian paths from a fixed corner, which is an upper bound on winning plays
+before apples and the budget prune it:
+
+| board | cells | winning fills | vs previous board |
+|---|---|---|---|
+| 3×3 | 9 | 8 | 4× |
+| 4×4 | 16 | 52 | 6.5× |
+| 5×5 | 25 | 824 | 15.8× |
+| 6×6 | 36 | 22,144 | 26.9× |
+
+It is **exponential in the area**, about `1.34^(cells)`, not `n^n` and not double-exponential. It
+feels faster than exponential because adding a row and a column adds `2N+1` cells, so the multiplier
+itself grows: 5→6 is 21×, 11→12 is 597×.
+
+The number that matters is the gap between answers and search. At 10×10 there are ~10¹² winning
+fills sitting inside a naive move tree of ~10¹⁰⁵. That gap is why §6.3's pruning is mandatory.
+
+## Publish a set of them, not one (author's call, 2026-08-17)
+
+This is what makes the design work, and it dissolves the tension above rather than solving it.
+
+Ship a **range of board sizes, each with its own flag**. Small boards are a human race: few enough
+fills that a person can find the route, and first-solve bragging rights. Large boards are a machine
+race: humans competing to *write the solver*, not to play. Some boxes may stay unopened for years.
+That is a feature, not a failure.
+
+The three targets stop fighting because each tier only has to satisfy one of them:
+
+- small board → uniqueness is achievable, humans can play it
+- large board → real machine cost, and nobody expects to play it by hand
+- unopened board → the honest statement that this is hard
+
+**The refinement that makes the big boards work:** uniqueness is only needed for the human tier. The
+artefact already ships `check = SHA256(k)`, so on a large board a solver can enumerate winning plays
+and test each against `check`. The puzzle becomes "find the sealed play", and the work is
+enumerate-and-test rather than find-the-only-route. No uniqueness search required at that size,
+which is the component §6 admits may be infeasible anyway.
+
+**The caveat that follows:** on a non-unique board a legitimate winner can complete the game and
+still get garbage, because they found a different valid route. The game must tell them so, in
+those words: valid win, not the sealed play. It costs nothing to check (`SHA256(k) == check`) and it
+leaks nothing the AEAD tag doesn't already leak. Without it the box just looks broken to the person
+who did the hardest part.
+
+## What has to be taught before any of this
+
+The author's point, and it is the real reason to build it: a claimed flag and a claimed final hash
+can both simply be made up. Understanding *what would make a win checkable* is the lesson, and it
+lands before a single line of Snake is written. Commitments, what a proof is for, why "I solved it,
+here is the hash" proves nothing on its own, and what a zero-knowledge proof buys that a screenshot
+does not.
+
+So the teaching order is: proof first, Snake second.
+
 ## Worth noting
 
 The reusable part is not Snake. It is "the key is the transcript", which works for any deterministic
