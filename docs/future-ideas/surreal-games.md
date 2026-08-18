@@ -144,6 +144,38 @@ differentiation or complexity theory, reported honestly as a gap rather than str
 surreal numbers there is an exact theorem rather than an analogy. **Toads and Frogs second**, because
 it is where the non-number values (`*`, `↑`, `↓`) show up naturally.
 
+## Why the structure lives in the non-numbers
+
+A position is a **number** exactly when neither player wants to move in it. Numbers are cold: if a
+position is worth 3, moving makes it worse for you, so it sits there behaving like a score.
+
+A position is a **non-number** when somebody wants to move. The smallest is star, `* = {0|0}`,
+"whoever moves wins", and no number behaves like that, because for a number, moving must cost you.
+Berlekamp's temperature theory is a direct measure of how badly the players want to move, and any
+temperature above zero means you are not looking at a number.
+
+So numbers are the units of score and non-numbers are the units of tempo. A real game is hot almost
+all the way through and only cools into numbers at the end. That is why the endgame is where the
+numbers are and the middlegame is where the structure is.
+
+## Which games could be adapted
+
+The binding constraint is not the game, it is that positions must **decompose into independent parts
+that add**. That is what makes values compose rather than just label things. Most video games fail
+it because they carry one global state.
+
+Games that already decompose, where this has actually been done:
+
+- **Go endgames.** The real success story. Berlekamp and Wolfe, *Mathematical Go*. Late Go genuinely
+  splits into independent regions, which is exactly the sum decomposition CGT needs.
+- **Dots and Boxes.** Berlekamp wrote a book on it. Chains and loony endgames are deep CGT.
+- **Amazons, Konane, Clobber, Domineering.** Clobber was designed by CGT people and ships in cgsuite.
+
+For a video game the honest answer is that you do not adapt one, you design for the sum. The move
+that makes it teach something is to make the decomposition **visible**: a board that breaks into
+disconnected islands, independent lanes, separate rooms. Then "the whole game is the sum of its
+parts" is something a player watches happen rather than something a caption claims.
+
 ## Open questions
 
 - Which small game gives the richest set of values for the least explanation.

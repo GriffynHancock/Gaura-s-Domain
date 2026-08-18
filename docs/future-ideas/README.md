@@ -6,6 +6,10 @@ finished designs. They are here so anyone reading the repo can see where it migh
 Nothing in this folder is wired into the site. For what is actually being worked on next, see
 `docs/next-session.md`; for things parked in one-paragraph form, see `docs/ideas-backlog.md`.
 
+- **[Crypto games](crypto-games.md)** — the genre note. What a crypto game is, the design rules,
+  the two skill ceilings (humans like speedrunners, machines like Minecraft seed finders), and the
+  mathematical structures each future game would be built on. Start here for the direction.
+
 - **Snake Puzzle Box** — a game of Snake whose payload is derived from the winning play rather than
   stored in the binary, with a zero-knowledge proof so a winner can show they won without giving
   away the solution.
