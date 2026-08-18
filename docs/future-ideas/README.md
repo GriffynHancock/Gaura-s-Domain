@@ -13,5 +13,10 @@ Nothing in this folder is wired into the site. For what is actually being worked
   - **[Full research proposal](snake-puzzle-research-proposal.md)** — draft v0.1, 386 lines. The
     uniqueness search in section 6 decides whether the whole design is possible.
 
+- **[Surreal games](surreal-games.md)** — small games where the puzzle's answer is a
+  combinatorial-game-theory value, with the birthday construction visible while you play. Notes
+  only. Contains the corrections that decide what is actually buildable (finite games can only be
+  dyadic rationals, so no position ever equals φ).
+
 A shorter, earlier sketch of the same idea (trollface folder → QR polyglot → Snake) is in
 `docs/ideas-backlog.md`.
