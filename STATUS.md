@@ -15,7 +15,8 @@ Spine: **recognise → identify → decode/crack → submit.**
   `docs/NEXT-SESSION-QUEUE.md`, which is stale** (it still lists XOR C4 as unbuilt and blocking FNAC).
 - **`docs/ideas-backlog.md`** — parked ideas, not scheduled.
 - **`docs/future-ideas/`** — the author's longer working notes on things that might get built.
-  Public on purpose. Not commitments, not wired into anything.
+  Public on purpose. Not commitments, not wired into anything. Start at `crypto-games.md`, which is
+  the genre note; then `snake-puzzle-box-sketch.md` and `surreal-games.md`.
 - **`docs/research/`** — supporting research. **Not audited recently; treat as possibly stale.**
 - **`docs/superpowers/specs/`** and **`plans/`** — design specs and implementation plans.
 - **`docs/2026-06-26-module4-xor-spec.md`** — XOR's spec and handoff.

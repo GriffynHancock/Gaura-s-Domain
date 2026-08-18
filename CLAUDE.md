@@ -222,6 +222,13 @@ We don't know the exact challenges, but they'll resemble well-documented CTF cat
   branch from it. Deploying is `npx wrangler deploy`, which ships the **working tree**, not `HEAD`: check
   `git status` first, or you can publish a half-finished edit a subagent left behind.
 
+## Secrets
+**This repo is PUBLIC.** A loose OpenSSH private key (`cluster-access`) was found in the repo root on
+2026-08-18, untracked and unignored, one `git add -A` away from being published. It was never
+committed and is now ignored, along with `*.pem`, `*.key`, `id_rsa*`, `id_ed25519*` and `.env*`.
+**Never `git add -A` in this repo** — stage the files you actually changed. A subagent's `git add -A`
+has already swept another agent's in-progress work into an unrelated commit once this session.
+
 ## Writing copy — read `docs/voice-guide.md` before touching any student-facing prose
 The author writes his own copy and rejected a batch of AI-written prose on 2026-08-15 in strong terms
 ("im pretty ashamed i showed real humans that fucking slop"). Three files now govern this:
