@@ -105,6 +105,45 @@ transcript. Noted for later:
   in radians" is exactly the thing that will not reproduce. Solvable, but it is the whole design
   problem for that one.
 
+## What already exists (researched 2026-08-18)
+
+Every correction above was checked against sources and held up. Two precision notes: cite Elkies as
+the 1996 *Games of No Chance* chapter, with the 1999 arXiv preprint as the readable copy; and
+cgsuite's temperature support is documented in Siegel's book rather than confirmed hands-on, so check
+it before relying on it.
+
+**Prior art in Hackenbush, which is thinner than expected.**
+- `fi-le.itch.io/hackenbush` — "Hackenbush: Pocket Edition". Live, open source (GPLv2, Godot), and it
+  actually computes and shows the surreal value of a position while you play. The closest thing to
+  the idea here, and the first thing to go and play.
+- `github.com/Jutanium/hackenbush-vue` — explorable-explanation style, self-described as very much in
+  progress.
+- `geometer.org/hackenbush` — Tom Davis's desktop program, Intel-Mac era, probably awkward to run now.
+- `hackenbush.xyz` — dead, DNS failure. Wikiversity still links to it.
+
+**The tooling.** `cgsuite` (Aaron Siegel) is the field standard: ships Clobber, Toads and Frogs,
+Kayles, Wythoff Nim, and has its own scripting language for defining new rulesets. Its companion text
+is Siegel, *Combinatorial Game Theory* (AMS GSM 146), which covers canonical forms and Berlekamp's
+temperature theory. No meaningful alternative in Python, Haskell, Rust or Sage.
+
+**The gaps, which are the reason to build.**
+- **No interactive birthday-construction animation exists anywhere.** Day 0, day 1, day 2, numbers
+  appearing as they are born. Nobody has built it. That is the single most distinctive thing in this
+  idea and it is unclaimed.
+- No live widget showing `{L|R}` notation and the decimal value side by side and editable. Only
+  static worked examples in course notes.
+- **No digital game invents a new mechanic around CGT values.** Everything found is a Hackenbush
+  port. Nobody has used the values as the substance of a puzzle.
+- **No cryptographic use of surreal numbers at all.** Reported as a real absence, not a failed search.
+
+**Recent theory.** The Aschenbrenner / van den Dries / van der Hoeven programme on transseries and
+model theory is real, active and citable. No connection found between surreals and automatic
+differentiation or complexity theory, reported honestly as a gap rather than stretched.
+
+**Confirmed on the demo choice.** Hackenbush first, because the correspondence between positions and
+surreal numbers there is an exact theorem rather than an analogy. **Toads and Frogs second**, because
+it is where the non-number values (`*`, `↑`, `↓`) show up naturally.
+
 ## Open questions
 
 - Which small game gives the richest set of values for the least explanation.
