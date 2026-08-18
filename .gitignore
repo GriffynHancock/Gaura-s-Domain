@@ -5,3 +5,17 @@ __pycache__/
 *.pyc
 .claude/
 node_modules/
+
+# Secrets. This repo is PUBLIC — never let a key in.
+# `cluster-access` (an OpenSSH private key) was found loose in the repo root on 2026-08-18,
+# untracked and unignored, one `git add -A` away from being published.
+cluster-access
+cluster-access.pub
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*_rsa
+*_ed25519
+.env
+.env.*
